@@ -1,14 +1,5 @@
-// Tipos globais do Fluxyra — a serem expandidos
-
-export type Modality = "image" | "video" | "audio";
-
-export interface Asset {
-  id: string;
-  userId: string;
-  modality: Modality;
-  url: string;
-  createdAt: string;
-}
+// Tipos globais do Fluxyra — reexporta os tipos do schema.
+export * from "./database";
 
 export interface CreditBalance {
   userId: string;
