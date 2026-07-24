@@ -163,8 +163,8 @@ export function GenerationDock() {
   const setActiveTab = useStudioStore((s) => s.setActiveTab);
   const prompt = useStudioStore((s) => s.prompt);
   const setPrompt = useStudioStore((s) => s.setPrompt);
-  const selectedModelSlug = useStudioStore((s) => s.selectedModelSlug);
-  const setSelectedModelSlug = useStudioStore((s) => s.setSelectedModelSlug);
+  const selectedModelId = useStudioStore((s) => s.selectedModelId);
+  const setSelectedModelId = useStudioStore((s) => s.setSelectedModelId);
   const aspectRatio = useStudioStore((s) => s.aspectRatio);
   const setAspectRatio = useStudioStore((s) => s.setAspectRatio);
   const duration = useStudioStore((s) => s.duration);
@@ -214,13 +214,13 @@ export function GenerationDock() {
 
   useEffect(() => {
     if (!models.length) return;
-    const exists = models.some((item) => item.model_id === selectedModelSlug);
-    if (!exists) setSelectedModelSlug(models[0].model_id);
-  }, [models, selectedModelSlug, setSelectedModelSlug]);
+    const exists = models.some((item) => item.id === selectedModelId);
+    if (!exists) setSelectedModelId(models[0].id);
+  }, [models, selectedModelId, setSelectedModelId]);
 
   const selectedModel = useMemo(
-    () => models.find((item) => item.model_id === selectedModelSlug) ?? null,
-    [models, selectedModelSlug]
+    () => models.find((item) => item.id === selectedModelId) ?? null,
+    [models, selectedModelId]
   );
 
   const aspectOptions = activeTab === "video" ? ASPECT_RATIOS.video : ASPECT_RATIOS.image;
@@ -256,7 +256,7 @@ export function GenerationDock() {
   async function submitSingleGeneration() {
     const body: Record<string, unknown> = {
       prompt,
-      model_slug: selectedModelSlug,
+      model_uuid: selectedModelId,
     };
 
     if (activeTab !== "audio") {
@@ -514,13 +514,13 @@ export function GenerationDock() {
               {(close) => (
                 <div className="space-y-1">
                   {models.map((model) => {
-                    const active = model.model_id === selectedModelSlug;
+                    const active = model.id === selectedModelId;
                     return (
                       <button
                         key={model.id}
                         type="button"
                         onClick={() => {
-                          setSelectedModelSlug(model.model_id);
+                          setSelectedModelId(model.id);
                           close();
                         }}
                         className={cn(

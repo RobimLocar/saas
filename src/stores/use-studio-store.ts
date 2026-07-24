@@ -15,8 +15,8 @@ interface StudioState {
   setNegativePrompt: (val: string) => void;
 
   // Modelo selecionado
-  selectedModelSlug: string;
-  setSelectedModelSlug: (slug: string) => void;
+  selectedModelId: string;
+  setSelectedModelId: (id: string) => void;
 
   // Parâmetros de geração
   aspectRatio: string;
@@ -50,25 +50,25 @@ interface StudioState {
   resetParams: () => void;
 }
 
-// model_id reais (provider PiAPI) do catálogo ai_models
+// UUIDs (id) da tabela ai_models
 const DEFAULT_MODELS: Record<Modality, string> = {
-  image: "Qubico/flux1-schnell",
-  video: "seedance-2",
-  audio: "Qubico/ace-step",
+  image: "",
+  video: "",
+  audio: "",
 };
 
 export const useStudioStore = create<StudioState>((set) => ({
   activeTab: "image",
   setActiveTab: (tab) =>
-    set({ activeTab: tab, selectedModelSlug: DEFAULT_MODELS[tab] }),
+    set({ activeTab: tab, selectedModelId: DEFAULT_MODELS[tab] }),
 
   prompt: "",
   setPrompt: (prompt) => set({ prompt }),
   negativePrompt: "",
   setNegativePrompt: (negativePrompt) => set({ negativePrompt }),
 
-  selectedModelSlug: "Qubico/flux1-schnell",
-  setSelectedModelSlug: (selectedModelSlug) => set({ selectedModelSlug }),
+  selectedModelId: "",
+  setSelectedModelId: (selectedModelId) => set({ selectedModelId }),
 
   aspectRatio: "1:1",
   setAspectRatio: (aspectRatio) => set({ aspectRatio }),

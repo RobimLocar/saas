@@ -15,9 +15,9 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { prompt, model_slug, negative_prompt, aspect_ratio, width, height, reference_image_url } = body;
+    const { prompt, model_uuid, negative_prompt, aspect_ratio, width, height, reference_image_url } = body;
 
-    if (!prompt || !model_slug) {
+    if (!prompt || !model_uuid) {
       return NextResponse.json(
         { error: "Prompt e modelo são obrigatórios" },
         { status: 400 }
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     const { data: aiModel, error: modelError } = await supabase
       .from("ai_models")
       .select("*")
-      .eq("model_id", model_slug)
+      .eq("id", model_uuid)
       .eq("is_active", true)
       .single();
 

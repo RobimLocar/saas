@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const {
       prompt,
-      model_slug,
+      model_uuid,
       negative_prompt,
       aspect_ratio,
       duration,
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
       end_image_url,
     } = body;
 
-    if (!prompt || !model_slug) {
+    if (!prompt || !model_uuid) {
       return NextResponse.json(
         { error: "Prompt e modelo são obrigatórios" },
         { status: 400 }
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     const { data: aiModel } = await supabase
       .from("ai_models")
       .select("*")
-      .eq("model_id", model_slug)
+      .eq("id", model_uuid)
       .eq("is_active", true)
       .single();
 
@@ -105,15 +105,18 @@ export async function POST(req: NextRequest) {
 
     // Chamar PiAPI
     try {
+      const modelParams = (aiModel.params as Record<string, string>) || {};
       const task = await generateVideo({
         model: aiModel.model_id,
         prompt,
         negative_prompt,
         aspect_ratio,
-        duration: duration || 4,
+        duration: duration || 5,
         resolution: resolution || "1080p",
         start_image_url,
         end_image_url,
+        kling_version: modelParams.kling_version,
+        kling_mode: modelParams.kling_mode,
       });
 
       await supabase
