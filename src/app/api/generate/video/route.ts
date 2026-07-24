@@ -47,20 +47,20 @@ export async function POST(req: NextRequest) {
     // Verificar créditos
     const { data: profile } = await supabase
       .from("profiles")
-      .select("credits_balance, plan")
+      .select("credits_balance, plan_code")
       .eq("id", user.id)
       .single();
 
-    if (!profile || profile.credits_balance < aiModel.credit_cost) {
+    if (!profile || profile.credits_balance < aiModel.credits) {
       return NextResponse.json(
-        { error: "Créditos insuficientes", required: aiModel.credit_cost, available: profile?.credits_balance || 0 },
+        { error: "Créditos insuficientes", required: aiModel.credits, available: profile?.credits_balance || 0 },
         { status: 402 }
       );
     }
 
     // Verificar tier gating
     const premiumModels = ["veo-3", "sora-2-pro", "kling-v3-pro"];
-    if (premiumModels.includes(model_slug) && profile.plan !== "agency") {
+    if (premiumModels.includes(model_slug) && profile.plan_code !== "agency") {
       return NextResponse.json(
         { error: "Este modelo requer plano Agency" },
         { status: 403 }
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Deduzir créditos
-    const newBalance = profile.credits_balance - aiModel.credit_cost;
+    const newBalance = profile.credits_balance - aiModel.credits;
     await supabase
       .from("profiles")
       .update({ credits_balance: newBalance })
@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
         negative_prompt,
         params: { aspect_ratio, duration, resolution, start_image_url, end_image_url },
         status: "pending" as const,
-        credits_charged: aiModel.credit_cost,
+        credits_charged: aiModel.credits,
       })
       .select()
       .single();
@@ -98,8 +98,8 @@ export async function POST(req: NextRequest) {
     // Transação de créditos
     await supabase.from("credit_transactions").insert({
       user_id: user.id,
-      type: "usage" as const,
-      amount: -aiModel.credit_cost,
+      type: "generation" as const,
+      amount: -aiModel.credits,
       balance_after: newBalance,
       description: `Geração de vídeo — ${aiModel.name}`,
       generation_id: generation.id,
@@ -126,7 +126,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         generation_id: generation.id,
         task_id: task.task_id,
-        credits_used: aiModel.credit_cost,
+        credits_used: aiModel.credits,
         balance: newBalance,
       });
     } catch (apiError) {
@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
       await supabase.from("credit_transactions").insert({
         user_id: user.id,
         type: "refund" as const,
-        amount: aiModel.credit_cost,
+        amount: aiModel.credits,
         balance_after: profile.credits_balance,
         description: `Reembolso — falha na geração de vídeo`,
         generation_id: generation.id,

@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
         await supabase
           .from("profiles")
           .update({
-            plan: plan || "starter",
+            plan_code: plan || "starter",
             credits_balance: credits,
             stripe_customer_id: session.customer as string,
           })
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
 
         await supabase.from("credit_transactions").insert({
           user_id: userId,
-          type: "purchase",
+          type: "subscription",
           amount: credits,
           balance_after: credits,
           description: `Assinatura ${PLANS[plan]?.name || plan} ativada — ${credits} créditos`,
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
 
         await supabase.from("credit_transactions").insert({
           user_id: userId,
-          type: "purchase",
+          type: "topup",
           amount: credits,
           balance_after: newBalance,
           description: `Top-up — +${credits} créditos`,
@@ -94,12 +94,12 @@ export async function POST(req: NextRequest) {
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("id, plan, credits_balance")
+        .select("id, plan_code, credits_balance")
         .eq("stripe_customer_id", customerId)
         .single();
 
-      if (profile && profile.plan && profile.plan !== "free") {
-        const plan = profile.plan as PlanKey;
+      if (profile && profile.plan_code && profile.plan_code !== "free") {
+        const plan = profile.plan_code as PlanKey;
         const planData = PLANS[plan];
         if (planData) {
           // Rollover parcial
@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
 
           await supabase.from("credit_transactions").insert({
             user_id: profile.id,
-            type: "purchase",
+            type: "subscription",
             amount: planData.credits,
             balance_after: newBalance,
             description: `Renovação mensal ${planData.name} — ${planData.credits} créditos${rollover > 0 ? ` (+${rollover} rollover)` : ""}`,
@@ -142,7 +142,7 @@ export async function POST(req: NextRequest) {
       if (newPlan) {
         await supabase
           .from("profiles")
-          .update({ plan: newPlan })
+          .update({ plan_code: newPlan })
           .eq("stripe_customer_id", customerId);
       }
       break;
@@ -155,7 +155,7 @@ export async function POST(req: NextRequest) {
 
       await supabase
         .from("profiles")
-        .update({ plan: "free", credits_balance: 10 })
+        .update({ plan_code: "free", credits_balance: 10 })
         .eq("stripe_customer_id", customerId);
       break;
     }
