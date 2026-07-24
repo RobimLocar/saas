@@ -1,12 +1,18 @@
+import { Suspense } from "react";
+import { AuthForm } from "@/components/shared/auth-form";
+
 export default function SignupPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center">
-      <div className="w-full max-w-sm space-y-4 p-6">
-        <h1 className="text-2xl font-semibold">Criar conta no Fluxyra</h1>
+    <div className="space-y-6">
+      <div className="space-y-1.5 text-center">
+        <h1 className="text-xl font-semibold">Crie sua conta</h1>
         <p className="text-sm text-muted-foreground">
-          Formulário de cadastro (Supabase Auth) — a ser implementado.
+          Ganhe <span className="font-semibold text-accent">10 créditos grátis</span> ao se cadastrar.
         </p>
       </div>
-    </main>
+      <Suspense>
+        <AuthForm mode="signup" />
+      </Suspense>
+    </div>
   );
 }
