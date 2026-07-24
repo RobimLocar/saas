@@ -40,7 +40,7 @@ const DEFAULT_MODEL: Record<Modality, string> = {
 };
 
 const DEFAULT_MODEL_ID: Record<Modality, string> = {
-  image: "flux-schnell",
+  image: "Qubico/flux1-schnell",
   video: "seedance-2.0",
   audio: "elevenlabs-flash",
 };

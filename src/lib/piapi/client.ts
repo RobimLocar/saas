@@ -7,30 +7,36 @@
 const PIAPI_BASE_URL = "https://api.piapi.ai/api/v1";
 
 export interface PiAPITaskResponse {
-  task_id: string;
-  status: "pending" | "processing" | "completed" | "failed";
-  output?: {
-    image_url?: string;
-    video_url?: string;
-    audio_url?: string;
-    url?: string;
+  code: number;
+  data: {
+    task_id: string;
+    status: "pending" | "processing" | "completed" | "failed";
+    output?: {
+      image_url?: string;
+      video_url?: string;
+      audio_url?: string;
+      url?: string;
+    };
+    error?: string;
   };
-  error?: string;
 }
 
 export interface PiAPIStatusResponse {
-  task_id: string;
-  status: "pending" | "processing" | "completed" | "failed";
-  output?: {
-    image_url?: string;
-    video_url?: string;
-    audio_url?: string;
-    url?: string;
-    images?: Array<{ url: string }>;
-    videos?: Array<{ url: string }>;
+  code: number;
+  data: {
+    task_id: string;
+    status: "pending" | "processing" | "completed" | "failed";
+    output?: {
+      image_url?: string;
+      video_url?: string;
+      audio_url?: string;
+      url?: string;
+      images?: Array<{ url: string }>;
+      videos?: Array<{ url: string }>;
+    };
+    meta?: Record<string, unknown>;
+    error?: string;
   };
-  meta?: Record<string, unknown>;
-  error?: string;
 }
 
 class PiAPIError extends Error {
@@ -61,6 +67,7 @@ async function piapiFetch<T = unknown>(
   });
 
   const data = await res.json();
+  console.log("[PiAPI] Response:", JSON.stringify(data, null, 2));
 
   if (!res.ok) {
     throw new PiAPIError(

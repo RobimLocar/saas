@@ -106,6 +106,14 @@ export async function POST(req: NextRequest) {
 
     // Chamar PiAPI
     try {
+      console.log("[PiAPI] Iniciando chamada com params:", {
+        model: aiModel.model_id,
+        prompt: prompt.substring(0, 50),
+        width,
+        height,
+        aspect_ratio
+      });
+
       const task = await generateImage({
         model: aiModel.model_id,
         prompt,
@@ -116,22 +124,26 @@ export async function POST(req: NextRequest) {
         reference_image_url,
       });
 
+      console.log("[PiAPI] Task criada com sucesso:", task.data.task_id);
+
       // Atualizar geração com task_id
       await supabase
         .from("generations")
         .update({
-          provider_task_id: task.task_id,
+          provider_task_id: task.data.task_id,
           status: "processing",
         })
         .eq("id", generation.id);
 
       return NextResponse.json({
         generation_id: generation.id,
-        task_id: task.task_id,
+        task_id: task.data.task_id,
         credits_used: aiModel.credit_cost,
         balance: newBalance,
       });
     } catch (apiError) {
+      console.error("[PiAPI] Erro detalhado:", apiError);
+      
       // Reverter créditos em caso de erro na API
       await supabase
         .from("profiles")
@@ -152,7 +164,7 @@ export async function POST(req: NextRequest) {
       });
 
       return NextResponse.json(
-        { error: "Erro ao chamar provedor de IA" },
+        { error: "Erro ao chamar provedor de IA", details: String(apiError) },
         { status: 502 }
       );
     }
