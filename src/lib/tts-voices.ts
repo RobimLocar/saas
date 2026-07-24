@@ -1,56 +1,63 @@
 // Catálogo de vozes de TTS compartilhado entre o front (voice selector) e o
 // back (rota de geração + preview).
 //
-// NOTA DE ENGENHARIA: a PiAPI NÃO integra ElevenLabs (retorna "invalid model")
-// e o RouteLLM da Abacus lista "elevenlabs" mas o rejeita em /chat/completions.
-// O único motor de TTS acessível sem chave nova é o gpt-4o-audio da Abacus,
-// cujas vozes OpenAI são alloy/echo/fable/onyx/nova/shimmer. Mantemos os nomes
-// de voz definidos no design e mapeamos cada um para a voz OpenAI de timbre mais
-// próximo em `openai`. É esse valor que efetivamente muda o áudio gerado.
+// MOTOR: Atlas Cloud (api.atlascloud.ai) → modelo `elevenlabs/v3/text-to-speech`.
+// Os ids abaixo são exatamente os `voice` aceitos pelo endpoint do Atlas, então
+// a voz escolhida no seletor muda o áudio de fato. Cada voz traz uma URL de
+// preview hospedada pelo próprio Atlas (usada no botão ▶ sem custo de API).
 
 export type TtsVoice = {
-  id: string; // id de exibição (compatível com o design original)
+  id: string; // voice id aceito pelo Atlas (ElevenLabs)
   name: string;
   description: string;
-  accent: string;
+  accent: string; // derivado do idioma nativo da voz
   gender: "Female" | "Male";
   age: string;
-  openai: string; // voz OpenAI real usada na geração/preview
+  language: string; // ISO code (Atlas)
+  preview: string; // mp3 de amostra hospedado pelo Atlas
 };
 
+const PREVIEW = (slug: string) =>
+  `https://static.atlascloud.ai/media/audios/voice_preview_${slug}.mp3`;
+
 export const TTS_VOICES: TtsVoice[] = [
-  { id: "EXAVITQu4vr4xnSDxMaL", name: "Savannah", description: "Heartfelt, Emotional, Articulate", accent: "British", gender: "Female", age: "Young", openai: "shimmer" },
-  { id: "9BWtsMINqrJLrRacOk9x", name: "Amelia", description: "Warm & Natural", accent: "British", gender: "Female", age: "Young", openai: "nova" },
-  { id: "jBpfuIE2acCo8z3wKNLl", name: "Velvet Noir", description: "High-End Advertisement", accent: "British", gender: "Female", age: "Middle Aged", openai: "shimmer" },
-  { id: "pFZP5JQG7iQjIQuC4Bku", name: "Angela", description: "Conversational and Friendly", accent: "American", gender: "Female", age: "Middle Aged", openai: "nova" },
-  { id: "IKne3meq5aSn9XLyUdCD", name: "Charlie Chatlin", description: "Real & Casual", accent: "Standard", gender: "Male", age: "Middle Aged", openai: "echo" },
-  { id: "CwhRBWXzGAHq8TQ4Fs17", name: "Viraj", description: "Bold & Commanding Banking Agent", accent: "Indian", gender: "Male", age: "Young", openai: "onyx" },
-  { id: "pNInz6obpgDQGcFmaJgB", name: "Adam", description: "Deep, Authoritative", accent: "American", gender: "Male", age: "Middle Aged", openai: "onyx" },
-  { id: "ErXwobaYiN019PkySvjV", name: "Antoni", description: "Well-rounded, Versatile", accent: "American", gender: "Male", age: "Young", openai: "echo" },
-  { id: "21m00Tcm4TlvDq8ikWAM", name: "Rachel", description: "Calm, Approachable", accent: "American", gender: "Female", age: "Young", openai: "nova" },
-  { id: "AZnzlk1XvdvUeBnXmlld", name: "Domi", description: "Strong, Expressive", accent: "American", gender: "Female", age: "Young", openai: "shimmer" },
-  { id: "MF3mGyEYCl7XYWbV9V6O", name: "Elli", description: "Emotional, Younger", accent: "American", gender: "Female", age: "Young", openai: "shimmer" },
-  { id: "TxGEqnHWrfWFTfGW9XjX", name: "Josh", description: "Calm, Trustworthy", accent: "American", gender: "Male", age: "Young", openai: "fable" },
+  { id: "EXAVITQu4vr4xnSDxMaL", name: "Sarah", description: "Warm, professional, soft", accent: "American", gender: "Female", age: "Young", language: "en-US", preview: PREVIEW("sarah") },
+  { id: "hpp4J3VqNfWAUOO0d1Us", name: "Bella", description: "Soft, young, engaging", accent: "American", gender: "Female", age: "Young", language: "en-US", preview: PREVIEW("bella") },
+  { id: "cgSgspJ2msm6clMCkdW9", name: "Jessica", description: "Playful, expressive, youthful", accent: "American", gender: "Female", age: "Young", language: "en-US", preview: PREVIEW("jessica") },
+  { id: "pFZP5JQG7iQjIQuC4Bku", name: "Lily", description: "Warm, clear, friendly", accent: "American", gender: "Female", age: "Middle Aged", language: "en-US", preview: PREVIEW("lily") },
+  { id: "pNInz6obpgDQGcFmaJgB", name: "Adam", description: "Deep, authoritative, versatile", accent: "American", gender: "Male", age: "Middle Aged", language: "en-US", preview: PREVIEW("adam") },
+  { id: "CwhRBWXzGAHq8TQ4Fs17", name: "Roger", description: "Confident, easygoing", accent: "American", gender: "Male", age: "Middle Aged", language: "en-US", preview: PREVIEW("roger") },
+  { id: "nPczCjzI2devNBz1zQrb", name: "Brian", description: "Deep, resonant narrator", accent: "American", gender: "Male", age: "Middle Aged", language: "en-US", preview: PREVIEW("brian") },
+  { id: "onwK4e9ZLuTAKqWW03F9", name: "Daniel", description: "Authoritative, deep, news", accent: "American", gender: "Male", age: "Middle Aged", language: "en-US", preview: PREVIEW("daniel") },
+  { id: "iP95p4xoKVk53GoZ742B", name: "Chris", description: "Casual, natural, down-to-earth", accent: "American", gender: "Male", age: "Middle Aged", language: "en-US", preview: PREVIEW("chris") },
+  { id: "N2lVS1w4EtoT3dr4eOWO", name: "Callum", description: "Intense, gravelly, characterful", accent: "American", gender: "Male", age: "Middle Aged", language: "en-US", preview: PREVIEW("callum") },
+  { id: "SOYHLrjzK2X1ezoPC6cr", name: "Harry", description: "Energetic, animated", accent: "American", gender: "Male", age: "Young", language: "en-US", preview: PREVIEW("harry") },
+  { id: "pqHfZKP75CvOlQylNhV4", name: "Bill", description: "Trustworthy, mature, calm", accent: "American", gender: "Male", age: "Old", language: "en-US", preview: PREVIEW("bill") },
+  { id: "FGY2WhTYpPnrIDTdsKH5", name: "Laura", description: "Bright, quirky, youthful", accent: "French", gender: "Female", age: "Young", language: "fr", preview: PREVIEW("laura") },
+  { id: "cjVigY5qzO86Huf0OWal", name: "Eric", description: "Smooth, classy, refined", accent: "French", gender: "Male", age: "Middle Aged", language: "fr", preview: PREVIEW("eric") },
+  { id: "XrExE9yKIg1WjnnlVkGX", name: "Matilda", description: "Warm, friendly, pleasant", accent: "Italian", gender: "Female", age: "Young", language: "it", preview: PREVIEW("matilda") },
+  { id: "bIHbv24MWmeRgasZH58o", name: "Will", description: "Chill, laid-back, friendly", accent: "Spanish", gender: "Male", age: "Young", language: "es", preview: PREVIEW("will") },
+  { id: "TX3LPaxmHKxFdv7VOQHJ", name: "Liam", description: "Articulate, youthful, upbeat", accent: "German", gender: "Male", age: "Young", language: "de", preview: PREVIEW("liam") },
+  { id: "IKne3meq5aSn9XLyUdCD", name: "Charlie", description: "Casual, natural, confident", accent: "Chinese", gender: "Male", age: "Middle Aged", language: "zh-CN", preview: PREVIEW("charlie") },
+  { id: "SAz9YHcvj6GT2YYXdXww", name: "River", description: "Calm, neutral, versatile", accent: "Chinese", gender: "Female", age: "Middle Aged", language: "zh-CN", preview: PREVIEW("river") },
+  { id: "JBFqnCBsd6RMkjVDRZzb", name: "George", description: "Warm, mature narrator", accent: "Japanese", gender: "Male", age: "Middle Aged", language: "ja", preview: PREVIEW("george") },
+  { id: "Xb7hH8MSUJpSbSDYk0k2", name: "Alice", description: "Clear, confident, professional", accent: "Japanese", gender: "Female", age: "Middle Aged", language: "ja", preview: PREVIEW("alice") },
 ];
 
-export const DEFAULT_VOICE_ID = "EXAVITQu4vr4xnSDxMaL"; // Savannah
+export const DEFAULT_VOICE_ID = "EXAVITQu4vr4xnSDxMaL"; // Sarah
 
-const VALID_OPENAI = new Set([
-  "alloy",
-  "echo",
-  "fable",
-  "onyx",
-  "nova",
-  "shimmer",
-]);
+const VALID_IDS = new Set(TTS_VOICES.map((v) => v.id));
 
-/** Resolve um id de voz de exibição para a voz OpenAI real (fallback: alloy). */
-export function resolveOpenAiVoice(voiceId?: string | null): string {
-  const v = TTS_VOICES.find((x) => x.id === voiceId);
-  if (v && VALID_OPENAI.has(v.openai)) return v.openai;
-  return "alloy";
+/** Valida um voice id contra o catálogo do Atlas (fallback: voz padrão). */
+export function resolveAtlasVoice(voiceId?: string | null): string {
+  return voiceId && VALID_IDS.has(voiceId) ? voiceId : DEFAULT_VOICE_ID;
 }
 
 export function findVoice(voiceId?: string | null): TtsVoice | undefined {
   return TTS_VOICES.find((x) => x.id === voiceId);
+}
+
+/** URL de preview (amostra) da voz, se existir. */
+export function voicePreviewUrl(voiceId?: string | null): string | undefined {
+  return findVoice(voiceId)?.preview;
 }

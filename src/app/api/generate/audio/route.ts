@@ -2,24 +2,44 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { generateAudio } from "@/lib/piapi/client";
-import { generateSpeechAbacus } from "@/lib/abacus/client";
-import { resolveOpenAiVoice } from "@/lib/tts-voices";
+import { generateSpeechAtlas, AtlasError } from "@/lib/atlas/client";
+import { resolveAtlasVoice } from "@/lib/tts-voices";
 import { planAllows } from "@/lib/plans";
 
-// Persiste um MP3 (Buffer) no Supabase Storage e retorna a URL pública.
+// Persiste um áudio (Buffer) no Supabase Storage e retorna a URL pública.
 async function persistAudio(
   userId: string,
   generationId: string,
-  buffer: Buffer
+  buffer: Buffer,
+  ext = "mp3",
+  contentType = "audio/mpeg"
 ): Promise<string> {
   const service = createServiceClient();
-  const storagePath = `${userId}/audio/${generationId}.mp3`;
+  const storagePath = `${userId}/audio/${generationId}.${ext}`;
   const { error } = await service.storage
     .from("assets")
-    .upload(storagePath, buffer, { contentType: "audio/mpeg", upsert: true });
+    .upload(storagePath, buffer, { contentType, upsert: true });
   if (error) throw new Error(error.message);
   const { data } = service.storage.from("assets").getPublicUrl(storagePath);
   return data.publicUrl;
+}
+
+// Baixa a URL de saída do Atlas e a persiste no Storage (durabilidade + mesma
+// origem). Retorna a URL pública final.
+async function downloadAndPersist(
+  userId: string,
+  generationId: string,
+  sourceUrl: string
+): Promise<string> {
+  const res = await fetch(sourceUrl);
+  if (!res.ok) {
+    throw new AtlasError("Falha ao baixar o áudio gerado", 502);
+  }
+  const buffer = Buffer.from(await res.arrayBuffer());
+  const clean = sourceUrl.split("?")[0];
+  const ext = clean.toLowerCase().endsWith(".wav") ? "wav" : "mp3";
+  const contentType = ext === "wav" ? "audio/wav" : "audio/mpeg";
+  return persistAudio(userId, generationId, buffer, ext, contentType);
 }
 
 export async function POST(req: NextRequest) {
@@ -144,17 +164,18 @@ export async function POST(req: NextRequest) {
       const modelParams = (aiModel.params as Record<string, string>) || {};
       const backend = modelParams.backend || aiModel.model_id;
 
-      // ── TTS (voz) — motor gpt-4o-audio da Abacus, SÍNCRONO ────────────────
-      // A PiAPI não tem ElevenLabs; usamos o TTS do RouteLLM. A voz escolhida
-      // muda o áudio de fato (mapeada para a voz OpenAI correspondente).
-      if (backend === "abacus-tts" || modelParams.kind === "tts") {
-        const voice = resolveOpenAiVoice(voice_id);
-        const mp3 = await generateSpeechAbacus({
+      // ── TTS (voz) — Atlas Cloud (ElevenLabs v3) ───────────────────────────
+      // A voz escolhida é aceita diretamente pelo Atlas; a saída é uma URL de
+      // áudio que baixamos e persistimos no nosso Storage. O ElevenLabs v3 só
+      // expõe `stability` (similarity/speed ficam salvos mas não têm efeito).
+      if (backend === "atlas-tts" || modelParams.kind === "tts") {
+        const audioUrl = await generateSpeechAtlas({
           text: prompt,
-          voice,
-          model: modelParams.tts_model || "gpt-4o-audio-preview",
+          voice: resolveAtlasVoice(voice_id),
+          model: modelParams.atlas_model || "elevenlabs/v3/text-to-speech",
+          stability: stabilityVal,
         });
-        const url = await persistAudio(user.id, generation.id, mp3);
+        const url = await downloadAndPersist(user.id, generation.id, audioUrl);
 
         await supabase
           .from("generations")
@@ -203,6 +224,14 @@ export async function POST(req: NextRequest) {
         related_job_id: generation.id,
       });
 
+      // Erros do Atlas trazem status/mensagem PT-BR prontos para o usuário
+      // (ex.: 503 sem chave, 402 saldo insuficiente). Créditos já reembolsados.
+      if (apiError instanceof AtlasError) {
+        return NextResponse.json(
+          { error: apiError.message },
+          { status: apiError.status || 502 }
+        );
+      }
       return NextResponse.json({ error: "Erro ao chamar provedor de IA" }, { status: 502 });
     }
   } catch (err) {

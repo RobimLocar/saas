@@ -15,7 +15,7 @@ const WORKING_BACKENDS = [
   "Qubico/ace-step",
   "music-u",
   "Qubico/diffrhythm",
-  "abacus-tts",
+  "atlas-tts",
 ];
 
 export async function GET(req: NextRequest) {

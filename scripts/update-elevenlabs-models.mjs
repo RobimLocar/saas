@@ -1,10 +1,9 @@
-// Corrige os modelos de voz (ElevenLabs) do catálogo, que estavam apontando
-// para o backend "Qubico/ace-step" (música) e por isso davam "Falha na geração".
+// Corrige os modelos de voz (ElevenLabs) do catálogo.
 //
-// Realidade técnica (validada em 2026-07): a PiAPI não integra ElevenLabs e o
-// RouteLLM da Abacus rejeita o modelo "elevenlabs". O único motor de TTS
-// acessível sem chave nova é o gpt-4o-audio da Abacus. Mapeamos os modelos de
-// voz para o backend "abacus-tts" (kind tts) e mantemos os nomes do design.
+// Realidade técnica (validada em 2026-07): usamos o Atlas Cloud
+// (api.atlascloud.ai), que expõe o motor ElevenLabs v3 real via o modelo
+// "elevenlabs/v3/text-to-speech". Mapeamos os modelos de voz para o backend
+// "atlas-tts" (kind tts) e mantemos os nomes/badges do design.
 // Idempotente — pode rodar várias vezes.
 import fs from "node:fs";
 
@@ -27,27 +26,27 @@ const H = {
 // merge de params por nome de modelo
 const MAP = {
   "ElevenLabs Flash": {
-    backend: "abacus-tts",
+    backend: "atlas-tts",
     kind: "tts",
     badge: "FAST",
     gen_time: "1S",
-    tts_model: "gpt-4o-mini-audio-preview",
+    atlas_model: "elevenlabs/v3/text-to-speech",
     family_description: "Fastest voice generation for real-time use",
   },
   "ElevenLabs Turbo V2.5": {
-    backend: "abacus-tts",
+    backend: "atlas-tts",
     kind: "tts",
     badge: "RECOMMENDED",
     gen_time: "2S",
-    tts_model: "gpt-4o-mini-audio-preview",
+    atlas_model: "elevenlabs/v3/text-to-speech",
     family_description: "Low-latency streaming voice generation",
   },
   "ElevenLabs Multilingual V2": {
-    backend: "abacus-tts",
+    backend: "atlas-tts",
     kind: "tts",
     badge: null,
     gen_time: "5S",
-    tts_model: "gpt-4o-audio-preview",
+    atlas_model: "elevenlabs/v3/text-to-speech",
     family_description: "Ultra-realistic multilingual text-to-speech",
   },
   // SFX não é TTS — segue no backend de áudio da PiAPI (funciona), só ajusta
