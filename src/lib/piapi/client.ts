@@ -3,13 +3,19 @@
  * Testado e validado contra a API real em 2026-07-24
  * Docs: https://piapi.ai/docs
  *
- * MODELOS CONFIRMADOS FUNCIONANDO:
- *   Imagem : Qubico/flux1-schnell (txt2img), Qubico/flux1-dev (txt2img)
- *   Vídeo  : kling (video_generation, version+mode nos params), hailuo (video_generation)
- *   Áudio  : Qubico/ace-step (txt2audio)
+ * MODELOS CONFIRMADOS FUNCIONANDO (retestado em 2026-07-24 com saldo):
+ *   Imagem : gpt-image-2 (síncrono, /v1/images/generations — texto perfeito),
+ *            Qubico/flux1-schnell (txt2img), Qubico/flux1-dev (txt2img/img2img)
+ *   Vídeo  : kling (video_generation, version+mode), hailuo (video_generation),
+ *            luma (video_generation), Qubico/hunyuan (txt2video)
+ *   Áudio  : music-u (generate_music — Udio real), Qubico/diffrhythm,
+ *            Qubico/ace-step (txt2audio)
+ *   INDISPONÍVEIS: midjourney ("no longer support MidJourney service"),
+ *            kling 2.1 txt2video (só img2video), skyreels/wanx (task types inválidos)
  */
 
 const PIAPI_BASE_URL = "https://api.piapi.ai/api/v1";
+const PIAPI_OPENAI_BASE = "https://api.piapi.ai/v1";
 
 export interface PiAPITaskResponse {
   code: number;
@@ -139,6 +145,77 @@ export async function generateImage(
   });
 }
 
+// ─── Imagem premium (GPT Image 2 — síncrono) ────────────────────────────────
+// Endpoint OpenAI-like da PiAPI: POST /v1/images/generations (Bearer).
+// Validado em 2026-07-24: retorna data[0].b64_json (ou url). Texto perfeito.
+export interface GptImageParams {
+  prompt: string;
+  aspect_ratio?: string;
+  quality?: "low" | "medium" | "high";
+}
+
+/**
+ * Gera imagem com o GPT Image 2 real da PiAPI (síncrono).
+ * Retorna uma data-URL (base64) ou URL http, pronta para persistir no Storage.
+ */
+export async function generateImageGptSync(
+  params: GptImageParams
+): Promise<string> {
+  const apiKey = process.env.PIAPI_API_KEY;
+  if (!apiKey) throw new PiAPIError("PIAPI_API_KEY não configurada");
+
+  // GPT Image aceita apenas 1024x1024, 1536x1024 (paisagem), 1024x1536 (retrato)
+  const ar = params.aspect_ratio || "1:1";
+  const [w, h] = ar.split(":").map(Number);
+  const size =
+    !w || !h || w === h
+      ? "1024x1024"
+      : w > h
+        ? "1536x1024"
+        : "1024x1536";
+
+  const res = await fetch(`${PIAPI_OPENAI_BASE}/images/generations`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "gpt-image-2",
+      prompt: params.prompt,
+      n: 1,
+      size,
+      quality: params.quality || "high",
+    }),
+  });
+
+  const data = (await res.json().catch(() => null)) as {
+    data?: Array<{ b64_json?: string; url?: string }>;
+    error?: { message?: string; type?: string };
+  } | null;
+
+  if (!res.ok || data?.error || !data?.data?.length) {
+    let msg =
+      data?.error?.message || `PiAPI gpt-image error ${res.status}`;
+    // Erros de content safety vêm embrulhados como "upstream returned 400: {...}"
+    const m = msg.match(/upstream returned \d+: (\{.*\})/);
+    if (m) {
+      try {
+        const inner = JSON.parse(m[1]) as { error?: { message?: string } };
+        if (inner.error?.message) msg = inner.error.message;
+      } catch {
+        // mantém msg original
+      }
+    }
+    throw new PiAPIError(msg, res.status, data);
+  }
+
+  const first = data.data[0];
+  if (first.url) return first.url;
+  if (first.b64_json) return `data:image/png;base64,${first.b64_json}`;
+  throw new PiAPIError("Resposta do gpt-image sem imagem", res.status, data);
+}
+
 // ─── Vídeo ───────────────────────────────────────────────────────────────────
 // kling  → model="kling", task_type="video_generation", input.version + input.mode
 // hailuo → model="hailuo", task_type="video_generation"
@@ -204,6 +281,39 @@ export async function generateVideo(
     });
   }
 
+  // luma (Dream Machine) — validado: task_type video_generation
+  if (params.model === "luma") {
+    const input: Record<string, unknown> = {
+      prompt: params.prompt,
+      duration: params.duration || 5,
+      aspect_ratio: params.aspect_ratio || "16:9",
+    };
+    if (params.start_image_url) {
+      input.key_frames = {
+        frame0: { type: "image", url: params.start_image_url },
+        ...(params.end_image_url
+          ? { frame1: { type: "image", url: params.end_image_url } }
+          : {}),
+      };
+    }
+    return piapiFetch<PiAPITaskResponse>("/task", {
+      method: "POST",
+      body: JSON.stringify({ model: "luma", task_type: "video_generation", input }),
+    });
+  }
+
+  // Qubico/hunyuan — validado: task_type txt2video (só prompt)
+  if (params.model === "Qubico/hunyuan") {
+    return piapiFetch<PiAPITaskResponse>("/task", {
+      method: "POST",
+      body: JSON.stringify({
+        model: "Qubico/hunyuan",
+        task_type: "txt2video",
+        input: { prompt: params.prompt },
+      }),
+    });
+  }
+
   // Fallback genérico (outros modelos futuros)
   const taskType = params.start_image_url ? "img2video" : "txt2video";
   return piapiFetch<PiAPITaskResponse>("/task", {
@@ -235,6 +345,22 @@ export interface AudioGenParams {
 export async function generateAudio(
   params: AudioGenParams
 ): Promise<PiAPITaskResponse> {
+  // music-u (Udio real) — validado: task_type generate_music
+  if (params.model === "music-u") {
+    return piapiFetch<PiAPITaskResponse>("/task", {
+      method: "POST",
+      body: JSON.stringify({
+        model: "music-u",
+        task_type: "generate_music",
+        input: {
+          gpt_description_prompt: params.prompt,
+          lyrics_type: params.lyrics ? "user" : "instrumental",
+          ...(params.lyrics ? { lyrics: params.lyrics } : {}),
+        },
+      }),
+    });
+  }
+
   if (params.model.includes("ace-step")) {
     return piapiFetch<PiAPITaskResponse>("/task", {
       method: "POST",
@@ -272,13 +398,27 @@ export function extractResultUrl(
   output: PiAPIStatusResponse["data"]["output"]
 ): string | null {
   if (!output) return null;
+  // luma: output.video / output.video_raw podem ser objetos { url }
+  const o = output as Record<string, unknown>;
+  const videoObj = (o.video ?? o.video_raw) as
+    | { url?: string }
+    | string
+    | undefined;
+  const videoObjUrl =
+    videoObj && typeof videoObj === "object" ? videoObj.url : undefined;
+  // music-u (Udio): output.songs[0].song_path
+  const songs = o.songs as Array<{ song_path?: string }> | undefined;
+  const songUrl = songs?.[0]?.song_path;
+
   return (
     output.url ||
     output.image_url ||
     output.video_url ||
     output.audio_url ||
-    output.video ||
+    (typeof output.video === "string" ? output.video : undefined) ||
+    videoObjUrl ||
     output.audio ||
+    songUrl ||
     output.image ||
     output.images?.[0]?.url ||
     output.videos?.[0]?.url ||

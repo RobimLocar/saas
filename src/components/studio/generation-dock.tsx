@@ -104,6 +104,29 @@ const ASSET_CATEGORIES: { id: string; label: string }[] = [
 ];
 
 /** Ícone de proporção — retângulo com a orientação do aspect ratio. */
+/**
+ * Lê a resposta como JSON de forma segura. Se o servidor (ou o nginx)
+ * devolver HTML/texto (ex.: 413, 502, 504), lança um erro amigável em PT-BR
+ * em vez de "Unexpected token '<' ... is not valid JSON".
+ */
+async function parseJsonSafe<T = Record<string, unknown>>(
+  res: Response
+): Promise<T | null> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    if (res.status === 413) {
+      throw new Error(
+        "Arquivo de referência muito grande. Use imagens de até 20 MB."
+      );
+    }
+    throw new Error(
+      `O servidor retornou uma resposta inesperada (HTTP ${res.status}). Tente novamente.`
+    );
+  }
+}
+
 function RatioIcon({ ratio, className }: { ratio: string; className?: string }) {
   const [w, h] = ratio.split(":").map(Number);
   const max = 13;
@@ -620,8 +643,8 @@ export function GenerationDock() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt, modality: activeTab }),
       });
-      const data = await res.json();
-      if (!res.ok) {
+      const data = await parseJsonSafe<{ error?: string; prompt?: string }>(res);
+      if (!res.ok || !data?.prompt) {
         throw new Error(data?.error || "Falha ao melhorar o prompt.");
       }
       setPrompt(data.prompt);
@@ -674,7 +697,7 @@ export function GenerationDock() {
       body: JSON.stringify(body),
     });
 
-    const data = await res.json();
+    const data = await parseJsonSafe<{ error?: string }>(res);
     if (!res.ok) {
       throw new Error(data?.error || "Falha ao enviar geração");
     }

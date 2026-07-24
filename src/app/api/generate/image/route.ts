@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { generateImage } from "@/lib/piapi/client";
-import { generateImageAbacus } from "@/lib/abacus/client";
+import { generateImage, generateImageGptSync } from "@/lib/piapi/client";
 import { planAllows } from "@/lib/plans";
 
 // Heurística: o prompt pede TEXTO renderizado na imagem?
@@ -170,15 +169,19 @@ export async function POST(req: NextRequest) {
     try {
       const modelParams = (aiModel.params as Record<string, string>) || {};
 
-      // ── Provider ABACUS (modelos premium: GPT Image 2, Nano Banana, Ideogram…)
-      // Geração síncrona de alto nível via RouteLLM — texto renderizado perfeito.
-      if (modelParams.provider === "abacus") {
-        const imageUrl = await generateImageAbacus({
-          model: modelParams.abacus_model || aiModel.model_id,
+      // ── GPT Image 2 (PiAPI, síncrono) — modelos premium (GPT Image 2,
+      // Nano Banana, Nano Banana Pro, Ideogram) e qualquer geração com
+      // quality "high" sem imagem de referência. Texto renderizado perfeito.
+      const isPremium =
+        modelParams.provider === "gpt-image" ||
+        modelParams.provider === "abacus"; // compat com mapeamento antigo
+      const useGptSync =
+        !reference_image_url && (isPremium || qualityLevel === "high");
+      if (useGptSync) {
+        const imageUrl = await generateImageGptSync({
           prompt,
           aspect_ratio,
           quality: qualityLevel,
-          reference_image_url,
         });
 
         let finalUrl = imageUrl;

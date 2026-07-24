@@ -146,7 +146,7 @@ export function MediaLightbox({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => null);
     if (!res.ok) throw new Error(data?.error || "Falha ao atualizar");
     onUpdated(item.id, data.params || {});
   }
@@ -192,7 +192,7 @@ export function MediaLightbox({
       const res = await fetch(`/api/generations/${item.id}`, {
         method: "DELETE",
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "Falha ao excluir");
       toast.success("Geração excluída.");
       onDeleted(item.id);

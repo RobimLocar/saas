@@ -7,9 +7,14 @@ import { createClient } from "@/lib/supabase/server";
 const WORKING_BACKENDS = [
   "Qubico/flux1-schnell",
   "Qubico/flux1-dev",
+  "gpt-image-2",
   "kling",
   "hailuo",
+  "luma",
+  "Qubico/hunyuan",
   "Qubico/ace-step",
+  "music-u",
+  "Qubico/diffrhythm",
 ];
 
 export async function GET(req: NextRequest) {
@@ -53,9 +58,10 @@ export async function GET(req: NextRequest) {
         dur_min: typeof p.dur_min === "number" ? p.dur_min : null,
         dur_max: typeof p.dur_max === "number" ? p.dur_max : null,
         thumbnail_url: m.thumbnail_url,
-        // Disponível se o provider é o Abacus (premium, sempre integrado) ou
+        // Disponível se é modelo premium (provider gpt-image/abacus) ou
         // se o backend efetivo (params.backend ?? model_id) está integrado
         available:
+          (p.provider as string) === "gpt-image" ||
           (p.provider as string) === "abacus" ||
           WORKING_BACKENDS.includes((p.backend as string) || m.model_id),
       };
