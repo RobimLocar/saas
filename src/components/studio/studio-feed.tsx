@@ -1,18 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import Image from "next/image";
-import {
-  AlertCircle,
-  Download,
-  Loader2,
-  Music,
-  Play,
-  Sparkles,
-  Star,
-  Trash2,
-  X,
-} from "lucide-react";
+import { Download, Heart, Loader2, Play, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useStudioStore } from "@/stores/use-studio-store";
 
@@ -35,7 +25,6 @@ const POLL_MS = 3000;
 export function StudioFeed() {
   const [generations, setGenerations] = useState<Generation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [previewVideo, setPreviewVideo] = useState<Generation | null>(null);
   const refreshKey = useStudioStore((s) => s.refreshKey);
   const viewFilter = useStudioStore((s) => s.viewFilter);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -61,11 +50,11 @@ export function StudioFeed() {
   }, [fetchGenerations, refreshKey]);
 
   useEffect(() => {
-    const pending = generations.filter(
-      (g) => g.status === "pending" || g.status === "processing"
+    const pending = generations.some(
+      (item) => item.status === "pending" || item.status === "processing"
     );
 
-    if (pending.length === 0) {
+    if (!pending) {
       if (pollRef.current) {
         clearInterval(pollRef.current);
         pollRef.current = null;
@@ -76,28 +65,24 @@ export function StudioFeed() {
     if (pollRef.current) return;
 
     pollRef.current = setInterval(async () => {
-      const stillPending = generations.filter(
-        (g) => g.status === "pending" || g.status === "processing"
+      const onQueue = generations.filter(
+        (item) => item.status === "pending" || item.status === "processing"
       );
 
-      let anyFinished = false;
+      let changed = false;
       await Promise.all(
-        stillPending.map(async (g) => {
+        onQueue.map(async (item) => {
           try {
-            const res = await fetch(`/api/generate/status?id=${g.id}`, {
-              cache: "no-store",
-            });
+            const res = await fetch(`/api/generate/status?id=${item.id}`, { cache: "no-store" });
             const data = await res.json();
-            if (data.status === "completed" || data.status === "failed") {
-              anyFinished = true;
-            }
+            if (data.status === "completed" || data.status === "failed") changed = true;
           } catch {
             // segue polling
           }
         })
       );
 
-      if (anyFinished) fetchGenerations();
+      if (changed) void fetchGenerations();
     }, POLL_MS);
 
     return () => {
@@ -109,24 +94,9 @@ export function StudioFeed() {
   }, [generations, fetchGenerations]);
 
   const filtered = useMemo(
-    () =>
-      viewFilter === "all"
-        ? generations
-        : generations.filter((g) => g.type === viewFilter),
+    () => (viewFilter === "all" ? generations : generations.filter((item) => item.type === viewFilter)),
     [generations, viewFilter]
   );
-
-  const onDelete = useCallback(async (id: string) => {
-    try {
-      const res = await fetch(`/api/generations/${id}`, { method: "DELETE" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Falha ao excluir");
-      setGenerations((prev) => prev.filter((g) => g.id !== id));
-      toast.success("Geração removida.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Não foi possível excluir.");
-    }
-  }, []);
 
   if (loading) {
     return (
@@ -144,101 +114,50 @@ export function StudioFeed() {
         </div>
         <h2 className="text-lg font-semibold text-foreground">Sua galeria está vazia</h2>
         <p className="max-w-sm text-sm text-muted-foreground">
-          Escreva um prompt no painel abaixo e clique em Gerar. Suas criações aparecem aqui automaticamente.
+          Escreva um prompt no painel abaixo e clique em Gerar. Suas criações aparecerão aqui.
         </p>
       </div>
     );
   }
 
   return (
-    <>
-      <div className="grid grid-cols-2 gap-2 px-1 pb-40 pt-[76px] sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-        {filtered.map((gen) => (
-          <GenerationCard
-            key={gen.id}
-            gen={gen}
-            onDelete={() => onDelete(gen.id)}
-            onOpenVideo={() => setPreviewVideo(gen)}
-          />
-        ))}
-      </div>
-
-      {previewVideo?.result_url && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-6">
-          <button
-            type="button"
-            onClick={() => setPreviewVideo(null)}
-            className="absolute right-6 top-6 rounded-full border border-white/20 bg-black/60 p-2 text-white"
-          >
-            <X className="h-4 w-4" />
-          </button>
-          <video
-            src={previewVideo.result_url}
-            controls
-            autoPlay
-            className="max-h-[85vh] w-full max-w-4xl rounded-xl border border-white/10 bg-black"
-          />
-        </div>
-      )}
-    </>
+    <div className="px-1 pb-48 pt-[76px] [column-count:2] [column-gap:6px] sm:[column-count:3] lg:[column-count:4] xl:[column-count:5] 2xl:[column-count:6]">
+      {filtered.map((generation) => (
+        <GenerationCard key={generation.id} gen={generation} />
+      ))}
+    </div>
   );
 }
 
-function GenerationCard({
-  gen,
-  onDelete,
-  onOpenVideo,
-}: {
-  gen: Generation;
-  onDelete: () => void;
-  onOpenVideo: () => void;
-}) {
-  const isPending = gen.status === "pending" || gen.status === "processing";
-  const isFailed = gen.status === "failed";
-  const isDone = gen.status === "completed" && gen.result_url;
-  const aspect = gen.params?.aspect_ratio || "1:1";
-  const cardAspect = gen.type === "video" ? "aspect-video" : "aspect-square";
+function GenerationCard({ gen }: { gen: Generation }) {
+  const setReferenceImageUrl = useStudioStore((s) => s.setReferenceImageUrl);
 
+  const isPending = gen.status === "pending" || gen.status === "processing";
+  const isDone = gen.status === "completed" && gen.result_url;
   const modelText = gen.model_label || gen.model_slug || "modelo";
+  const aspect = gen.params?.aspect_ratio || (gen.type === "video" ? "16:9" : "1:1");
 
   if (isPending) {
-    return (
-      <article className={cnCard(cardAspect)}>
-        <PendingContent type={gen.type} modelText={modelText} aspect={aspect} />
-      </article>
-    );
+    return <PendingCard type={gen.type} modelText={modelText} aspect={aspect} />;
   }
 
-  if (isFailed) {
+  if (!isDone) {
     return (
-      <article className={cnCard(cardAspect)}>
-        <div className="flex h-full flex-col items-center justify-center gap-2 bg-destructive/10 px-4 text-center">
-          <AlertCircle className="h-6 w-6 text-destructive" />
-          <span className="text-xs text-destructive">Falha na geração</span>
-          <span className="text-[10px] text-muted-foreground">Créditos reembolsados</span>
+      <article className="relative mb-1.5 break-inside-avoid overflow-hidden rounded-lg bg-[#141414]">
+        <div className="flex aspect-square items-center justify-center text-xs text-[#888888]">
+          Falha na geração
         </div>
       </article>
     );
   }
 
-  if (!isDone) return null;
-
-  if (gen.type === "audio") {
-    return (
-      <article className="group relative overflow-hidden rounded-xl border border-border bg-card">
-        <div className="flex flex-col gap-3 p-4">
-          <div className="flex items-center gap-2 text-sm text-foreground">
-            <Music className="h-4 w-4 text-primary" />
-            <span className="truncate">{gen.prompt}</span>
-          </div>
-          <audio src={gen.result_url!} controls className="w-full" />
-        </div>
-      </article>
-    );
-  }
+  const addAsReference = () => {
+    setReferenceImageUrl(gen.result_url!);
+    toast.success("Adicionado como referência");
+  };
 
   return (
-    <article className={cnCard(cardAspect)}>
+    <article className="group relative mb-1.5 break-inside-avoid overflow-hidden rounded-lg">
       {gen.type === "image" ? (
         <Image
           src={gen.result_url!}
@@ -248,20 +167,64 @@ function GenerationCard({
           className="h-full w-full object-cover"
           unoptimized
         />
+      ) : gen.type === "video" ? (
+        <VideoTile src={gen.result_url!} />
       ) : (
-        <VideoTile src={gen.result_url!} onOpen={onOpenVideo} />
+        <audio src={gen.result_url!} controls className="w-full rounded-lg bg-[#141414] p-3" />
       )}
 
-      <HoverActions url={gen.result_url!} onDelete={onDelete} />
+      {(gen.type === "image" || gen.type === "video") && (
+        <>
+          <div className="absolute inset-0 flex items-center justify-center transition group-hover:bg-black/40">
+            <span className="flex h-[52px] w-[52px] items-center justify-center rounded-full border border-white/20 bg-black/40 text-white backdrop-blur">
+              <Play className="ml-0.5 h-4 w-4" fill="currentColor" />
+            </span>
+          </div>
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-2 opacity-0 transition group-hover:opacity-100">
-        <p className="line-clamp-2 text-[11px] text-white/90">{gen.prompt}</p>
-      </div>
+          <div className="absolute right-2 top-2 flex gap-1.5 opacity-0 transition group-hover:opacity-100">
+            <ActionIcon
+              onClick={(event) => {
+                event.stopPropagation();
+                toast.success("Adicionado aos favoritos");
+              }}
+            >
+              <Heart className="h-3.5 w-3.5" />
+            </ActionIcon>
+
+            <ActionIcon
+              onClick={(event) => {
+                event.stopPropagation();
+                const link = document.createElement("a");
+                link.href = gen.result_url!;
+                link.download = "geracao";
+                link.target = "_blank";
+                link.rel = "noopener noreferrer";
+                link.click();
+              }}
+            >
+              <Download className="h-3.5 w-3.5" />
+            </ActionIcon>
+          </div>
+
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-2.5 opacity-0 transition group-hover:opacity-100">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                addAsReference();
+              }}
+              className="h-8 w-full rounded-lg bg-white/15 text-xs font-medium text-white backdrop-blur"
+            >
+              Usar como referência
+            </button>
+          </div>
+        </>
+      )}
     </article>
   );
 }
 
-function VideoTile({ src, onOpen }: { src: string; onOpen: () => void }) {
+function VideoTile({ src }: { src: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   function onEnter() {
@@ -274,34 +237,24 @@ function VideoTile({ src, onOpen }: { src: string; onOpen: () => void }) {
   function onLeave() {
     if (!videoRef.current) return;
     videoRef.current.pause();
+    videoRef.current.currentTime = 0;
   }
 
   return (
-    <button
-      type="button"
+    <video
+      ref={videoRef}
+      src={src}
+      muted
+      playsInline
+      preload="metadata"
+      className="h-full w-full object-cover"
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
-      onClick={onOpen}
-      className="relative h-full w-full"
-    >
-      <video
-        ref={videoRef}
-        src={src}
-        className="h-full w-full object-cover"
-        muted
-        playsInline
-        preload="metadata"
-      />
-      <span className="pointer-events-none absolute inset-0 grid place-items-center">
-        <span className="grid h-12 w-12 place-items-center rounded-full border border-white/40 bg-black/40 text-white backdrop-blur-sm">
-          <Play className="ml-0.5 h-5 w-5" fill="currentColor" />
-        </span>
-      </span>
-    </button>
+    />
   );
 }
 
-function PendingContent({
+function PendingCard({
   type,
   modelText,
   aspect,
@@ -310,104 +263,59 @@ function PendingContent({
   modelText: string;
   aspect: string;
 }) {
-  const [progress, setProgress] = useState(8);
+  const [progress, setProgress] = useState(6);
+  const aspectClass = type === "video" ? "aspect-video" : "aspect-square";
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 95) return 95;
-        const increment = prev < 60 ? 5 : 2;
-        return Math.min(95, prev + increment);
+      setProgress((current) => {
+        if (current >= 95) return 95;
+        return Math.min(95, current + (current < 60 ? 4 : 2));
       });
-    }, 600);
+    }, 550);
 
     return () => clearInterval(timer);
   }, []);
 
-  const label = type === "video" ? "Gerando vídeo..." : type === "image" ? "Gerando imagem..." : "Gerando áudio...";
+  const label = type === "video" ? "Gerando vídeo..." : type === "audio" ? "Gerando áudio..." : "Gerando imagem...";
 
   return (
-    <div className="relative flex h-full flex-col items-center justify-center bg-zinc-950">
-      <Loader2 className="h-6 w-6 animate-spin text-zinc-200" />
-      <p className="mt-2 text-xs text-zinc-300">{label}</p>
+    <article className={cnPending(aspectClass)}>
+      <div className="relative flex h-full flex-col items-center justify-center bg-[#141414]">
+        <Loader2 className="h-6 w-6 animate-spin text-[#F5F5F5]" />
+        <p className="mt-2 text-xs text-[#888888]">{label}</p>
 
-      <div className="absolute inset-x-2 bottom-8 h-1 overflow-hidden rounded-full bg-zinc-800">
-        <div
-          className="h-full rounded-full bg-blue-500 transition-[width] duration-500 ease-linear"
-          style={{ width: `${progress}%` }}
-        />
+        <div className="absolute inset-x-2 bottom-8 h-1 overflow-hidden rounded-full bg-[#2A2A2A]">
+          <div className="h-full rounded-full bg-[#7C3AED] transition-[width] duration-500 ease-linear" style={{ width: `${progress}%` }} />
+        </div>
+
+        <p className="absolute bottom-3 left-2 text-[10px] text-[#888888]">
+          {modelText} · {aspect}
+        </p>
+        <p className="absolute bottom-3 right-2 text-[10px] text-[#888888]">{progress}%</p>
       </div>
-
-      <p className="absolute bottom-3 left-2 text-[10px] text-zinc-400">
-        {modelText} · {aspect}
-      </p>
-      <p className="absolute bottom-3 right-2 text-[10px] text-zinc-400">{progress}%</p>
-    </div>
+    </article>
   );
 }
 
-function HoverActions({
-  url,
-  onDelete,
-}: {
-  url: string;
-  onDelete: () => void;
-}) {
-  return (
-    <div className="absolute right-2 top-2 z-10 flex gap-1.5 opacity-0 transition group-hover:opacity-100">
-      <ActionButton
-        onClick={(event) => {
-          event.stopPropagation();
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = "geracao";
-          a.target = "_blank";
-          a.rel = "noopener noreferrer";
-          a.click();
-        }}
-      >
-        <Download className="h-3.5 w-3.5" />
-      </ActionButton>
-
-      <ActionButton
-        onClick={(event) => {
-          event.stopPropagation();
-          toast.success("Favorito salvo.");
-        }}
-      >
-        <Star className="h-3.5 w-3.5" />
-      </ActionButton>
-
-      <ActionButton
-        onClick={(event) => {
-          event.stopPropagation();
-          onDelete();
-        }}
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </ActionButton>
-    </div>
-  );
-}
-
-function ActionButton({
+function ActionIcon({
   children,
   onClick,
 }: {
-  children: ReactNode;
+  children: React.ReactNode;
   onClick: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="grid h-8 w-8 place-items-center rounded-full bg-black/55 text-white backdrop-blur transition hover:bg-black/75"
+      className="flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white/90 backdrop-blur"
     >
       {children}
     </button>
   );
 }
 
-function cnCard(aspectClass: string) {
-  return `group relative overflow-hidden rounded-xl border border-white/10 bg-card ${aspectClass}`;
+function cnPending(aspectClass: string) {
+  return `relative mb-1.5 break-inside-avoid overflow-hidden rounded-lg ${aspectClass}`;
 }
