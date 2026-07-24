@@ -15,7 +15,9 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { prompt, model_uuid, duration, voice_id, language } = body;
+    const { prompt, model_uuid, duration, voice_id, language, quality } = body;
+    const qualityLevel: "low" | "medium" | "high" =
+      quality === "low" || quality === "medium" ? quality : "high";
 
     if (!prompt || !model_uuid) {
       return NextResponse.json(
@@ -73,7 +75,7 @@ export async function POST(req: NextRequest) {
         model_id: aiModel.id,
         type: "audio",
         prompt,
-        params: { duration, voice_id, language },
+        params: { duration, voice_id, language, quality: qualityLevel },
         status: "pending",
         credits_used: aiModel.credit_cost,
       })
@@ -101,6 +103,7 @@ export async function POST(req: NextRequest) {
         model: modelParams.backend || aiModel.model_id,
         prompt,
         duration,
+        quality: qualityLevel,
       });
 
       await supabase

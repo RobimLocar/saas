@@ -138,6 +138,7 @@ export async function POST(req: NextRequest) {
         end_image_url,
         kling_version: modelParams.kling_version,
         kling_mode: effectiveKlingMode,
+        quality: qualityLevel,
       });
 
       await supabase

@@ -230,6 +230,8 @@ export interface VideoGenParams {
   start_image_url?: string;
   end_image_url?: string;
   seed?: number;
+  // Nível de qualidade selecionado no dock (low | medium | high)
+  quality?: "low" | "medium" | "high";
   // Kling-específico (vem do campo params da tabela ai_models)
   kling_version?: string;    // "1.0" | "1.5" | "1.6" | "2.1"
   kling_mode?: string;       // "standard" | "pro" | "master"
@@ -268,10 +270,14 @@ export async function generateVideo(
 
   if (params.model === "hailuo") {
     const taskType = params.start_image_url ? "txt2video" : "video_generation";
+    // Hailuo (MiniMax) aceita resolution 768 | 1080. Quality → resolução:
+    //   low/medium → 768 ; high → 1080 (1080p + 10s não é suportado)
+    const hiRes = params.quality === "high" && (params.duration || 6) <= 6;
     const input: Record<string, unknown> = {
       prompt: params.prompt,
       duration: params.duration || 6,
       aspect_ratio: params.aspect_ratio || "16:9",
+      resolution: hiRes ? 1080 : 768,
     };
     if (params.start_image_url) input.first_frame_image = params.start_image_url;
 
@@ -283,10 +289,13 @@ export async function generateVideo(
 
   // luma (Dream Machine) — validado: task_type video_generation
   if (params.model === "luma") {
+    // Luma não expõe resolução; o ganho de qualidade vem do "Enhance Prompt"
+    // (expand_prompt). Habilitamos em medium/high.
     const input: Record<string, unknown> = {
       prompt: params.prompt,
       duration: params.duration || 5,
       aspect_ratio: params.aspect_ratio || "16:9",
+      expand_prompt: params.quality !== "low",
     };
     if (params.start_image_url) {
       input.key_frames = {
@@ -340,6 +349,7 @@ export interface AudioGenParams {
   prompt: string;
   lyrics?: string;
   duration?: number;
+  quality?: "low" | "medium" | "high";
 }
 
 export async function generateAudio(
@@ -362,6 +372,10 @@ export async function generateAudio(
   }
 
   if (params.model.includes("ace-step")) {
+    // Qualidade → infer_step (mais passos = melhor qualidade / mais lento).
+    const inferStep = { low: 30, medium: 60, high: 100 }[
+      params.quality ?? "high"
+    ];
     return piapiFetch<PiAPITaskResponse>("/task", {
       method: "POST",
       body: JSON.stringify({
@@ -370,6 +384,7 @@ export async function generateAudio(
         input: {
           style_prompt: params.prompt,
           lyrics: params.lyrics || "",
+          infer_step: inferStep,
         },
       }),
     });
