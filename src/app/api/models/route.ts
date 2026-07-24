@@ -26,22 +26,29 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const models = (data || []).map((m) => ({
-      id: m.id,
-      name: m.name,
-      provider: m.provider,
-      type: m.type,
-      model_id: m.model_id,
-      credit_cost: m.credit_cost,
-      min_plan: m.min_plan,
-      family:
-        (m.params as { family?: string } | null)?.family ||
-        m.provider ||
-        "Outros",
-      thumbnail_url: m.thumbnail_url,
-      // Indica se o modelo está integrado e pronto para gerar
-      available: WORKING_PROVIDERS.includes(m.provider),
-    }));
+    const models = (data || []).map((m) => {
+      const p = (m.params as Record<string, unknown> | null) || {};
+      return {
+        id: m.id,
+        name: m.name,
+        provider: m.provider,
+        type: m.type,
+        model_id: m.model_id,
+        credit_cost: m.credit_cost,
+        min_plan: m.min_plan,
+        family: (p.family as string) || m.provider || "Outros",
+        family_description: (p.family_description as string) || "",
+        badge: (p.badge as string) || null,
+        has_audio: Boolean(p.has_audio),
+        resolution: (p.resolution as string) || null,
+        duration_range: (p.duration_range as string) || null,
+        dur_min: typeof p.dur_min === "number" ? p.dur_min : null,
+        dur_max: typeof p.dur_max === "number" ? p.dur_max : null,
+        thumbnail_url: m.thumbnail_url,
+        // Indica se o modelo está integrado e pronto para gerar
+        available: WORKING_PROVIDERS.includes(m.provider),
+      };
+    });
 
     return NextResponse.json({ models });
   } catch (err) {

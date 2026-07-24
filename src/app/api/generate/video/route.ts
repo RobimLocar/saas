@@ -106,8 +106,10 @@ export async function POST(req: NextRequest) {
     // Chamar PiAPI
     try {
       const modelParams = (aiModel.params as Record<string, string>) || {};
+      // O catálogo exibido pode mapear para um backend PiAPI real diferente
+      // do slug de exibição (params.backend: "kling" | "hailuo")
       const task = await generateVideo({
-        model: aiModel.model_id,
+        model: modelParams.backend || aiModel.model_id,
         prompt,
         negative_prompt,
         aspect_ratio,

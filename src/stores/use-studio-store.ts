@@ -38,6 +38,17 @@ interface StudioState {
   referenceTab: ReferenceTab;
   setReferenceTab: (tab: ReferenceTab) => void;
 
+  // Listas de mídia de referência (Omni Reference)
+  referenceImages: string[]; // max 9
+  addReferenceImage: (url: string) => void;
+  removeReferenceImage: (index: number) => void;
+  referenceVideos: string[]; // max 3
+  addReferenceVideo: (url: string) => void;
+  removeReferenceVideo: (index: number) => void;
+  referenceAudios: string[]; // max 3
+  addReferenceAudio: (url: string) => void;
+  removeReferenceAudio: (index: number) => void;
+
   // Galeria
   viewFilter: "all" | Modality;
   setViewFilter: (filter: "all" | Modality) => void;
@@ -81,13 +92,57 @@ export const useStudioStore = create<StudioState>((set) => ({
     set({ batchCount: Math.max(1, Math.min(4, Math.floor(batchCount || 1))) }),
 
   referenceImageUrl: null,
-  setReferenceImageUrl: (referenceImageUrl) => set({ referenceImageUrl }),
+  setReferenceImageUrl: (referenceImageUrl) =>
+    set((s) => ({
+      referenceImageUrl,
+      // Mantém compatibilidade: também adiciona à lista de imagens de referência
+      referenceImages:
+        referenceImageUrl &&
+        !s.referenceImages.includes(referenceImageUrl) &&
+        s.referenceImages.length < 9
+          ? [...s.referenceImages, referenceImageUrl]
+          : s.referenceImages,
+    })),
   startImageUrl: null,
   setStartImageUrl: (startImageUrl) => set({ startImageUrl }),
   endImageUrl: null,
   setEndImageUrl: (endImageUrl) => set({ endImageUrl }),
   referenceTab: "start-end",
   setReferenceTab: (referenceTab) => set({ referenceTab }),
+
+  referenceImages: [],
+  addReferenceImage: (url) =>
+    set((s) =>
+      s.referenceImages.length < 9 && !s.referenceImages.includes(url)
+        ? { referenceImages: [...s.referenceImages, url] }
+        : {}
+    ),
+  removeReferenceImage: (index) =>
+    set((s) => ({
+      referenceImages: s.referenceImages.filter((_, i) => i !== index),
+    })),
+  referenceVideos: [],
+  addReferenceVideo: (url) =>
+    set((s) =>
+      s.referenceVideos.length < 3
+        ? { referenceVideos: [...s.referenceVideos, url] }
+        : {}
+    ),
+  removeReferenceVideo: (index) =>
+    set((s) => ({
+      referenceVideos: s.referenceVideos.filter((_, i) => i !== index),
+    })),
+  referenceAudios: [],
+  addReferenceAudio: (url) =>
+    set((s) =>
+      s.referenceAudios.length < 3
+        ? { referenceAudios: [...s.referenceAudios, url] }
+        : {}
+    ),
+  removeReferenceAudio: (index) =>
+    set((s) => ({
+      referenceAudios: s.referenceAudios.filter((_, i) => i !== index),
+    })),
 
   viewFilter: "all",
   setViewFilter: (viewFilter) => set({ viewFilter }),
@@ -107,5 +162,8 @@ export const useStudioStore = create<StudioState>((set) => ({
       startImageUrl: null,
       endImageUrl: null,
       referenceTab: "start-end",
+      referenceImages: [],
+      referenceVideos: [],
+      referenceAudios: [],
     }),
 }));

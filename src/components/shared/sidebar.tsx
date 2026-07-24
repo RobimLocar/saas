@@ -91,7 +91,7 @@ export function Sidebar({ credits = 0, initials = "FL" }: SidebarProps) {
       <div className="mx-3 mt-2 flex items-center justify-between border-t border-border pt-3">
         <Link
           href="/pricing"
-          className="inline-flex items-center gap-1.5 rounded-md bg-primary/15 px-2.5 py-1 text-xs font-semibold text-accent transition-colors hover:bg-primary/25"
+          className="inline-flex items-center gap-1.5 rounded-md bg-gradient-to-br from-[#EA580C] to-[#C2410C] px-2.5 py-1 text-xs font-semibold text-white transition-opacity hover:opacity-90"
         >
           <Zap className="h-3 w-3" fill="currentColor" />
           {credits}

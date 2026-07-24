@@ -159,11 +159,17 @@ export async function generateVideo(
   params: VideoGenParams
 ): Promise<PiAPITaskResponse> {
   if (params.model === "kling") {
+    // PiAPI: kling 2.1 só suporta img2video ("text-to-video generation is not
+    // available in version 2.1"). Sem imagem inicial, cai para 1.6 (mesmo mode).
+    let version = params.kling_version || "1.6";
+    if (version === "2.1" && !params.start_image_url) {
+      version = "1.6";
+    }
     const input: Record<string, unknown> = {
       prompt: params.prompt,
       duration: params.duration || 5,
       aspect_ratio: params.aspect_ratio || "16:9",
-      version: params.kling_version || "1.6",
+      version,
       mode: params.kling_mode || "standard",
     };
     if (params.negative_prompt) input.negative_prompt = params.negative_prompt;
