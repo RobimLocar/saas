@@ -104,6 +104,17 @@ export async function POST(req: NextRequest) {
       related_job_id: generation.id,
     });
 
+    // Mapear proporção -> dimensões (Flux usa width/height)
+    const AR_DIMS: Record<string, { w: number; h: number }> = {
+      "1:1": { w: 1024, h: 1024 },
+      "3:4": { w: 896, h: 1152 },
+      "9:16": { w: 768, h: 1344 },
+      "4:3": { w: 1152, h: 896 },
+      "3:2": { w: 1216, h: 832 },
+      "16:9": { w: 1344, h: 768 },
+    };
+    const dims = aspect_ratio ? AR_DIMS[aspect_ratio] : undefined;
+
     // Chamar PiAPI
     try {
       const task = await generateImage({
@@ -111,8 +122,8 @@ export async function POST(req: NextRequest) {
         prompt,
         negative_prompt,
         aspect_ratio,
-        width,
-        height,
+        width: width || dims?.w,
+        height: height || dims?.h,
         reference_image_url,
       });
 
