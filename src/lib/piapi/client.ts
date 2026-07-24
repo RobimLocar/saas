@@ -116,19 +116,22 @@ export async function generateImage(
     "16:9": { w: 1344, h: 768  },
   };
   const dims = params.aspect_ratio ? AR_DIMS[params.aspect_ratio] : undefined;
+  const hasReference = Boolean(params.reference_image_url);
 
+  // Com referência: task_type "img2img" + input.image (URL pública) + denoise.
+  // Validado na PiAPI: txt2img ignora image_url silenciosamente; img2img respeita.
   return piapiFetch<PiAPITaskResponse>("/task", {
     method: "POST",
     body: JSON.stringify({
       model: params.model,
-      task_type: "txt2img",
+      task_type: hasReference ? "img2img" : "txt2img",
       input: {
         prompt: params.prompt,
         negative_prompt: params.negative_prompt || "",
         width: params.width || dims?.w || 1024,
         height: params.height || dims?.h || 1024,
-        ...(params.reference_image_url
-          ? { image_url: params.reference_image_url }
+        ...(hasReference
+          ? { image: params.reference_image_url, denoise: 0.7 }
           : {}),
         ...(params.seed !== undefined ? { seed: params.seed } : {}),
       },

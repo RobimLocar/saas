@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { prompt, model_uuid, negative_prompt, aspect_ratio, width, height, reference_image_url } = body;
+    const { prompt, model_uuid, negative_prompt, aspect_ratio, width, height, reference_image_url, resolution } = body;
 
     if (!prompt || !model_uuid) {
       return NextResponse.json(
@@ -77,7 +77,9 @@ export async function POST(req: NextRequest) {
         type: "image",
         prompt,
         negative_prompt,
-        params: { aspect_ratio, width, height, reference_image_url },
+        // resolution (1K/2K/4K) é salvo apenas como rótulo para exibição;
+        // as dimensões reais respeitam o limite de ~1MP do Flux (AR_DIMS).
+        params: { aspect_ratio, width, height, reference_image_url, resolution: resolution || null },
         status: "pending",
         credits_used: aiModel.credit_cost,
       })

@@ -192,13 +192,15 @@ function Popover({
   );
 }
 
-function toDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(new Error("Falha ao ler arquivo"));
-    reader.readAsDataURL(file);
-  });
+async function uploadReferenceFile(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch("/api/upload", { method: "POST", body: formData });
+  const data = (await res.json().catch(() => null)) as { url?: string; error?: string } | null;
+  if (!res.ok || !data?.url) {
+    throw new Error(data?.error || "Falha no upload do arquivo.");
+  }
+  return data.url;
 }
 
 function ControlButton({
@@ -552,12 +554,16 @@ export function GenerationDock() {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    const toastId = toast.loading("Enviando arquivo...");
     try {
-      const dataUrl = await toDataUrl(file);
-      setter(dataUrl);
-      toast.success("Referência adicionada.");
-    } catch {
-      toast.error("Não foi possível ler o arquivo.");
+      const url = await uploadReferenceFile(file);
+      setter(url);
+      toast.success("Referência adicionada.", { id: toastId });
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Não foi possível enviar o arquivo.",
+        { id: toastId }
+      );
     } finally {
       event.target.value = "";
     }
@@ -570,12 +576,16 @@ export function GenerationDock() {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    const toastId = toast.loading("Enviando arquivo...");
     try {
-      const dataUrl = await toDataUrl(file);
-      add(dataUrl);
-      toast.success("Referência adicionada.");
-    } catch {
-      toast.error("Não foi possível ler o arquivo.");
+      const url = await uploadReferenceFile(file);
+      add(url);
+      toast.success("Referência adicionada.", { id: toastId });
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Não foi possível enviar o arquivo.",
+        { id: toastId }
+      );
     } finally {
       event.target.value = "";
     }

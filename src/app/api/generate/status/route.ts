@@ -114,7 +114,15 @@ export async function GET(req: NextRequest) {
       }
 
       if (state === "failed") {
-        const errMsg = taskStatus.data?.error || "Erro no provedor";
+        // taskStatus.data.error é um objeto {code, message, ...} — extrair texto legível
+        const rawErr = taskStatus.data?.error as
+          | { message?: string; raw_message?: string; code?: number }
+          | string
+          | undefined;
+        const errMsg =
+          typeof rawErr === "string"
+            ? rawErr
+            : rawErr?.message || rawErr?.raw_message || JSON.stringify(rawErr) || "Erro no provedor";
 
         await service
           .from("generations")
