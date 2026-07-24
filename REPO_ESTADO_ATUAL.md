@@ -1,51 +1,91 @@
-# Relatório do Estado Atual — repositório `firezyshop-byte/saas`
+# Fluxyra — Estado Atual do Repositório
 
-## Resumo
-O repositório remoto `https://github.com/firezyshop-byte/saas.git` foi clonado em
-`/home/ubuntu/github_repos/saas` com `--depth=50`.
+**Data:** 24/07/2026 | **Branch principal:** `main`
 
-**Estado: repositório VAZIO (empty repository).**
+---
 
-- `size`: 0 KB (confirmado via API do GitHub)
-- Branch padrão configurada: `main` (ainda sem commits)
-- `default_branch`: `main`
-- Criado em: 2026-07-24
-- Ao clonar, o git avisou: *"warning: You appear to have cloned an empty repository."*
+## ✅ O que já foi implementado
 
-## Estrutura de arquivos encontrada
-Apenas a pasta `.git/`. Nenhum arquivo de projeto:
+### Fase 1 — Scaffold & Fundação
+- [x] Next.js 14 + TypeScript + Tailwind CSS + shadcn/ui
+- [x] Estrutura de pastas completa (app router, components, lib, hooks, stores, types)
+- [x] Design System dark (#0A0A0A, accent violeta #7C3AED, fonte Inter)
+- [x] Schema Supabase completo (10 tabelas + RLS + triggers)
+- [x] Seed data (4 planos + 7 modelos de IA)
+- [x] Variáveis de ambiente (.env.local.example)
 
-```
-saas/
-└── .git/        (metadados do git, sem commits)
-```
+### Fase 2 — Studio + Auth
+- [x] Sidebar com navegação completa (Studio, Flows, Wise, Influencer Studio, UGC Factory, Seeds, Assets, My Prompts)
+- [x] Topbar com logo e título dinâmico
+- [x] Galeria masonry responsiva com cards de mídia
+- [x] Dock de geração (abas Imagem/Vídeo/Áudio + prompt + controles)
+- [x] Login/Signup com Supabase Auth (Server Actions)
+- [x] Middleware de proteção de rotas
+- [x] Páginas placeholder para Flows, Assets, Seeds, My Prompts
 
-- Sem `package.json`
-- Sem `src/`, `app/`, `pages/`
-- Sem `README.md`
-- Sem configuração de banco, `.env` ou dependências
-- Sem `node_modules`
-- Sem qualquer configuração (tsconfig, tailwind, next, etc.)
+### Fase 3 — PiAPI + Stripe + Landing + Pricing
+- [x] **Cliente PiAPI completo** — `generateImage()`, `generateVideo()`, `generateAudio()`, `getTaskStatus()`, `extractResultUrl()`
+- [x] **API Routes de geração** — `/api/generate/image`, `/api/generate/video`, `/api/generate/audio`
+- [x] **API Route de polling** — `/api/generate/status` (checa PiAPI e atualiza banco)
+- [x] **Webhook PiAPI** — `/api/webhooks/piapi` (auto-save assets no Storage + reembolso automático em falhas)
+- [x] **Stripe client** — planos (Starter/Pro/Agency) + 5 packs de top-up
+- [x] **Checkout Stripe** — `/api/stripe/create-checkout` (assinatura OU top-up)
+- [x] **Webhook Stripe** — handles: checkout.completed, invoice.succeeded, subscription.updated/deleted, payment_failed
+- [x] **Renovação mensal** com rollover parcial (Pro: 100cr, Agency: 500cr)
+- [x] **Landing Page** — hero, modalidades, features, tabela de modelos, comparação competitiva, CTA
+- [x] **Pricing Page** — 4 cards de planos + toggle mensal/anual (−20%) + 5 packs avulsos
+- [x] **useGeneration hook** — submit + polling automático
+- [x] **useCredits hook** — react-query com auto-refresh a cada 30s
+- [x] **Studio Store** expandido (activeTab, prompt, model, params, references, viewFilter)
+- [x] **API Credits** — `/api/credits` (retorna saldo + plano)
+- [x] **API Assets** — `/api/assets` (list com filtros + delete)
 
-## Dependências já instaladas
-Nenhuma. Não há `package.json` nem `node_modules`.
+---
 
-## O que já foi feito vs. o que precisa ser criado
+## 🔜 Próximas fases (pendente)
 
-### Já feito
-- Nada além da criação do repositório vazio no GitHub.
+### Fase 4 — Seeds + Saved Prompts
+- [ ] CRUD de Seeds (personagens reutilizáveis)
+- [ ] CRUD de Saved Prompts
+- [ ] Integração Seeds com Studio (usar como referência)
 
-### Precisa ser criado (a partir do zero)
-1. Projeto Next.js 14 com TypeScript, Tailwind CSS e App Router (`src/`).
-2. Instalação das dependências do Fluxyra (Supabase, Stripe, Radix/shadcn, zustand,
-   react-query, framer-motion, react-masonry-css, utilitários de classe).
-3. Inicialização do shadcn/ui.
-4. Arquivo `.env.local` com placeholders (Supabase, Stripe, PiAPI, Atlas, App URL).
-5. `.gitignore` adequado incluindo `.env.local`.
-6. Estrutura completa de pastas do Fluxyra (rotas de auth, dashboard, marketing,
-   rotas de API, componentes, libs, hooks, stores, types).
-7. Commit inicial e push; abertura de PR.
+### Fase 5 — Flows
+- [ ] Flow builder (definir steps encadeados)
+- [ ] Templates pré-construídos (UGC, Influencer, Podcast, Avatar)
+- [ ] Execução automatizada de flows
 
-## Conclusão
-Como o repositório está totalmente vazio, o projeto será inicializado do zero
-(não há código existente a preservar ou integrar).
+### Fase 6 — Apps Especializados
+- [ ] Influencer Studio (foto→vídeo com persona)
+- [ ] UGC Factory (batch de vídeos)
+
+### Fase 7 — Wise (Assistente IA)
+- [ ] Melhoria de prompts com IA
+- [ ] Recomendação de modelo
+- [ ] Estimativa de créditos
+
+### Fase 8 — Deploy & Monitoring
+- [ ] Deploy na Vercel
+- [ ] Sentry para erros
+- [ ] PostHog para analytics
+- [ ] Onboarding gamificado
+- [ ] Emails transacionais (Resend)
+- [ ] Referral system
+
+---
+
+## 📊 Métricas do Build
+
+- **TypeScript errors:** 0
+- **Build errors:** 0
+- **Rotas:** 21 (11 pages + 10 API routes)
+- **Componentes:** 20+ (ui + shared + studio)
+
+## 🔗 PRs no GitHub
+
+| # | Título | Status |
+|---|--------|--------|
+| 1 | feat: Initial project setup | ✅ Merged |
+| 2 | feat(F1): Fundação — design system, schema, RLS, auth | ✅ Merged |
+| 3 | feat(F2): Studio + Auth — dashboard shell, galeria, dock | ✅ Merged |
+| 4 | chore: merge all foundation into main | ✅ Merged |
+| 5 | feat(F3): PiAPI + Stripe + Landing + Pricing | 🔵 Open |
