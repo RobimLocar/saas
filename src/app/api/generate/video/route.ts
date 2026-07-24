@@ -127,6 +127,21 @@ export async function POST(req: NextRequest) {
             : QUALITY_KLING_MODE[qualityLevel]
           : modelParams.kling_mode;
 
+      // Proteção extra: kling 2.1 não suporta txt2video — sem imagem, forçar 1.6
+      // (o client.ts também faz isso, mas mantemos dupla proteção aqui)
+      let effectiveKlingVersion = modelParams.kling_version || "1.6";
+      if (backend === "kling" && effectiveKlingVersion === "2.1" && !start_image_url) {
+        console.warn(
+          `[generate/video] kling 2.1 txt2video bloqueado — model=${aiModel.name}, ` +
+          `falling back to 1.6 (sem start_image_url)`
+        );
+        effectiveKlingVersion = "1.6";
+      }
+
+      console.log(`[generate/video] model=${aiModel.name} backend=${backend} ` +
+        `kling_version=${effectiveKlingVersion} mode=${effectiveKlingMode} ` +
+        `duration=${duration || 5} aspect=${aspect_ratio} has_start_img=${!!start_image_url}`);
+
       const task = await generateVideo({
         model: backend,
         prompt,
@@ -136,7 +151,7 @@ export async function POST(req: NextRequest) {
         resolution: resolution || "1080p",
         start_image_url,
         end_image_url,
-        kling_version: modelParams.kling_version,
+        kling_version: effectiveKlingVersion,
         kling_mode: effectiveKlingMode,
         quality: qualityLevel,
       });
