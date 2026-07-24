@@ -1,10 +1,12 @@
+import { Sprout } from "lucide-react";
+import { PagePlaceholder } from "@/components/shared/page-placeholder";
+
 export default function SeedsPage() {
   return (
-    <main className="p-6">
-      <h1 className="text-2xl font-semibold capitalize">seeds</h1>
-      <p className="text-sm text-muted-foreground">
-        Página seeds do Fluxyra — a ser implementada.
-      </p>
-    </main>
+    <PagePlaceholder
+      icon={Sprout}
+      title="Seeds"
+      description="Crie personagens consistentes e reutilize a mesma identidade visual em várias gerações. Em breve (Fase 2)."
+    />
   );
 }

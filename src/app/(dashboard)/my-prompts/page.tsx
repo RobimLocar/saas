@@ -1,10 +1,12 @@
+import { Copy } from "lucide-react";
+import { PagePlaceholder } from "@/components/shared/page-placeholder";
+
 export default function MyPromptsPage() {
   return (
-    <main className="p-6">
-      <h1 className="text-2xl font-semibold">My Prompts</h1>
-      <p className="text-sm text-muted-foreground">
-        Página My Prompts do Fluxyra — a ser implementada.
-      </p>
-    </main>
+    <PagePlaceholder
+      icon={Copy}
+      title="My Prompts"
+      description="Salve seus melhores prompts e reutilize com um clique. Em breve (Fase 2)."
+    />
   );
 }
