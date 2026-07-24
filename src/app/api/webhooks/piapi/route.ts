@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
         .single();
 
       if (profile) {
-        const restored = profile.credits_balance + generation.credits_charged;
+        const restored = profile.credits_balance + generation.credits_used;
         await supabase
           .from("profiles")
           .update({ credits_balance: restored })
@@ -62,11 +62,9 @@ export async function POST(req: NextRequest) {
 
         await supabase.from("credit_transactions").insert({
           user_id: generation.user_id,
-          type: "refund",
-          amount: generation.credits_charged,
-          balance_after: restored,
-          description: `Reembolso automático — falha na geração`,
-          generation_id: generation.id,
+          amount: generation.credits_used,
+          reason: "refund",
+          related_job_id: generation.id,
         });
       }
 
@@ -88,9 +86,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      // Baixar mídia e salvar no Supabase Storage
-      let storagePath = `${generation.user_id}/${generation.modality}s/${generation.id}`;
-      const ext = generation.modality === "image" ? ".png" : generation.modality === "video" ? ".mp4" : ".mp3";
+      // Baixar mídia e persistir no Supabase Storage (bucket "assets")
+      let storagePath = `${generation.user_id}/${generation.type}s/${generation.id}`;
+      const ext = generation.type === "image" ? ".png" : generation.type === "video" ? ".mp4" : ".mp3";
       storagePath += ext;
 
       try {
@@ -123,18 +121,11 @@ export async function POST(req: NextRequest) {
         // Criar asset na biblioteca
         await supabase.from("assets").insert({
           user_id: generation.user_id,
-          generation_id: generation.id,
-          modality: generation.modality,
-          name: generation.prompt.slice(0, 60),
-          storage_path: storagePath,
-          public_url: publicUrl,
-          metadata: {
-            model: generation.model_id,
-            prompt: generation.prompt,
-            params: generation.params,
-          },
+          category: generation.type,
+          name: (generation.prompt || "Geração").slice(0, 60),
+          image_url: publicUrl,
         });
-      } catch (storageErr) {
+      } catch {
         // Salvar URL direta do provider se falhar o upload
         await supabase
           .from("generations")
@@ -147,12 +138,9 @@ export async function POST(req: NextRequest) {
 
         await supabase.from("assets").insert({
           user_id: generation.user_id,
-          generation_id: generation.id,
-          modality: generation.modality,
-          name: generation.prompt.slice(0, 60),
-          storage_path: "",
-          public_url: resultUrl,
-          metadata: { fallback: true },
+          category: generation.type,
+          name: (generation.prompt || "Geração").slice(0, 60),
+          image_url: resultUrl,
         });
       }
 

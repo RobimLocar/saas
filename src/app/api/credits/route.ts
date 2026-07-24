@@ -14,13 +14,13 @@ export async function GET() {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("credits_balance, plan_code")
+      .select("credits_balance, plan")
       .eq("id", user.id)
       .single();
 
     return NextResponse.json({
       credits: profile?.credits_balance ?? 0,
-      plan: profile?.plan_code ?? "free",
+      plan: profile?.plan ?? "free",
     });
   } catch {
     return NextResponse.json({ credits: 0, plan: "free" }, { status: 500 });

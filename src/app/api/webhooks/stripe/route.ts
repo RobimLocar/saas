@@ -43,7 +43,8 @@ export async function POST(req: NextRequest) {
         await supabase
           .from("profiles")
           .update({
-            plan_code: plan || "starter",
+            plan: plan || "starter",
+            plan_credits_monthly: credits,
             credits_balance: credits,
             stripe_customer_id: session.customer as string,
           })
@@ -51,10 +52,8 @@ export async function POST(req: NextRequest) {
 
         await supabase.from("credit_transactions").insert({
           user_id: userId,
-          type: "subscription",
           amount: credits,
-          balance_after: credits,
-          description: `Assinatura ${PLANS[plan]?.name || plan} ativada — ${credits} créditos`,
+          reason: "subscription",
         });
       }
 
@@ -73,10 +72,17 @@ export async function POST(req: NextRequest) {
 
         await supabase.from("credit_transactions").insert({
           user_id: userId,
-          type: "topup",
           amount: credits,
-          balance_after: newBalance,
-          description: `Top-up — +${credits} créditos`,
+          reason: "topup",
+        });
+
+        // Registrar compra avulsa
+        await supabase.from("credit_purchases").insert({
+          user_id: userId,
+          stripe_session_id: session.id,
+          credits,
+          amount_cents: session.amount_total || 0,
+          status: "completed",
         });
       }
       break;
@@ -94,12 +100,12 @@ export async function POST(req: NextRequest) {
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("id, plan_code, credits_balance")
+        .select("id, plan, credits_balance")
         .eq("stripe_customer_id", customerId)
         .single();
 
-      if (profile && profile.plan_code && profile.plan_code !== "free") {
-        const plan = profile.plan_code as PlanKey;
+      if (profile && profile.plan && profile.plan !== "free") {
+        const plan = profile.plan as PlanKey;
         const planData = PLANS[plan];
         if (planData) {
           // Rollover parcial
@@ -114,10 +120,8 @@ export async function POST(req: NextRequest) {
 
           await supabase.from("credit_transactions").insert({
             user_id: profile.id,
-            type: "subscription",
             amount: planData.credits,
-            balance_after: newBalance,
-            description: `Renovação mensal ${planData.name} — ${planData.credits} créditos${rollover > 0 ? ` (+${rollover} rollover)` : ""}`,
+            reason: "subscription",
           });
         }
       }
@@ -142,7 +146,7 @@ export async function POST(req: NextRequest) {
       if (newPlan) {
         await supabase
           .from("profiles")
-          .update({ plan_code: newPlan })
+          .update({ plan: newPlan, plan_credits_monthly: PLANS[newPlan].credits })
           .eq("stripe_customer_id", customerId);
       }
       break;
@@ -155,7 +159,7 @@ export async function POST(req: NextRequest) {
 
       await supabase
         .from("profiles")
-        .update({ plan_code: "free", credits_balance: 10 })
+        .update({ plan: "free", plan_credits_monthly: 0 })
         .eq("stripe_customer_id", customerId);
       break;
     }

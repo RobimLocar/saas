@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { generateAudio } from "@/lib/piapi/client";
+import { planAllows } from "@/lib/plans";
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,11 +24,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Buscar modelo
+    // Buscar modelo pelo identificador do provider (ai_models.model_id)
     const { data: aiModel } = await supabase
       .from("ai_models")
       .select("*")
-      .eq("slug", model_slug)
+      .eq("model_id", model_slug)
       .eq("is_active", true)
       .single();
 
@@ -35,22 +36,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Modelo não encontrado" }, { status: 404 });
     }
 
-    // Verificar créditos
+    // Verificar créditos e plano
     const { data: profile } = await supabase
       .from("profiles")
-      .select("credits_balance, plan_code")
+      .select("credits_balance, plan")
       .eq("id", user.id)
       .single();
 
-    if (!profile || profile.credits_balance < aiModel.credits) {
+    if (!profile || profile.credits_balance < aiModel.credit_cost) {
       return NextResponse.json(
-        { error: "Créditos insuficientes", required: aiModel.credits, available: profile?.credits_balance || 0 },
+        { error: "Créditos insuficientes", required: aiModel.credit_cost, available: profile?.credits_balance || 0 },
         { status: 402 }
       );
     }
 
+    // Gating por plano mínimo do modelo
+    if (!planAllows(profile.plan, aiModel.min_plan)) {
+      return NextResponse.json(
+        { error: `Este modelo requer o plano ${aiModel.min_plan}` },
+        { status: 403 }
+      );
+    }
+
     // Deduzir créditos
-    const newBalance = profile.credits_balance - aiModel.credits;
+    const newBalance = profile.credits_balance - aiModel.credit_cost;
     await supabase
       .from("profiles")
       .update({ credits_balance: newBalance })
@@ -62,11 +71,11 @@ export async function POST(req: NextRequest) {
       .insert({
         user_id: user.id,
         model_id: aiModel.id,
-        modality: "audio" as const,
+        type: "audio",
         prompt,
         params: { duration, voice_id, language },
-        status: "pending" as const,
-        credits_charged: aiModel.credits,
+        status: "pending",
+        credits_used: aiModel.credit_cost,
       })
       .select()
       .single();
@@ -76,18 +85,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Erro ao registrar geração" }, { status: 500 });
     }
 
+    // Ledger de créditos
     await supabase.from("credit_transactions").insert({
       user_id: user.id,
-      type: "generation" as const,
-      amount: -aiModel.credits,
-      balance_after: newBalance,
-      description: `Geração de áudio — ${aiModel.name}`,
-      generation_id: generation.id,
+      amount: -aiModel.credit_cost,
+      reason: "generation",
+      related_job_id: generation.id,
     });
 
     try {
       const task = await generateAudio({
-        model: aiModel.provider_model_id,
+        model: aiModel.model_id,
         prompt,
         duration,
         voice_id,
@@ -96,25 +104,23 @@ export async function POST(req: NextRequest) {
 
       await supabase
         .from("generations")
-        .update({ provider_task_id: task.task_id, status: "processing" as const })
+        .update({ provider_task_id: task.task_id, status: "processing" })
         .eq("id", generation.id);
 
       return NextResponse.json({
         generation_id: generation.id,
         task_id: task.task_id,
-        credits_used: aiModel.credits,
+        credits_used: aiModel.credit_cost,
         balance: newBalance,
       });
     } catch (apiError) {
       await supabase.from("profiles").update({ credits_balance: profile.credits_balance }).eq("id", user.id);
-      await supabase.from("generations").update({ status: "failed" as const, error_message: String(apiError) }).eq("id", generation.id);
+      await supabase.from("generations").update({ status: "failed", error_message: String(apiError) }).eq("id", generation.id);
       await supabase.from("credit_transactions").insert({
         user_id: user.id,
-        type: "refund" as const,
-        amount: aiModel.credits,
-        balance_after: profile.credits_balance,
-        description: `Reembolso — falha na geração de áudio`,
-        generation_id: generation.id,
+        amount: aiModel.credit_cost,
+        reason: "refund",
+        related_job_id: generation.id,
       });
 
       return NextResponse.json({ error: "Erro ao chamar provedor de IA" }, { status: 502 });

@@ -32,16 +32,23 @@ const PLACEHOLDER: Record<Modality, string> = {
   audio: "Descreva o áudio que você quer criar...",
 };
 
+// Modelos padrão por modalidade — nomes/ids reais do catálogo (ai_models.model_id)
 const DEFAULT_MODEL: Record<Modality, string> = {
-  image: "Flux Dev",
+  image: "Flux Schnell",
   video: "Seedance 2.0",
-  audio: "ElevenLabs v3",
+  audio: "ElevenLabs Flash",
+};
+
+const DEFAULT_MODEL_ID: Record<Modality, string> = {
+  image: "flux-schnell",
+  video: "seedance-2.0",
+  audio: "elevenlabs-flash",
 };
 
 const CREDIT_COST: Record<Modality, number> = {
   image: 1,
-  video: 20,
-  audio: 6,
+  video: 15,
+  audio: 1,
 };
 
 function Control({ children }: { children: React.ReactNode }) {
@@ -70,13 +77,14 @@ export function GenerationDock() {
       const res = await fetch(`/api/generate/${active}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ prompt, model_slug: DEFAULT_MODEL_ID[active] }),
       });
       const data = await res.json();
-      if (data?.ok) {
+      if (res.ok && data?.generation_id) {
         toast.success("Geração enviada! Acompanhe na galeria.");
+        setPrompt("");
       } else {
-        toast.info("Endpoint de geração ainda não conectado ao provedor.");
+        toast.error(data?.error || "Não foi possível enviar a geração.");
       }
     } catch {
       toast.error("Não foi possível enviar a geração.");

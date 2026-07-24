@@ -59,19 +59,13 @@ export async function GET(req: NextRequest) {
             })
             .eq("id", generation.id);
 
-          // Criar asset
+          // Criar asset na biblioteca do usuário
           if (resultUrl) {
             await supabase.from("assets").insert({
               user_id: user.id,
-              generation_id: generation.id,
-              modality: generation.modality,
-              name: generation.prompt.slice(0, 60),
-              storage_path: "",
-              public_url: resultUrl,
-              metadata: {
-                prompt: generation.prompt,
-                params: generation.params,
-              },
+              category: generation.type,
+              name: (generation.prompt || "Geração").slice(0, 60),
+              image_url: resultUrl,
             });
           }
 

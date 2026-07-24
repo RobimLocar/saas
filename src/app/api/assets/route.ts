@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 
 /**
  * GET /api/assets — lista os assets do usuário
- * Query params: ?modality=image|video|audio &limit=50 &offset=0
+ * Query params: ?category=image|video|audio|custom &limit=50 &offset=0
  */
 export async function GET(req: NextRequest) {
   try {
@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
     }
 
     const url = req.nextUrl;
-    const modality = url.searchParams.get("modality");
+    const category = url.searchParams.get("category") || url.searchParams.get("modality");
     const limit = parseInt(url.searchParams.get("limit") || "50");
     const offset = parseInt(url.searchParams.get("offset") || "0");
 
@@ -28,8 +28,8 @@ export async function GET(req: NextRequest) {
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
-    if (modality && ["image", "video", "audio"].includes(modality)) {
-      query = query.eq("modality", modality);
+    if (category) {
+      query = query.eq("category", category);
     }
 
     const { data: assets, error } = await query;
@@ -67,7 +67,7 @@ export async function DELETE(req: NextRequest) {
     // Verificar que pertence ao usuário
     const { data: asset } = await supabase
       .from("assets")
-      .select("storage_path")
+      .select("image_url")
       .eq("id", asset_id)
       .eq("user_id", user.id)
       .single();
@@ -76,9 +76,17 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "Asset não encontrado" }, { status: 404 });
     }
 
-    // Deletar do Storage (se tiver path)
-    if (asset.storage_path) {
-      await supabase.storage.from("assets").remove([asset.storage_path]);
+    // Se a mídia está no nosso Storage, remover o arquivo também
+    if (asset.image_url) {
+      for (const bucket of ["assets", "uploads"]) {
+        const marker = `/storage/v1/object/public/${bucket}/`;
+        const idx = asset.image_url.indexOf(marker);
+        if (idx !== -1) {
+          const path = decodeURIComponent(asset.image_url.slice(idx + marker.length));
+          await supabase.storage.from(bucket).remove([path]);
+          break;
+        }
+      }
     }
 
     // Deletar do banco

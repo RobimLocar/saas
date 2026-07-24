@@ -1,4 +1,9 @@
 -- ============================================================
+-- ⚠️ ATENÇÃO: este arquivo é apenas REFERÊNCIA da proposta v2.
+-- O banco de PRODUÇÃO (projeto pckfdyrhksdkwakptyuk) usa um
+-- schema diferente, já em uso — ver supabase/SCHEMA_PRODUCAO.md.
+-- NÃO execute este script no banco hospedado.
+-- ============================================================
 -- Fluxyra — Schema inicial (v2.0)
 -- 10 tabelas: profiles, ai_models, generations, assets, seeds,
 -- saved_prompts, flows, credit_transactions, subscription_plans, referrals
