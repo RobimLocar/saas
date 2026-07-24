@@ -13,11 +13,14 @@ import {
   Loader2,
   Music,
   Smartphone,
+  Link2,
   SlidersHorizontal,
   Upload,
   Video,
   Volume2,
+  VolumeX,
   WandSparkles,
+  X,
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -186,13 +189,17 @@ export function GenerationDock() {
 
   const [models, setModels] = useState<ApiModel[]>([]);
   const [assistOpen, setAssistOpen] = useState(false);
-  const [referenceEnabled, setReferenceEnabled] = useState(true);
-  const [audioEnabled, setAudioEnabled] = useState(false);
+  const [refPanelOpen, setRefPanelOpen] = useState(false);
+  const [refUrlDraft, setRefUrlDraft] = useState("");
+  const [audioEnabled, setAudioEnabled] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
+  const [enhancing, setEnhancing] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const startInputRef = useRef<HTMLInputElement>(null);
   const endInputRef = useRef<HTMLInputElement>(null);
   const omniInputRef = useRef<HTMLInputElement>(null);
+  const refInputRef = useRef<HTMLInputElement>(null);
 
   const loadModels = useCallback(async (type: Modality) => {
     try {
@@ -253,6 +260,45 @@ export function GenerationDock() {
     setPrompt(cleaned ? `${cleaned}, ${snippet}` : snippet);
   }
 
+  async function handleWiseEnhance() {
+    if (!prompt.trim()) {
+      toast.error("Escreva um prompt para melhorar.");
+      return;
+    }
+    if (enhancing) return;
+
+    setEnhancing(true);
+    try {
+      const res = await fetch("/api/assist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, modality: activeTab }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || "Falha ao melhorar o prompt.");
+      }
+      setPrompt(data.prompt);
+      toast.success("Prompt aprimorado pelo Wise.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao melhorar o prompt.");
+    } finally {
+      setEnhancing(false);
+    }
+  }
+
+  function applyReferenceUrl() {
+    const url = refUrlDraft.trim();
+    if (!url) return;
+    if (!/^https?:\/\//i.test(url)) {
+      toast.error("Informe uma URL válida (http/https).");
+      return;
+    }
+    setReferenceImageUrl(url);
+    setRefUrlDraft("");
+    toast.success("Referência adicionada.");
+  }
+
   async function submitSingleGeneration() {
     const body: Record<string, unknown> = {
       prompt,
@@ -265,7 +311,7 @@ export function GenerationDock() {
 
     if (activeTab === "image") {
       body.resolution = safeResolution;
-      if (referenceEnabled && referenceImageUrl) {
+      if (referenceImageUrl) {
         body.reference_image_url = referenceImageUrl;
       }
     }
@@ -273,14 +319,12 @@ export function GenerationDock() {
     if (activeTab === "video") {
       body.duration = duration;
       body.resolution = safeResolution;
-      if (referenceEnabled) {
-        if (referenceTab === "omni" && referenceImageUrl) {
-          body.start_image_url = referenceImageUrl;
-        }
-        if (referenceTab === "start-end") {
-          if (startImageUrl) body.start_image_url = startImageUrl;
-          if (endImageUrl) body.end_image_url = endImageUrl;
-        }
+      if (referenceTab === "omni" && referenceImageUrl) {
+        body.start_image_url = referenceImageUrl;
+      }
+      if (referenceTab === "start-end") {
+        if (startImageUrl) body.start_image_url = startImageUrl;
+        if (endImageUrl) body.end_image_url = endImageUrl;
       }
       body.with_audio = audioEnabled;
     }
@@ -375,6 +419,82 @@ export function GenerationDock() {
         </div>
       )}
 
+      {refPanelOpen && (
+        <div className="border-b border-[#2A2A2A] p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-semibold text-[#F5F5F5]">
+              <Upload className="h-4 w-4 text-[#8B5CF6]" />
+              Imagem de referência
+            </div>
+            <button
+              type="button"
+              onClick={() => setRefPanelOpen(false)}
+              className="text-xs text-[#888888] hover:text-[#F5F5F5]"
+            >
+              Fechar
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => refInputRef.current?.click()}
+              className="flex h-9 items-center gap-2 rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] px-3 text-sm text-[#F5F5F5] hover:border-[#7C3AED]"
+            >
+              <Upload className="h-4 w-4 text-[#888888]" />
+              Enviar imagem
+            </button>
+
+            <div className="flex h-9 flex-1 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3">
+              <Link2 className="h-4 w-4 shrink-0 text-[#888888]" />
+              <input
+                type="text"
+                value={refUrlDraft}
+                onChange={(event) => setRefUrlDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    applyReferenceUrl();
+                  }
+                }}
+                placeholder="Cole a URL da imagem de referência"
+                className="flex-1 bg-transparent text-sm text-[#F5F5F5] outline-none placeholder:text-[#666666]"
+              />
+              <button
+                type="button"
+                onClick={applyReferenceUrl}
+                className="shrink-0 rounded-md bg-[#7C3AED] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#8B5CF6]"
+              >
+                Usar
+              </button>
+            </div>
+
+            {referenceImageUrl && (
+              <div className="relative shrink-0">
+                <Image
+                  src={referenceImageUrl}
+                  alt="Referência"
+                  width={44}
+                  height={44}
+                  className="h-11 w-11 rounded-lg border border-[#2A2A2A] object-cover"
+                  unoptimized
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReferenceImageUrl(null);
+                    toast.info("Referência removida.");
+                  }}
+                  className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#2A2A2A] text-[#F5F5F5] hover:bg-[#7C3AED]"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-1 px-4 pt-3">
         {TABS.map(({ id, label, icon: Icon }) => {
           const active = activeTab === id;
@@ -414,12 +534,17 @@ export function GenerationDock() {
             placeholder={PLACEHOLDER[activeTab]}
             className="flex-1 bg-transparent text-[15px] text-[#F5F5F5] outline-none placeholder:text-[#666666]"
           />
-          <button type="button" className="ml-3 text-[#666666] hover:text-[#F5F5F5]">
-            <ChevronDown className="h-4 w-4" />
+          <button
+            type="button"
+            onClick={() => setCollapsed((value) => !value)}
+            title={collapsed ? "Expandir controles" : "Recolher controles"}
+            className="ml-3 text-[#666666] hover:text-[#F5F5F5]"
+          >
+            <ChevronDown className={cn("h-4 w-4 transition-transform", collapsed && "rotate-180")} />
           </button>
         </div>
 
-        {activeTab === "video" && (
+        {!collapsed && activeTab === "video" && (
           <>
             <div className="mb-3 grid grid-cols-2 gap-3">
               <button
@@ -498,8 +623,9 @@ export function GenerationDock() {
         <input ref={startInputRef} type="file" accept="image/*" className="hidden" onChange={(event) => void handlePickFile(event, setStartImageUrl)} />
         <input ref={endInputRef} type="file" accept="image/*" className="hidden" onChange={(event) => void handlePickFile(event, setEndImageUrl)} />
         <input ref={omniInputRef} type="file" accept="image/*" className="hidden" onChange={(event) => void handlePickFile(event, setReferenceImageUrl)} />
+        <input ref={refInputRef} type="file" accept="image/*" className="hidden" onChange={(event) => void handlePickFile(event, setReferenceImageUrl)} />
 
-        <div className="flex items-center justify-between">
+        <div className={cn("flex items-center justify-between", collapsed && "hidden")}>
           <div className="flex items-center gap-2">
             <Popover
               panelClassName="max-h-80 w-[320px] overflow-y-auto"
@@ -622,15 +748,24 @@ export function GenerationDock() {
             {activeTab === "video" && (
               <button
                 type="button"
-                onClick={() => setAudioEnabled((value) => !value)}
+                onClick={() => {
+                  const next = !audioEnabled;
+                  setAudioEnabled(next);
+                  toast.info(next ? "Áudio do vídeo ativado." : "Áudio do vídeo desativado.");
+                }}
+                title={audioEnabled ? "Áudio ativado — clique para desativar" : "Áudio desativado — clique para ativar"}
                 className={cn(
-                  "h-9 w-9 rounded-lg border text-[#888888]",
+                  "h-9 w-9 rounded-lg border",
                   audioEnabled
                     ? "border-[#7C3AED] bg-[#7C3AED]/15 text-[#F5F5F5]"
-                    : "border-[#2A2A2A] bg-[#1A1A1A]"
+                    : "border-[#2A2A2A] bg-[#1A1A1A] text-[#888888]"
                 )}
               >
-                <Volume2 className="mx-auto h-4 w-4" />
+                {audioEnabled ? (
+                  <Volume2 className="mx-auto h-4 w-4" />
+                ) : (
+                  <VolumeX className="mx-auto h-4 w-4" />
+                )}
               </button>
             )}
 
@@ -651,10 +786,10 @@ export function GenerationDock() {
             </button>
 
             <ControlButton
-              active={referenceEnabled}
-              onClick={() => setReferenceEnabled((value) => !value)}
+              active={refPanelOpen || Boolean(referenceImageUrl)}
+              onClick={() => setRefPanelOpen((value) => !value)}
               icon={<Upload className="h-4 w-4 text-[#888888]" />}
-              muted={!referenceEnabled}
+              muted={!refPanelOpen && !referenceImageUrl}
             >
               Referência
             </ControlButton>
@@ -669,9 +804,15 @@ export function GenerationDock() {
             </ControlButton>
 
             <ControlButton
-              icon={<WandSparkles className="h-4 w-4 text-[#888888]" />}
-              muted
-              onClick={() => toast.info("Wise Enhance em breve.")}
+              icon={
+                enhancing ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-[#8B5CF6]" />
+                ) : (
+                  <WandSparkles className="h-4 w-4 text-[#888888]" />
+                )
+              }
+              muted={!enhancing}
+              onClick={() => void handleWiseEnhance()}
             >
               Wise Enhance
             </ControlButton>
