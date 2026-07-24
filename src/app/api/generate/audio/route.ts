@@ -94,8 +94,11 @@ export async function POST(req: NextRequest) {
     });
 
     try {
+      const modelParams = (aiModel.params as Record<string, string>) || {};
+      // O catálogo exibido pode mapear para um backend PiAPI real diferente
+      // do slug de exibição (params.backend: "Qubico/ace-step")
       const task = await generateAudio({
-        model: aiModel.model_id,
+        model: modelParams.backend || aiModel.model_id,
         prompt,
         duration,
       });

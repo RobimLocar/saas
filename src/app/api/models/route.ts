@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-// Provedores que estão realmente integrados e funcionando hoje
-const WORKING_PROVIDERS = ["piapi"];
+// Backends PiAPI realmente integrados e funcionando hoje.
+// Cada modelo do catálogo aponta para um deles via params.backend
+// (fallback: o próprio model_id).
+const WORKING_BACKENDS = [
+  "Qubico/flux1-schnell",
+  "Qubico/flux1-dev",
+  "kling",
+  "hailuo",
+  "Qubico/ace-step",
+];
 
 export async function GET(req: NextRequest) {
   try {
@@ -45,8 +53,10 @@ export async function GET(req: NextRequest) {
         dur_min: typeof p.dur_min === "number" ? p.dur_min : null,
         dur_max: typeof p.dur_max === "number" ? p.dur_max : null,
         thumbnail_url: m.thumbnail_url,
-        // Indica se o modelo está integrado e pronto para gerar
-        available: WORKING_PROVIDERS.includes(m.provider),
+        // Disponível se o backend efetivo (params.backend ?? model_id) está integrado
+        available: WORKING_BACKENDS.includes(
+          (p.backend as string) || m.model_id
+        ),
       };
     });
 
