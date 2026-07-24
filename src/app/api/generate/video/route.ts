@@ -164,7 +164,13 @@ export async function POST(req: NextRequest) {
         related_job_id: generation.id,
       });
 
-      return NextResponse.json({ error: "Erro ao chamar provedor de IA" }, { status: 502 });
+      // Propaga o erro real da PiAPI para o frontend (ex.: "insufficient credits").
+      const errMsg =
+        apiError instanceof Error ? apiError.message : String(apiError);
+      const status = errMsg.toLowerCase().includes("insufficient credits")
+        ? 402
+        : 502;
+      return NextResponse.json({ error: errMsg }, { status });
     }
   } catch (err) {
     console.error("[generate/video] Error:", err);

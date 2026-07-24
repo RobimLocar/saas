@@ -317,14 +317,14 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
     // low → 768/6s ; medium → 768/10s ; high → 1080/6s (nunca 1080+10!)
     const duration = quality === "medium" ? 10 : 6;
     const resolution = quality === "high" ? 1080 : 768;
+    // Hailuo NÃO aceita aspect_ratio no input; o campo de imagem é image_url.
     const input: Record<string, unknown> = {
       model: params.hailuo_model || "v2.3",
       prompt,
       duration,
       resolution,
-      aspect_ratio: aspect,
     };
-    if (imageUrl) input.first_frame_image = imageUrl;
+    if (imageUrl) input.image_url = imageUrl;
     return { model: "hailuo", task_type: "video_generation", input, config };
   }
 

@@ -908,7 +908,12 @@ export function GenerationDock() {
 
     const data = await parseJsonSafe<{ error?: string }>(res);
     if (!res.ok) {
-      throw new Error(data?.error || "Falha ao enviar geração");
+      let errMsg = data?.error || "Falha ao enviar geração";
+      if (errMsg.toLowerCase().includes("insufficient credits")) {
+        errMsg =
+          "Saldo PiAPI insuficiente. Adicione créditos em piapi.ai para gerar vídeos.";
+      }
+      throw new Error(errMsg);
     }
   }
 
