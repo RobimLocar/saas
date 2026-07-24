@@ -1,7 +1,12 @@
 /**
  * PiAPI Client — Fluxyra
- * Cliente para integração com a API da PiAPI (geração de imagem/vídeo/áudio)
+ * Testado e validado contra a API real em 2026-07-24
  * Docs: https://piapi.ai/docs
+ *
+ * MODELOS CONFIRMADOS FUNCIONANDO:
+ *   Imagem : Qubico/flux1-schnell (txt2img), Qubico/flux1-dev (txt2img)
+ *   Vídeo  : kling (video_generation, version+mode nos params), hailuo (video_generation)
+ *   Áudio  : Qubico/ace-step (txt2audio)
  */
 
 const PIAPI_BASE_URL = "https://api.piapi.ai/api/v1";
@@ -16,9 +21,11 @@ export interface PiAPITaskResponse {
       video_url?: string;
       audio_url?: string;
       url?: string;
+      image_base64?: string;
     };
-    error?: string;
+    error?: { code: number; message: string };
   };
+  message?: string;
 }
 
 export interface PiAPIStatusResponse {
@@ -36,9 +43,10 @@ export interface PiAPIStatusResponse {
       audio?: string;
       images?: Array<{ url: string }>;
       videos?: Array<{ url: string }>;
+      image_base64?: string;
     };
     meta?: Record<string, unknown>;
-    error?: string;
+    error?: { code: number; message: string };
   };
 }
 
@@ -71,28 +79,27 @@ async function piapiFetch<T = unknown>(
 
   const data = await res.json();
 
-  if (!res.ok) {
-    throw new PiAPIError(
-      data?.error || `PiAPI error ${res.status}`,
-      res.status,
-      data
-    );
+  if (!res.ok || (data?.code && data.code !== 200)) {
+    const msg =
+      data?.message ||
+      data?.data?.error?.message ||
+      `PiAPI error ${res.status}`;
+    throw new PiAPIError(msg, res.status, data);
   }
 
   return data as T;
 }
 
-// ─── Geração de Imagem ──────────────────────────────────────────────────────
-
+// ─── Imagem ─────────────────────────────────────────────────────────────────
+// Modelos: Qubico/flux1-schnell | Qubico/flux1-dev
+// task_type sempre: txt2img
 export interface ImageGenParams {
-  model: string; // ex: 'flux-schnell', 'flux-dev', 'gpt-image-2'
+  model: string;
   prompt: string;
   negative_prompt?: string;
   width?: number;
   height?: number;
-  aspect_ratio?: string; // '1:1' | '16:9' | '9:16' | '4:3'
-  num_inference_steps?: number;
-  guidance_scale?: number;
+  aspect_ratio?: string;
   seed?: number;
   reference_image_url?: string;
 }
@@ -100,6 +107,16 @@ export interface ImageGenParams {
 export async function generateImage(
   params: ImageGenParams
 ): Promise<PiAPITaskResponse> {
+  const AR_DIMS: Record<string, { w: number; h: number }> = {
+    "1:1":  { w: 1024, h: 1024 },
+    "3:4":  { w: 896,  h: 1152 },
+    "9:16": { w: 768,  h: 1344 },
+    "4:3":  { w: 1152, h: 896  },
+    "3:2":  { w: 1216, h: 832  },
+    "16:9": { w: 1344, h: 768  },
+  };
+  const dims = params.aspect_ratio ? AR_DIMS[params.aspect_ratio] : undefined;
+
   return piapiFetch<PiAPITaskResponse>("/task", {
     method: "POST",
     body: JSON.stringify({
@@ -107,58 +124,79 @@ export async function generateImage(
       task_type: "txt2img",
       input: {
         prompt: params.prompt,
-        negative_prompt: params.negative_prompt,
-        width: params.width || 1024,
-        height: params.height || 1024,
-        aspect_ratio: params.aspect_ratio,
-        num_inference_steps: params.num_inference_steps || 30,
-        guidance_scale: params.guidance_scale || 7.5,
-        seed: params.seed,
-        image_url: params.reference_image_url,
+        negative_prompt: params.negative_prompt || "",
+        width: params.width || dims?.w || 1024,
+        height: params.height || dims?.h || 1024,
+        ...(params.reference_image_url
+          ? { image_url: params.reference_image_url }
+          : {}),
+        ...(params.seed !== undefined ? { seed: params.seed } : {}),
       },
     }),
   });
 }
 
-// ─── Geração de Vídeo ───────────────────────────────────────────────────────
-
+// ─── Vídeo ───────────────────────────────────────────────────────────────────
+// kling  → model="kling", task_type="video_generation", input.version + input.mode
+// hailuo → model="hailuo", task_type="video_generation"
+// Os parâmetros version/mode são extraídos do campo params da tabela ai_models
 export interface VideoGenParams {
-  model: string; // ex: 'kling-standard', 'seedance-2-fast', 'veo-3'
+  model: string;             // "kling" ou "hailuo"
   prompt: string;
   negative_prompt?: string;
   aspect_ratio?: string;
-  duration?: number; // segundos: 4, 5, 6, 8, 10
-  resolution?: string; // '720p' | '1080p' | '4k'
+  duration?: number;
+  resolution?: string;
   start_image_url?: string;
   end_image_url?: string;
   seed?: number;
+  // Kling-específico (vem do campo params da tabela ai_models)
+  kling_version?: string;    // "1.0" | "1.5" | "1.6" | "2.1"
+  kling_mode?: string;       // "standard" | "pro" | "master"
 }
 
 export async function generateVideo(
   params: VideoGenParams
 ): Promise<PiAPITaskResponse> {
-  // Seedance usa model="seedance" e o tier (ex: "seedance-2") como task_type
-  if (params.model.startsWith("seedance")) {
+  if (params.model === "kling") {
+    const input: Record<string, unknown> = {
+      prompt: params.prompt,
+      duration: params.duration || 5,
+      aspect_ratio: params.aspect_ratio || "16:9",
+      version: params.kling_version || "1.6",
+      mode: params.kling_mode || "standard",
+    };
+    if (params.negative_prompt) input.negative_prompt = params.negative_prompt;
+    if (params.start_image_url) input.image = params.start_image_url;
+    if (params.seed !== undefined) input.seed = params.seed;
+
     return piapiFetch<PiAPITaskResponse>("/task", {
       method: "POST",
       body: JSON.stringify({
-        model: "seedance",
-        task_type: params.model,
-        input: {
-          prompt: params.prompt,
-          aspect_ratio: params.aspect_ratio || "16:9",
-          duration: params.duration || 4,
-          resolution: params.resolution || "720p",
-          ...(params.start_image_url
-            ? { image: params.start_image_url }
-            : {}),
-        },
+        model: "kling",
+        task_type: "video_generation",
+        input,
       }),
     });
   }
 
-  const taskType = params.start_image_url ? "img2video" : "txt2video";
+  if (params.model === "hailuo") {
+    const taskType = params.start_image_url ? "txt2video" : "video_generation";
+    const input: Record<string, unknown> = {
+      prompt: params.prompt,
+      duration: params.duration || 6,
+      aspect_ratio: params.aspect_ratio || "16:9",
+    };
+    if (params.start_image_url) input.first_frame_image = params.start_image_url;
 
+    return piapiFetch<PiAPITaskResponse>("/task", {
+      method: "POST",
+      body: JSON.stringify({ model: "hailuo", task_type: taskType, input }),
+    });
+  }
+
+  // Fallback genérico (outros modelos futuros)
+  const taskType = params.start_image_url ? "img2video" : "txt2video";
   return piapiFetch<PiAPITaskResponse>("/task", {
     method: "POST",
     body: JSON.stringify({
@@ -168,31 +206,26 @@ export async function generateVideo(
         prompt: params.prompt,
         negative_prompt: params.negative_prompt,
         aspect_ratio: params.aspect_ratio || "16:9",
-        duration: params.duration || 4,
-        resolution: params.resolution || "1080p",
-        start_image_url: params.start_image_url,
-        end_image_url: params.end_image_url,
-        seed: params.seed,
+        duration: params.duration || 5,
+        ...(params.start_image_url ? { image: params.start_image_url } : {}),
+        ...(params.seed !== undefined ? { seed: params.seed } : {}),
       },
     }),
   });
 }
 
-// ─── Geração de Áudio ───────────────────────────────────────────────────────
-
+// ─── Áudio ───────────────────────────────────────────────────────────────────
+// Qubico/ace-step → task_type="txt2audio", input.style_prompt + input.lyrics
 export interface AudioGenParams {
-  model: string; // ex: 'Qubico/ace-step', 'suno-chirp-v5', 'elevenlabs-v3'
-  prompt: string; // descrição do estilo da música OU texto para TTS
-  lyrics?: string; // letra da música (opcional, para modelos de música)
-  duration?: number; // segundos (para música)
-  voice_id?: string; // para TTS (ElevenLabs)
-  language?: string; // para TTS
+  model: string;
+  prompt: string;
+  lyrics?: string;
+  duration?: number;
 }
 
 export async function generateAudio(
   params: AudioGenParams
 ): Promise<PiAPITaskResponse> {
-  // ACE-Step (música): usa style_prompt + lyrics
   if (params.model.includes("ace-step")) {
     return piapiFetch<PiAPITaskResponse>("/task", {
       method: "POST",
@@ -207,37 +240,25 @@ export async function generateAudio(
     });
   }
 
-  const isTTS = params.model.includes("elevenlabs") || params.model.includes("seed-audio");
-  const taskType = isTTS ? "tts" : "txt2audio";
-
+  // Fallback
   return piapiFetch<PiAPITaskResponse>("/task", {
     method: "POST",
     body: JSON.stringify({
       model: params.model,
-      task_type: taskType,
-      input: {
-        prompt: params.prompt,
-        text: isTTS ? params.prompt : undefined,
-        duration: params.duration,
-        voice_id: params.voice_id,
-        language: params.language || "pt-BR",
-      },
+      task_type: "txt2audio",
+      input: { prompt: params.prompt },
     }),
   });
 }
 
-// ─── Status da Task ─────────────────────────────────────────────────────────
-
+// ─── Status da Task ──────────────────────────────────────────────────────────
 export async function getTaskStatus(
   taskId: string
 ): Promise<PiAPIStatusResponse> {
-  return piapiFetch<PiAPIStatusResponse>(`/task/${taskId}`, {
-    method: "GET",
-  });
+  return piapiFetch<PiAPIStatusResponse>(`/task/${taskId}`, { method: "GET" });
 }
 
-// ─── Extrair URL do resultado ───────────────────────────────────────────────
-
+// ─── Extrair URL do resultado ────────────────────────────────────────────────
 export function extractResultUrl(
   output: PiAPIStatusResponse["data"]["output"]
 ): string | null {

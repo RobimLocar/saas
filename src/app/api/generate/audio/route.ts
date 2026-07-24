@@ -98,8 +98,6 @@ export async function POST(req: NextRequest) {
         model: aiModel.model_id,
         prompt,
         duration,
-        voice_id,
-        language,
       });
 
       await supabase
