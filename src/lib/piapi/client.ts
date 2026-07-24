@@ -31,6 +31,9 @@ export interface PiAPIStatusResponse {
       video_url?: string;
       audio_url?: string;
       url?: string;
+      image?: string;
+      video?: string;
+      audio?: string;
       images?: Array<{ url: string }>;
       videos?: Array<{ url: string }>;
     };
@@ -67,7 +70,6 @@ async function piapiFetch<T = unknown>(
   });
 
   const data = await res.json();
-  console.log("[PiAPI] Response:", JSON.stringify(data, null, 2));
 
   if (!res.ok) {
     throw new PiAPIError(
@@ -135,6 +137,26 @@ export interface VideoGenParams {
 export async function generateVideo(
   params: VideoGenParams
 ): Promise<PiAPITaskResponse> {
+  // Seedance usa model="seedance" e o tier (ex: "seedance-2") como task_type
+  if (params.model.startsWith("seedance")) {
+    return piapiFetch<PiAPITaskResponse>("/task", {
+      method: "POST",
+      body: JSON.stringify({
+        model: "seedance",
+        task_type: params.model,
+        input: {
+          prompt: params.prompt,
+          aspect_ratio: params.aspect_ratio || "16:9",
+          duration: params.duration || 4,
+          resolution: params.resolution || "720p",
+          ...(params.start_image_url
+            ? { image: params.start_image_url }
+            : {}),
+        },
+      }),
+    });
+  }
+
   const taskType = params.start_image_url ? "img2video" : "txt2video";
 
   return piapiFetch<PiAPITaskResponse>("/task", {
@@ -159,8 +181,9 @@ export async function generateVideo(
 // ─── Geração de Áudio ───────────────────────────────────────────────────────
 
 export interface AudioGenParams {
-  model: string; // ex: 'ace-step', 'suno-chirp-v5', 'elevenlabs-v3'
-  prompt: string; // letra/descrição da música OU texto para TTS
+  model: string; // ex: 'Qubico/ace-step', 'suno-chirp-v5', 'elevenlabs-v3'
+  prompt: string; // descrição do estilo da música OU texto para TTS
+  lyrics?: string; // letra da música (opcional, para modelos de música)
   duration?: number; // segundos (para música)
   voice_id?: string; // para TTS (ElevenLabs)
   language?: string; // para TTS
@@ -169,6 +192,21 @@ export interface AudioGenParams {
 export async function generateAudio(
   params: AudioGenParams
 ): Promise<PiAPITaskResponse> {
+  // ACE-Step (música): usa style_prompt + lyrics
+  if (params.model.includes("ace-step")) {
+    return piapiFetch<PiAPITaskResponse>("/task", {
+      method: "POST",
+      body: JSON.stringify({
+        model: params.model,
+        task_type: "txt2audio",
+        input: {
+          style_prompt: params.prompt,
+          lyrics: params.lyrics || "",
+        },
+      }),
+    });
+  }
+
   const isTTS = params.model.includes("elevenlabs") || params.model.includes("seed-audio");
   const taskType = isTTS ? "tts" : "txt2audio";
 
@@ -201,7 +239,7 @@ export async function getTaskStatus(
 // ─── Extrair URL do resultado ───────────────────────────────────────────────
 
 export function extractResultUrl(
-  output: PiAPIStatusResponse["output"]
+  output: PiAPIStatusResponse["data"]["output"]
 ): string | null {
   if (!output) return null;
   return (
@@ -209,6 +247,9 @@ export function extractResultUrl(
     output.image_url ||
     output.video_url ||
     output.audio_url ||
+    output.video ||
+    output.audio ||
+    output.image ||
     output.images?.[0]?.url ||
     output.videos?.[0]?.url ||
     null

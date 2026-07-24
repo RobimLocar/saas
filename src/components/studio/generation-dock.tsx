@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useStudioStore } from "@/stores/use-studio-store";
 
 type Modality = "image" | "video" | "audio";
 
@@ -36,13 +37,13 @@ const PLACEHOLDER: Record<Modality, string> = {
 const DEFAULT_MODEL: Record<Modality, string> = {
   image: "Flux Schnell",
   video: "Seedance 2.0",
-  audio: "ElevenLabs Flash",
+  audio: "Ace-Step",
 };
 
 const DEFAULT_MODEL_ID: Record<Modality, string> = {
   image: "Qubico/flux1-schnell",
-  video: "seedance-2.0",
-  audio: "elevenlabs-flash",
+  video: "seedance-2",
+  audio: "Qubico/ace-step",
 };
 
 const CREDIT_COST: Record<Modality, number> = {
@@ -63,9 +64,11 @@ function Control({ children }: { children: React.ReactNode }) {
 }
 
 export function GenerationDock() {
-  const [active, setActive] = useState<Modality>("video");
+  const [active, setActive] = useState<Modality>("image");
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
+  const triggerRefresh = useStudioStore((s) => s.triggerRefresh);
+  const setViewFilter = useStudioStore((s) => s.setViewFilter);
 
   async function handleGenerate() {
     if (!prompt.trim()) {
@@ -83,6 +86,9 @@ export function GenerationDock() {
       if (res.ok && data?.generation_id) {
         toast.success("Geração enviada! Acompanhe na galeria.");
         setPrompt("");
+        // Atualiza a galeria imediatamente para exibir o card "gerando…"
+        setViewFilter("all");
+        triggerRefresh();
       } else {
         toast.error(data?.error || "Não foi possível enviar a geração.");
       }

@@ -106,14 +106,6 @@ export async function POST(req: NextRequest) {
 
     // Chamar PiAPI
     try {
-      console.log("[PiAPI] Iniciando chamada com params:", {
-        model: aiModel.model_id,
-        prompt: prompt.substring(0, 50),
-        width,
-        height,
-        aspect_ratio
-      });
-
       const task = await generateImage({
         model: aiModel.model_id,
         prompt,
@@ -123,8 +115,6 @@ export async function POST(req: NextRequest) {
         height,
         reference_image_url,
       });
-
-      console.log("[PiAPI] Task criada com sucesso:", task.data.task_id);
 
       // Atualizar geração com task_id
       await supabase

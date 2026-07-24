@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
 
         const publicUrl = publicUrlData.publicUrl;
 
-        // Atualizar geração
+        // Atualizar geração (o feed do Studio lê de `generations`)
         await supabase
           .from("generations")
           .update({
@@ -117,14 +117,6 @@ export async function POST(req: NextRequest) {
             updated_at: new Date().toISOString(),
           })
           .eq("id", generation.id);
-
-        // Criar asset na biblioteca
-        await supabase.from("assets").insert({
-          user_id: generation.user_id,
-          category: generation.type,
-          name: (generation.prompt || "Geração").slice(0, 60),
-          image_url: publicUrl,
-        });
       } catch {
         // Salvar URL direta do provider se falhar o upload
         await supabase
@@ -135,13 +127,6 @@ export async function POST(req: NextRequest) {
             updated_at: new Date().toISOString(),
           })
           .eq("id", generation.id);
-
-        await supabase.from("assets").insert({
-          user_id: generation.user_id,
-          category: generation.type,
-          name: (generation.prompt || "Geração").slice(0, 60),
-          image_url: resultUrl,
-        });
       }
 
       return NextResponse.json({ ok: true, action: "completed" });

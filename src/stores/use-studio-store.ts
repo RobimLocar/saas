@@ -37,14 +37,19 @@ interface StudioState {
   viewFilter: "all" | Modality;
   setViewFilter: (filter: "all" | Modality) => void;
 
+  // Gatilho de atualização da galeria (incrementado após cada geração)
+  refreshKey: number;
+  triggerRefresh: () => void;
+
   // Reset
   resetParams: () => void;
 }
 
+// model_id reais (provider PiAPI) do catálogo ai_models
 const DEFAULT_MODELS: Record<Modality, string> = {
-  image: "flux-schnell",
-  video: "kling-standard",
-  audio: "ace-step",
+  image: "Qubico/flux1-schnell",
+  video: "seedance-2",
+  audio: "Qubico/ace-step",
 };
 
 export const useStudioStore = create<StudioState>((set) => ({
@@ -57,7 +62,7 @@ export const useStudioStore = create<StudioState>((set) => ({
   negativePrompt: "",
   setNegativePrompt: (negativePrompt) => set({ negativePrompt }),
 
-  selectedModelSlug: "flux-schnell",
+  selectedModelSlug: "Qubico/flux1-schnell",
   setSelectedModelSlug: (selectedModelSlug) => set({ selectedModelSlug }),
 
   aspectRatio: "1:1",
@@ -76,6 +81,9 @@ export const useStudioStore = create<StudioState>((set) => ({
 
   viewFilter: "all",
   setViewFilter: (viewFilter) => set({ viewFilter }),
+
+  refreshKey: 0,
+  triggerRefresh: () => set((s) => ({ refreshKey: s.refreshKey + 1 })),
 
   resetParams: () =>
     set({

@@ -104,12 +104,12 @@ export async function POST(req: NextRequest) {
 
       await supabase
         .from("generations")
-        .update({ provider_task_id: task.task_id, status: "processing" })
+        .update({ provider_task_id: task.data.task_id, status: "processing" })
         .eq("id", generation.id);
 
       return NextResponse.json({
         generation_id: generation.id,
-        task_id: task.task_id,
+        task_id: task.data.task_id,
         credits_used: aiModel.credit_cost,
         balance: newBalance,
       });

@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { getTaskStatus, extractResultUrl } from "@/lib/piapi/client";
 
 /**
  * GET /api/generate/status?id=<generation_id>
- * Polling de status de uma geração — chama PiAPI se ainda processing
+ * Polling de status de uma geração — consulta a PiAPI se ainda processing,
+ * baixa a mídia para o Supabase Storage (bucket "assets") e marca como concluída.
+ * O feed do Studio lê diretamente da tabela `generations`.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -42,59 +45,115 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Se ainda processing, checar status no PiAPI
-    if (generation.provider_task_id) {
-      try {
-        const taskStatus = await getTaskStatus(generation.provider_task_id);
+    if (!generation.provider_task_id) {
+      return NextResponse.json({ status: generation.status });
+    }
 
-        if (taskStatus.status === "completed") {
-          const resultUrl = extractResultUrl(taskStatus.output);
+    // Cliente com service role para Storage + escrita (ignora RLS)
+    const service = createServiceClient();
 
-          await supabase
-            .from("generations")
-            .update({
-              status: "completed",
-              result_url: resultUrl,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", generation.id);
+    try {
+      const taskStatus = await getTaskStatus(generation.provider_task_id);
+      const state = taskStatus.data?.status;
 
-          // Criar asset na biblioteca do usuário
-          if (resultUrl) {
-            await supabase.from("assets").insert({
-              user_id: user.id,
-              category: generation.type,
-              name: (generation.prompt || "Geração").slice(0, 60),
-              image_url: resultUrl,
-            });
-          }
-
-          return NextResponse.json({ status: "completed", result_url: resultUrl });
+      if (state === "completed") {
+        const providerUrl = extractResultUrl(taskStatus.data.output);
+        if (!providerUrl) {
+          return NextResponse.json({ status: "processing" });
         }
 
-        if (taskStatus.status === "failed") {
-          await supabase
-            .from("generations")
-            .update({
-              status: "failed",
-              error_message: taskStatus.error || "Erro no provedor",
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", generation.id);
+        // Baixar a mídia e persistir no Supabase Storage
+        let finalUrl = providerUrl;
+        try {
+          const ext =
+            generation.type === "image"
+              ? "png"
+              : generation.type === "video"
+              ? "mp4"
+              : "mp3";
+          const storagePath = `${user.id}/${generation.type}/${generation.id}.${ext}`;
 
-          return NextResponse.json({
+          const mediaRes = await fetch(providerUrl);
+          const mediaBuffer = await mediaRes.arrayBuffer();
+
+          const { error: uploadError } = await service.storage
+            .from("assets")
+            .upload(storagePath, Buffer.from(mediaBuffer), {
+              contentType:
+                mediaRes.headers.get("content-type") ||
+                (generation.type === "image"
+                  ? "image/png"
+                  : generation.type === "video"
+                  ? "video/mp4"
+                  : "audio/mpeg"),
+              upsert: true,
+            });
+
+          if (uploadError) {
+            console.warn("[status] Upload falhou:", uploadError.message);
+          } else {
+            const { data: publicData } = service.storage
+              .from("assets")
+              .getPublicUrl(storagePath);
+            if (publicData?.publicUrl) finalUrl = publicData.publicUrl;
+          }
+        } catch (storageErr) {
+          console.warn("[status] Erro no Storage, usando URL do provider:", storageErr);
+        }
+
+        await service
+          .from("generations")
+          .update({
+            status: "completed",
+            result_url: finalUrl,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", generation.id);
+
+        return NextResponse.json({ status: "completed", result_url: finalUrl });
+      }
+
+      if (state === "failed") {
+        const errMsg = taskStatus.data?.error || "Erro no provedor";
+
+        await service
+          .from("generations")
+          .update({
             status: "failed",
-            error_message: taskStatus.error,
+            error_message: String(errMsg),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", generation.id);
+
+        // Reembolsar créditos automaticamente
+        const { data: profile } = await service
+          .from("profiles")
+          .select("credits_balance")
+          .eq("id", user.id)
+          .single();
+
+        if (profile) {
+          await service
+            .from("profiles")
+            .update({ credits_balance: profile.credits_balance + generation.credits_used })
+            .eq("id", user.id);
+
+          await service.from("credit_transactions").insert({
+            user_id: user.id,
+            amount: generation.credits_used,
+            reason: "refund",
+            related_job_id: generation.id,
           });
         }
 
-        return NextResponse.json({ status: taskStatus.status || "processing" });
-      } catch {
-        return NextResponse.json({ status: "processing" });
+        return NextResponse.json({ status: "failed", error_message: String(errMsg) });
       }
-    }
 
-    return NextResponse.json({ status: generation.status });
+      return NextResponse.json({ status: state || "processing" });
+    } catch (err) {
+      console.warn("[status] Erro ao consultar PiAPI:", err);
+      return NextResponse.json({ status: "processing" });
+    }
   } catch (err) {
     console.error("[generate/status] Error:", err);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
