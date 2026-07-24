@@ -1,5 +1,21 @@
-# saas
+# Fluxyra
 
-Repositório do projeto **Fluxyra** — plataforma SaaS multimodal de geração de mídia com IA.
+Plataforma **SaaS multimodal de geração de mídia com IA**.
 
-O setup inicial do projeto (Next.js + TypeScript + Tailwind + shadcn/ui + Supabase + Stripe + PiAPI + Atlas) é adicionado via Pull Request.
+## Stack
+- Next.js (App Router, `src/`) + TypeScript
+- Tailwind CSS + shadcn/ui
+- Supabase (auth + banco)
+- Stripe (billing)
+- PiAPI (geração de imagem/vídeo/áudio)
+- Atlas
+- Zustand, TanStack React Query, Framer Motion
+
+## Desenvolvimento
+```bash
+npm install
+cp .env.local.example .env.local   # preencha as variáveis
+npm run dev
+```
+
+Estrutura de rotas em `src/app`: `(auth)`, `(dashboard)`, `(marketing)` e rotas de API em `src/app/api`.
