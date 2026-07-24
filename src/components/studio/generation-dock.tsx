@@ -897,6 +897,8 @@ export function GenerationDock() {
         if (startImageUrl) body.start_image_url = startImageUrl;
         if (endImageUrl) body.end_image_url = endImageUrl;
       }
+      if (referenceVideos.length > 0) body.reference_videos = referenceVideos;
+      if (referenceAudios.length > 0) body.reference_audios = referenceAudios;
       body.with_audio = audioEnabled;
     }
 

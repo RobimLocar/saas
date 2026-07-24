@@ -253,6 +253,9 @@ export interface BuildVideoArgs {
   duration?: number;
   aspectRatio?: string;
   imageUrl?: string;
+  endImageUrl?: string;
+  referenceVideos?: string[];
+  referenceAudios?: string[];
   negativePrompt?: string;
 }
 
@@ -269,7 +272,17 @@ const snap = (v: number, allowed: number[]) =>
  * config.service_mode = "public".
  */
 export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown> {
-  const { params, prompt, quality, aspectRatio, imageUrl, negativePrompt } = args;
+  const {
+    params,
+    prompt,
+    quality,
+    aspectRatio,
+    imageUrl,
+    endImageUrl,
+    referenceVideos,
+    referenceAudios,
+    negativePrompt,
+  } = args;
   const backend = params.backend || "kling";
   const config = { service_mode: "public" };
   const aspect = aspectRatio || "16:9";
@@ -289,7 +302,22 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
       resolution,
       aspect_ratio: aspect,
     };
-    if (imageUrl) input.image_urls = [imageUrl];
+    // image_urls: [start] ou [start, end] (end sozinho não funciona como end frame).
+    const imgUrls: string[] = [];
+    if (imageUrl) imgUrls.push(imageUrl);
+    if (endImageUrl && imageUrl) imgUrls.push(endImageUrl);
+    if (imgUrls.length > 0) input.image_urls = imgUrls;
+    if (referenceVideos && referenceVideos.length > 0) {
+      input.video_urls = referenceVideos;
+    }
+    // audio_urls só é aceito quando há image_urls ou video_urls.
+    if (
+      referenceAudios &&
+      referenceAudios.length > 0 &&
+      (imgUrls.length > 0 || (referenceVideos && referenceVideos.length > 0))
+    ) {
+      input.audio_urls = referenceAudios;
+    }
     if (negativePrompt) input.negative_prompt = negativePrompt;
     return { model: "seedance", task_type: taskType, input, config };
   }
@@ -362,6 +390,10 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
       aspect_ratio: aspect,
     };
     if (imageUrl) input.image_url = imageUrl;
+    if (endImageUrl) input.end_image_url = endImageUrl;
+    if (referenceVideos && referenceVideos.length > 0) {
+      input.reference_video_url = referenceVideos[0];
+    }
     if (negativePrompt) input.negative_prompt = negativePrompt;
     return { model: "kling-turbo", task_type: "video_generation", input, config };
   }
@@ -382,6 +414,10 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
       enable_audio: false,
     };
     if (imageUrl) input.image_url = imageUrl;
+    if (endImageUrl) input.end_image_url = endImageUrl;
+    if (referenceVideos && referenceVideos.length > 0) {
+      input.reference_video_url = referenceVideos[0];
+    }
     if (negativePrompt) input.negative_prompt = negativePrompt;
     return { model: "kling", task_type: "omni_video_generation", input, config };
   }
@@ -397,6 +433,10 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
       aspect_ratio: aspect,
     };
     if (imageUrl) input.image_url = imageUrl;
+    if (endImageUrl) input.end_image_url = endImageUrl;
+    if (referenceVideos && referenceVideos.length > 0) {
+      input.reference_video_url = referenceVideos[0];
+    }
     if (negativePrompt) input.negative_prompt = negativePrompt;
     return { model: "kling", task_type: "video_generation", input, config };
   }
@@ -412,6 +452,10 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
     aspect_ratio: aspect,
   };
   if (imageUrl) input.image_url = imageUrl;
+  if (endImageUrl) input.end_image_url = endImageUrl;
+  if (referenceVideos && referenceVideos.length > 0) {
+    input.reference_video_url = referenceVideos[0];
+  }
   if (negativePrompt) input.negative_prompt = negativePrompt;
   return { model: "kling", task_type: "video_generation", input, config };
 }
