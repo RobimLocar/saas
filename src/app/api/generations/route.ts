@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     let query = supabase
       .from("generations")
       .select(
-        "id, type, prompt, status, result_url, error_message, credits_used, created_at, params, ai_models(name, model_id)"
+        "id, type, prompt, status, result_url, error_message, credits_used, created_at, params, model_id, ai_models(name, model_id)"
       )
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
@@ -48,7 +48,17 @@ export async function GET(req: NextRequest) {
       error_message: g.error_message,
       credits_used: g.credits_used,
       created_at: g.created_at,
-      params: (g.params as { aspect_ratio?: string } | null) || null,
+      params:
+        (g.params as {
+          aspect_ratio?: string;
+          resolution?: string;
+          duration?: number;
+          is_favorite?: boolean;
+          prompt_favorite?: boolean;
+          reference_image_url?: string;
+          start_image_url?: string;
+        } | null) || null,
+      model_uuid: (g.model_id as string | null) || null,
       model_label: (g.ai_models as { name?: string } | null)?.name || null,
       model_slug: (g.ai_models as { model_id?: string } | null)?.model_id || null,
     }));

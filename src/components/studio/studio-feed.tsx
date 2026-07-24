@@ -5,6 +5,7 @@ import Image from "next/image";
 import { Download, Heart, Loader2, Play, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useStudioStore } from "@/stores/use-studio-store";
+import { MediaLightbox, type LightboxItem } from "@/components/studio/media-lightbox";
 
 interface Generation {
   id: string;
@@ -15,7 +16,8 @@ interface Generation {
   error_message: string | null;
   credits_used: number;
   created_at: string;
-  params?: { aspect_ratio?: string } | null;
+  model_uuid?: string | null;
+  params?: LightboxItem["params"];
   model_label?: string | null;
   model_slug?: string | null;
 }
@@ -25,6 +27,7 @@ const POLL_MS = 3000;
 export function StudioFeed() {
   const [generations, setGenerations] = useState<Generation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [lightboxId, setLightboxId] = useState<string | null>(null);
   const refreshKey = useStudioStore((s) => s.refreshKey);
   const viewFilter = useStudioStore((s) => s.viewFilter);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -98,6 +101,42 @@ export function StudioFeed() {
     [generations, viewFilter]
   );
 
+  const lightboxItems = useMemo(
+    () => filtered.filter((item) => item.status === "completed" && item.result_url),
+    [filtered]
+  );
+
+  const lightboxIndex = useMemo(
+    () => (lightboxId ? lightboxItems.findIndex((item) => item.id === lightboxId) : -1),
+    [lightboxId, lightboxItems]
+  );
+
+  const handleLightboxDeleted = useCallback(
+    (id: string) => {
+      const currentIndex = lightboxItems.findIndex((item) => item.id === id);
+      const remaining = lightboxItems.filter((item) => item.id !== id);
+      if (!remaining.length) {
+        setLightboxId(null);
+      } else {
+        const next = remaining[Math.min(currentIndex, remaining.length - 1)];
+        setLightboxId(next.id);
+      }
+      setGenerations((prev) => prev.filter((item) => item.id !== id));
+    },
+    [lightboxItems]
+  );
+
+  const handleLightboxUpdated = useCallback(
+    (id: string, params: NonNullable<LightboxItem["params"]>) => {
+      setGenerations((prev) =>
+        prev.map((item) =>
+          item.id === id ? { ...item, params: { ...item.params, ...params } } : item
+        )
+      );
+    },
+    []
+  );
+
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center pt-[76px]">
@@ -121,15 +160,35 @@ export function StudioFeed() {
   }
 
   return (
-    <div className="px-1 pb-48 pt-[76px] [column-count:2] [column-gap:6px] sm:[column-count:3] lg:[column-count:4] xl:[column-count:5] 2xl:[column-count:6]">
-      {filtered.map((generation) => (
-        <GenerationCard key={generation.id} gen={generation} />
-      ))}
-    </div>
+    <>
+      <div className="px-1 pb-48 pt-[76px] [column-count:2] [column-gap:6px] sm:[column-count:3] lg:[column-count:4] xl:[column-count:5] 2xl:[column-count:6]">
+        {filtered.map((generation) => (
+          <GenerationCard
+            key={generation.id}
+            gen={generation}
+            onOpen={() => setLightboxId(generation.id)}
+          />
+        ))}
+      </div>
+
+      {lightboxId && lightboxIndex >= 0 && (
+        <MediaLightbox
+          items={lightboxItems}
+          index={lightboxIndex}
+          onClose={() => setLightboxId(null)}
+          onNavigate={(nextIndex) => {
+            const next = lightboxItems[nextIndex];
+            if (next) setLightboxId(next.id);
+          }}
+          onDeleted={handleLightboxDeleted}
+          onUpdated={handleLightboxUpdated}
+        />
+      )}
+    </>
   );
 }
 
-function GenerationCard({ gen }: { gen: Generation }) {
+function GenerationCard({ gen, onOpen }: { gen: Generation; onOpen: () => void }) {
   const setReferenceImageUrl = useStudioStore((s) => s.setReferenceImageUrl);
 
   const isPending = gen.status === "pending" || gen.status === "processing";
@@ -157,7 +216,10 @@ function GenerationCard({ gen }: { gen: Generation }) {
   };
 
   return (
-    <article className="group relative mb-1.5 break-inside-avoid overflow-hidden rounded-lg">
+    <article
+      onClick={onOpen}
+      className="group relative mb-1.5 cursor-pointer break-inside-avoid overflow-hidden rounded-lg"
+    >
       {gen.type === "image" ? (
         <Image
           src={gen.result_url!}
@@ -170,7 +232,12 @@ function GenerationCard({ gen }: { gen: Generation }) {
       ) : gen.type === "video" ? (
         <VideoTile src={gen.result_url!} />
       ) : (
-        <audio src={gen.result_url!} controls className="w-full rounded-lg bg-[#141414] p-3" />
+        <audio
+          src={gen.result_url!}
+          controls
+          onClick={(event) => event.stopPropagation()}
+          className="w-full rounded-lg bg-[#141414] p-3"
+        />
       )}
 
       {(gen.type === "image" || gen.type === "video") && (

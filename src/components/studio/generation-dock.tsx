@@ -478,9 +478,11 @@ export function GenerationDock() {
 
   useEffect(() => {
     if (!models.length) return;
+    // Lista ainda é da aba anterior (fetch em andamento) — não sobrescrever o modelo selecionado.
+    if (models[0]?.type !== activeTab) return;
     const exists = models.some((item) => item.id === selectedModelId);
     if (!exists) setSelectedModelId(models[0].id);
-  }, [models, selectedModelId, setSelectedModelId]);
+  }, [models, activeTab, selectedModelId, setSelectedModelId]);
 
   const selectedModel = useMemo(
     () => models.find((item) => item.id === selectedModelId) ?? null,
