@@ -127,13 +127,13 @@ export async function POST(req: NextRequest) {
             : QUALITY_KLING_MODE[qualityLevel]
           : modelParams.kling_mode;
 
-      // Proteção extra: kling 2.1 não suporta txt2video — sem imagem, forçar 1.6
-      // (o client.ts também faz isso, mas mantemos dupla proteção aqui)
+      // Proteção extra: kling 2.1 não funciona na PiAPI (nem txt2video nem img2video).
+      // Sempre forçar 1.6 quando o modelo tiver kling_version=2.1 configurado.
       let effectiveKlingVersion = modelParams.kling_version || "1.6";
-      if (backend === "kling" && effectiveKlingVersion === "2.1" && !start_image_url) {
+      if (backend === "kling" && effectiveKlingVersion === "2.1") {
         console.warn(
-          `[generate/video] kling 2.1 txt2video bloqueado — model=${aiModel.name}, ` +
-          `falling back to 1.6 (sem start_image_url)`
+          `[generate/video] kling 2.1 bloqueado (PiAPI não suporta) — model=${aiModel.name}, ` +
+          `falling back to 1.6`
         );
         effectiveKlingVersion = "1.6";
       }

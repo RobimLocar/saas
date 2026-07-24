@@ -241,18 +241,28 @@ export async function generateVideo(
   params: VideoGenParams
 ): Promise<PiAPITaskResponse> {
   if (params.model === "kling") {
-    // PiAPI: kling 2.1 só suporta img2video ("text-to-video generation is not
-    // available in version 2.1"). Sem imagem inicial, cai para 1.6 (mesmo mode).
+    // PiAPI: kling 2.1 não funciona via API (nem txt2video nem img2video).
+    // Sempre cai para 1.6 quando 2.1 é solicitado.
     let version = params.kling_version || "1.6";
-    if (version === "2.1" && !params.start_image_url) {
+    if (version === "2.1") {
       version = "1.6";
     }
+    const klingMode = params.kling_mode || "standard";
+    const aspect = params.aspect_ratio || "16:9";
+
+    // Kling standard mode: suporta qualquer duração em 16:9, mas máx 5s em outros aspects.
+    // Pro/master mode: suporta até 10s (a PiAPI limita internamente).
+    let duration = params.duration || 5;
+    if (klingMode === "standard" && aspect !== "16:9") {
+      duration = Math.min(duration, 5);
+    }
+
     const input: Record<string, unknown> = {
       prompt: params.prompt,
-      duration: params.duration || 5,
-      aspect_ratio: params.aspect_ratio || "16:9",
+      duration,
+      aspect_ratio: aspect,
       version,
-      mode: params.kling_mode || "standard",
+      mode: klingMode,
     };
     if (params.negative_prompt) input.negative_prompt = params.negative_prompt;
     if (params.start_image_url) input.image = params.start_image_url;
