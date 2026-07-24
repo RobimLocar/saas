@@ -973,7 +973,7 @@ export function GenerationDock() {
   return (
     <section className="fixed bottom-4 left-1/2 z-30 w-[min(1180px,calc(100vw-32px))] -translate-x-1/2 rounded-2xl border border-[#2A2A2A] bg-[#141414]/95 shadow-2xl backdrop-blur">
       {/* Painel Assist — duas colunas */}
-      {assistOpen && (
+      {activeTab !== "audio" && assistOpen && (
         <div className="border-b border-[#2A2A2A]">
           <div className="grid grid-cols-[210px_1fr]">
             <div className="max-h-[300px] overflow-y-auto border-r border-[#2A2A2A] p-3">
@@ -1027,7 +1027,7 @@ export function GenerationDock() {
       )}
 
       {/* Painel @ (assets) — duas colunas */}
-      {atOpen && (
+      {activeTab !== "audio" && atOpen && (
         <div className="border-b border-[#2A2A2A]">
           <div className="grid grid-cols-[210px_1fr]">
             <div className="max-h-[300px] overflow-y-auto border-r border-[#2A2A2A] p-3">
@@ -1684,70 +1684,77 @@ export function GenerationDock() {
               </div>
             )}
 
-            {/* @ — assets */}
-            <button
-              type="button"
-              onClick={() => {
-                setAtOpen((value) => !value);
-                setAssistOpen(false);
-              }}
-              className={cn(
-                "h-9 w-9 rounded-lg border",
-                atOpen
-                  ? "border-[#7C3AED] bg-[#7C3AED]/15 text-[#F5F5F5]"
-                  : "border-[#2A2A2A] bg-[#1A1A1A] text-[#888888]"
-              )}
-            >
-              <AtSign className="mx-auto h-4 w-4" />
-            </button>
+            {/* @, Reference, Assist e Wise enhance não se aplicam ao áudio */}
+            {activeTab !== "audio" && (
+              <>
+                {/* @ — assets */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAtOpen((value) => !value);
+                    setAssistOpen(false);
+                  }}
+                  className={cn(
+                    "h-9 w-9 rounded-lg border",
+                    atOpen
+                      ? "border-[#7C3AED] bg-[#7C3AED]/15 text-[#F5F5F5]"
+                      : "border-[#2A2A2A] bg-[#1A1A1A] text-[#888888]"
+                  )}
+                >
+                  <AtSign className="mx-auto h-4 w-4" />
+                </button>
 
-            {/* Reference */}
-            <ControlButton
-              active={
-                activeTab === "video"
-                  ? referenceTab === "omni"
-                  : refSectionOpen || referenceImages.length > 0
-              }
-              onClick={() => {
-                if (activeTab === "video") {
-                  setReferenceTab(referenceTab === "omni" ? "start-end" : "omni");
-                } else {
-                  setRefSectionOpen((value) => !value);
-                }
-              }}
-              icon={<Upload className="h-4 w-4 text-[#888888]" />}
-              muted
-            >
-              Reference
-            </ControlButton>
+                {/* Reference */}
+                <ControlButton
+                  active={
+                    activeTab === "video"
+                      ? referenceTab === "omni"
+                      : refSectionOpen || referenceImages.length > 0
+                  }
+                  onClick={() => {
+                    if (activeTab === "video") {
+                      setReferenceTab(
+                        referenceTab === "omni" ? "start-end" : "omni"
+                      );
+                    } else {
+                      setRefSectionOpen((value) => !value);
+                    }
+                  }}
+                  icon={<Upload className="h-4 w-4 text-[#888888]" />}
+                  muted
+                >
+                  Reference
+                </ControlButton>
 
-            {/* Assist */}
-            <ControlButton
-              active={assistOpen}
-              onClick={() => {
-                setAssistOpen((value) => !value);
-                setAtOpen(false);
-              }}
-              icon={<SlidersHorizontal className="h-4 w-4 text-[#888888]" />}
-            >
-              Assist
-              <ChevronUp className="h-3 w-3 text-[#666666]" />
-            </ControlButton>
+                {/* Assist */}
+                <ControlButton
+                  active={assistOpen}
+                  onClick={() => {
+                    setAssistOpen((value) => !value);
+                    setAtOpen(false);
+                  }}
+                  icon={<SlidersHorizontal className="h-4 w-4 text-[#888888]" />}
+                >
+                  Assist
+                  <ChevronUp className="h-3 w-3 text-[#666666]" />
+                </ControlButton>
 
-            {/* Wise enhance */}
-            <ControlButton
-              icon={
-                enhancing ? (
-                  <Loader2 className="h-4 w-4 animate-spin text-[#8B5CF6]" />
-                ) : (
-                  <Sparkles className="h-4 w-4 text-[#888888]" />
-                )
-              }
-              muted={!enhancing}
-              onClick={() => void handleWiseEnhance()}
-            >
-              Wise enhance
-            </ControlButton>
+                {/* Wise enhance */}
+                <ControlButton
+                  icon={
+                    enhancing ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-[#8B5CF6]" />
+                    ) : (
+                      <Sparkles className="h-4 w-4 text-[#888888]" />
+                    )
+                  }
+                  muted={!enhancing}
+                  onClick={() => void handleWiseEnhance()}
+                >
+                  Wise enhance
+                </ControlButton>
+              </>
+            )}
           </div>
 
           {/* Generate */}
