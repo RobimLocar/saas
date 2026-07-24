@@ -1,20 +1,31 @@
 # ✅ Status da Integração PiAPI - Fluxyra
 
 **Data:** 24 de julho de 2026  
-**Status:** ✅ **INTEGRAÇÃO FUNCIONANDO** - Geração de imagens testada com sucesso
+**Status:** ✅ **INTEGRAÇÃO FUNCIONANDO** - Imagem, Áudio e Vídeo testados end-to-end com sucesso
 
 ---
 
 ## 🎯 Resumo Executivo
 
-A integração com a **PiAPI** está funcionando e gerando imagens reais. Realizamos teste end-to-end com sucesso:
+A integração com a **PiAPI** está funcionando para as **três modalidades**. Fluxo completo validado no navegador (login → prompt → geração → mídia aparece na galeria automaticamente → créditos debitados → mídia persistida no Supabase Storage):
 
-- ✅ Chave de API configurada
-- ✅ Modelos Flux cadastrados no banco de dados
-- ✅ Geração de imagem via Flux Schnell concluída
-- ✅ Créditos debitados corretamente (10 → 9 créditos)
-- ✅ Task ID salvo no banco de dados
-- ✅ Imagem gerada: [https://build.nvidia.com/_next/image?url=https%3A%2F%2Fassets.ngc.nvidia.com%2Fproducts%2Fapi-catalog%2Fimages%2Fflux_1-schnell.jpg&w=3840&q=75
+- ✅ **Imagem** — Flux Schnell (`Qubico/flux1-schnell`), ~15s
+- ✅ **Áudio** — Ace-Step (`Qubico/ace-step`), música gerada com player na galeria
+- ✅ **Vídeo** — Seedance 2.0 (`seedance` / `task_type: seedance-2`), vídeo gerado com player na galeria
+- ✅ Créditos debitados corretamente por geração
+- ✅ Polling de status a cada 3s até a conclusão
+- ✅ Mídia baixada do provedor e persistida no Supabase Storage (bucket `assets`, via service-role)
+- ✅ `result_url` final aponta para o Storage do Supabase (não a URL temporária do provedor)
+
+### Formatos de payload descobertos (PiAPI)
+
+| Modalidade | model | task_type | campos de input |
+|-----------|-------|-----------|-----------------|
+| Imagem | `Qubico/flux1-schnell` | `txt2img` | `prompt`, `width`, `height` |
+| Áudio | `Qubico/ace-step` | `txt2audio` | `style_prompt`, `lyrics` |
+| Vídeo | `seedance` | `seedance-2` | `prompt`, `aspect_ratio`, `duration`, `resolution` |
+
+Resposta da PiAPI segue o formato `{ code, data: { task_id, status, output, error } }`. Output por tipo: imagem `image_url`, áudio `audio_url`, vídeo `video`.
 
 ---
 
