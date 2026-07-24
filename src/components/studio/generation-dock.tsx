@@ -23,7 +23,9 @@ import {
   Loader2,
   Monitor,
   Music,
+  Play,
   Plus,
+  Search,
   SlidersHorizontal,
   Sparkles,
   Upload,
@@ -37,6 +39,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useStudioStore } from "@/stores/use-studio-store";
 import { ASSIST_CATEGORIES } from "@/lib/assist-presets";
+import { TTS_VOICES } from "@/lib/tts-voices";
 
 type Modality = "image" | "video" | "audio";
 
@@ -52,6 +55,8 @@ interface ApiModel {
   available: boolean;
   family_description?: string;
   badge?: string;
+  gen_time?: string;
+  kind?: string;
   has_audio?: boolean;
   resolution?: string;
   duration_range?: string;
@@ -379,6 +384,12 @@ function ModelMenu({
                             label={model.duration_range}
                           />
                         )}
+                        {model.gen_time && (
+                          <SpecPill
+                            icon={<Zap className="h-2.5 w-2.5" />}
+                            label={model.gen_time}
+                          />
+                        )}
                       </span>
                     </button>
                   );
@@ -389,6 +400,189 @@ function ModelMenu({
         );
       })}
     </div>
+  );
+}
+
+/** Seletor de voz de TTS com busca, filtros e preview de áudio. */
+function VoiceSelector({
+  voiceId,
+  onSelect,
+}: {
+  voiceId: string;
+  onSelect: (id: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [accent, setAccent] = useState("All");
+  const [gender, setGender] = useState("All");
+  const [playing, setPlaying] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const accents = useMemo(
+    () => ["All", ...Array.from(new Set(TTS_VOICES.map((v) => v.accent)))],
+    []
+  );
+  const genders = ["All", "Female", "Male"];
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return TTS_VOICES.filter((v) => {
+      if (accent !== "All" && v.accent !== accent) return false;
+      if (gender !== "All" && v.gender !== gender) return false;
+      if (
+        q &&
+        !v.name.toLowerCase().includes(q) &&
+        !v.description.toLowerCase().includes(q)
+      )
+        return false;
+      return true;
+    });
+  }, [query, accent, gender]);
+
+  const current = TTS_VOICES.find((v) => v.id === voiceId);
+
+  function preview(id: string) {
+    try {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      const el = new Audio(`/api/voices/preview?voice=${encodeURIComponent(id)}`);
+      audioRef.current = el;
+      setPlaying(id);
+      el.onended = () => setPlaying((p) => (p === id ? null : p));
+      el.onerror = () => setPlaying((p) => (p === id ? null : p));
+      void el.play().catch(() => setPlaying(null));
+    } catch {
+      setPlaying(null);
+    }
+  }
+
+  return (
+    <Popover
+      panelClassName="w-[320px]"
+      trigger={() => (
+        <>
+          <Volume2 className="h-4 w-4 text-[#888888]" />
+          <span className="max-w-[130px] truncate">
+            {current?.name || "Select voice"}
+          </span>
+          <ChevronUp className="h-3 w-3 text-[#666666]" />
+        </>
+      )}
+    >
+      {(close) => (
+        <div className="flex max-h-[360px] w-full flex-col p-1.5">
+          {/* Busca */}
+          <div className="mb-2 flex items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#000000] px-2.5">
+            <Search className="h-3.5 w-3.5 shrink-0 text-[#666666]" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search voices..."
+              className="h-8 w-full bg-transparent text-sm text-[#F5F5F5] placeholder:text-[#666666] focus:outline-none"
+            />
+          </div>
+
+          {/* Filtros */}
+          <div className="mb-2 flex flex-wrap gap-1">
+            {accents.map((a) => (
+              <button
+                key={a}
+                type="button"
+                onClick={() => setAccent(a)}
+                className={cn(
+                  "rounded-md border px-2 py-0.5 text-[10px]",
+                  a === accent
+                    ? "border-[#7C3AED] bg-[#7C3AED]/15 text-[#F5F5F5]"
+                    : "border-[#2A2A2A] bg-[#1A1A1A] text-[#888888] hover:text-[#F5F5F5]"
+                )}
+              >
+                {a}
+              </button>
+            ))}
+          </div>
+          <div className="mb-2 flex gap-1">
+            {genders.map((g) => (
+              <button
+                key={g}
+                type="button"
+                onClick={() => setGender(g)}
+                className={cn(
+                  "rounded-md border px-2 py-0.5 text-[10px]",
+                  g === gender
+                    ? "border-[#7C3AED] bg-[#7C3AED]/15 text-[#F5F5F5]"
+                    : "border-[#2A2A2A] bg-[#1A1A1A] text-[#888888] hover:text-[#F5F5F5]"
+                )}
+              >
+                {g}
+              </button>
+            ))}
+          </div>
+
+          {/* Lista de vozes */}
+          <div className="flex-1 space-y-0.5 overflow-y-auto">
+            {filtered.length === 0 && (
+              <p className="px-2 py-3 text-center text-xs text-[#666666]">
+                No voices found
+              </p>
+            )}
+            {filtered.map((v) => {
+              const selected = v.id === voiceId;
+              return (
+                <div
+                  key={v.id}
+                  className={cn(
+                    "flex items-center gap-2 rounded-lg px-2 py-1.5",
+                    selected ? "bg-[#1F1F1F]" : "hover:bg-[#1F1F1F]"
+                  )}
+                >
+                  <button
+                    type="button"
+                    onClick={() => preview(v.id)}
+                    title="Preview voice"
+                    className={cn(
+                      "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border",
+                      playing === v.id
+                        ? "border-[#7C3AED] bg-[#7C3AED]/20 text-[#9B8AFB]"
+                        : "border-[#2A2A2A] bg-[#000000] text-[#888888] hover:text-[#F5F5F5]"
+                    )}
+                  >
+                    {playing === v.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Play className="h-3 w-3" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelect(v.id);
+                      close();
+                    }}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span className="truncate text-sm text-[#F5F5F5]">
+                        {v.name}
+                      </span>
+                      {selected && (
+                        <Check className="ml-auto h-3.5 w-3.5 shrink-0 text-[#9B8AFB]" />
+                      )}
+                    </span>
+                    <span className="block truncate text-[11px] text-[#888888]">
+                      {v.description}
+                    </span>
+                    <span className="block truncate text-[10px] text-[#666666]">
+                      {v.accent} · {v.gender} · {v.age}
+                    </span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </Popover>
   );
 }
 
@@ -407,6 +601,14 @@ export function GenerationDock() {
   const setResolution = useStudioStore((s) => s.setResolution);
   const quality = useStudioStore((s) => s.quality);
   const setQuality = useStudioStore((s) => s.setQuality);
+  const ttsVoice = useStudioStore((s) => s.ttsVoice);
+  const setTtsVoice = useStudioStore((s) => s.setTtsVoice);
+  const stability = useStudioStore((s) => s.stability);
+  const setStability = useStudioStore((s) => s.setStability);
+  const similarity = useStudioStore((s) => s.similarity);
+  const setSimilarity = useStudioStore((s) => s.setSimilarity);
+  const speed = useStudioStore((s) => s.speed);
+  const setSpeed = useStudioStore((s) => s.setSpeed);
   const batchCount = useStudioStore((s) => s.batchCount);
   const setBatchCount = useStudioStore((s) => s.setBatchCount);
   const referenceTab = useStudioStore((s) => s.referenceTab);
@@ -667,6 +869,13 @@ export function GenerationDock() {
     if (activeTab !== "audio") {
       body.aspect_ratio = safeAspect;
       body.quality = quality;
+    }
+
+    if (activeTab === "audio" && selectedModel?.kind === "tts") {
+      body.voice_id = ttsVoice;
+      body.stability = stability;
+      body.similarity = similarity;
+      body.speed = speed;
     }
 
     if (activeTab === "image") {
@@ -1234,6 +1443,61 @@ export function GenerationDock() {
                 />
               )}
             </Popover>
+
+            {/* Voz + sliders (TTS) */}
+            {activeTab === "audio" && selectedModel?.kind === "tts" && (
+              <>
+                <VoiceSelector voiceId={ttsVoice} onSelect={setTtsVoice} />
+
+                <div className="flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3">
+                  <span className="text-xs text-[#888888]">Stability</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={stability}
+                    onChange={(e) => setStability(Number(e.target.value))}
+                    className="h-1 w-16 accent-[#7C3AED]"
+                  />
+                  <span className="w-8 text-xs text-[#F5F5F5]">
+                    {Math.round(stability * 100)}%
+                  </span>
+                </div>
+
+                <div className="flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3">
+                  <span className="text-xs text-[#888888]">Similarity</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={similarity}
+                    onChange={(e) => setSimilarity(Number(e.target.value))}
+                    className="h-1 w-16 accent-[#7C3AED]"
+                  />
+                  <span className="w-8 text-xs text-[#F5F5F5]">
+                    {Math.round(similarity * 100)}%
+                  </span>
+                </div>
+
+                <div className="flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3">
+                  <span className="text-xs text-[#888888]">Speed</span>
+                  <input
+                    type="range"
+                    min={0.1}
+                    max={4}
+                    step={0.05}
+                    value={speed}
+                    onChange={(e) => setSpeed(Number(e.target.value))}
+                    className="h-1 w-16 accent-[#7C3AED]"
+                  />
+                  <span className="w-10 text-xs text-[#F5F5F5]">
+                    {speed.toFixed(2)}x
+                  </span>
+                </div>
+              </>
+            )}
 
             {/* Aspect ratio */}
             {activeTab !== "audio" && (

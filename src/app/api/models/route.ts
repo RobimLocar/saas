@@ -15,6 +15,7 @@ const WORKING_BACKENDS = [
   "Qubico/ace-step",
   "music-u",
   "Qubico/diffrhythm",
+  "abacus-tts",
 ];
 
 export async function GET(req: NextRequest) {
@@ -52,6 +53,8 @@ export async function GET(req: NextRequest) {
         family: (p.family as string) || m.provider || "Outros",
         family_description: (p.family_description as string) || "",
         badge: (p.badge as string) || null,
+        gen_time: (p.gen_time as string) || null,
+        kind: (p.kind as string) || null,
         has_audio: Boolean(p.has_audio),
         resolution: (p.resolution as string) || null,
         duration_range: (p.duration_range as string) || null,

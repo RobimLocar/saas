@@ -350,6 +350,13 @@ export interface AudioGenParams {
   lyrics?: string;
   duration?: number;
   quality?: "low" | "medium" | "high";
+  // Campos de TTS (usados pela rota de áudio para o motor de fala; a PiAPI
+  // em si não os consome — TTS roda via generateSpeechAbacus).
+  voice_id?: string;
+  stability?: number;
+  similarity?: number;
+  speed?: number;
+  elevenlabs_model?: string;
 }
 
 export async function generateAudio(

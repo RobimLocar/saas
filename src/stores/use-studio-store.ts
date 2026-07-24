@@ -30,6 +30,16 @@ interface StudioState {
   batchCount: number;
   setBatchCount: (n: number) => void;
 
+  // Áudio / voz (TTS)
+  ttsVoice: string; // id da voz de exibição
+  setTtsVoice: (id: string) => void;
+  stability: number; // 0–1
+  setStability: (v: number) => void;
+  similarity: number; // 0–1
+  setSimilarity: (v: number) => void;
+  speed: number; // 0.1–4
+  setSpeed: (v: number) => void;
+
   // Referências
   referenceImageUrl: string | null;
   setReferenceImageUrl: (url: string | null) => void;
@@ -94,6 +104,15 @@ export const useStudioStore = create<StudioState>((set) => ({
   batchCount: 4,
   setBatchCount: (batchCount) =>
     set({ batchCount: Math.max(1, Math.min(4, Math.floor(batchCount || 1))) }),
+
+  ttsVoice: "EXAVITQu4vr4xnSDxMaL", // Savannah
+  setTtsVoice: (ttsVoice) => set({ ttsVoice }),
+  stability: 0.3,
+  setStability: (stability) => set({ stability }),
+  similarity: 0.33,
+  setSimilarity: (similarity) => set({ similarity }),
+  speed: 1.2,
+  setSpeed: (speed) => set({ speed }),
 
   referenceImageUrl: null,
   setReferenceImageUrl: (referenceImageUrl) =>
