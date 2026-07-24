@@ -1,10 +1,12 @@
+import { Workflow } from "lucide-react";
+import { PagePlaceholder } from "@/components/shared/page-placeholder";
+
 export default function FlowsPage() {
   return (
-    <main className="p-6">
-      <h1 className="text-2xl font-semibold capitalize">flows</h1>
-      <p className="text-sm text-muted-foreground">
-        Página flows do Fluxyra — a ser implementada.
-      </p>
-    </main>
+    <PagePlaceholder
+      icon={Workflow}
+      title="Flows"
+      description="Automatize sequências de geração encadeando prompts, modelos e referências. Em breve (Fase 2)."
+    />
   );
 }
