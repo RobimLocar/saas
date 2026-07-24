@@ -5,9 +5,11 @@ import Image from "next/image";
 import {
   ChevronLeft,
   ChevronRight,
+  Clapperboard,
   Copy,
   Download,
   Heart,
+  ImagePlus,
   Music,
   Play,
   Star,
@@ -92,6 +94,9 @@ export function MediaLightbox({
   const setAspectRatio = useStudioStore((s) => s.setAspectRatio);
   const setDuration = useStudioStore((s) => s.setDuration);
   const setResolution = useStudioStore((s) => s.setResolution);
+  const setReferenceImageUrl = useStudioStore((s) => s.setReferenceImageUrl);
+  const setStartImageUrl = useStudioStore((s) => s.setStartImageUrl);
+  const setReferenceTab = useStudioStore((s) => s.setReferenceTab);
 
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -219,6 +224,23 @@ export function MediaLightbox({
     }
     onClose();
     toast.success("Parâmetros carregados no painel de geração.");
+  }
+
+  function handleUseAsReference() {
+    if (!item.result_url) return;
+    setReferenceImageUrl(item.result_url);
+    setActiveTab("image");
+    onClose();
+    toast.success("Imagem definida como referência.");
+  }
+
+  function handleCreateVideo() {
+    if (!item.result_url) return;
+    setActiveTab("video");
+    setReferenceTab("start-end");
+    setStartImageUrl(item.result_url);
+    onClose();
+    toast.success("Imagem carregada como quadro inicial do vídeo.");
   }
 
   async function handleCopyPrompt() {
@@ -389,15 +411,27 @@ export function MediaLightbox({
               <Download className="h-4 w-4" />
               Download
             </button>
-            <button
-              type="button"
-              disabled
-              title="Em breve"
-              className="flex h-10 w-full cursor-not-allowed items-center justify-center gap-2 rounded-full border border-[#2A2A2A] bg-[#1F1F1F] text-sm text-[#666666]"
-            >
-              <Music className="h-4 w-4" />
-              Lip Sync
-            </button>
+            {item.type === "image" && (
+              <button
+                type="button"
+                onClick={handleUseAsReference}
+                className="flex h-10 w-full items-center justify-center gap-2 rounded-full border border-[#2A2A2A] bg-[#1F1F1F] text-sm text-[#F5F5F5] transition hover:bg-[#2A2A2A]"
+              >
+                <ImagePlus className="h-4 w-4" />
+                Use as Reference
+              </button>
+            )}
+            {item.type !== "image" && (
+              <button
+                type="button"
+                disabled
+                title="Em breve"
+                className="flex h-10 w-full cursor-not-allowed items-center justify-center gap-2 rounded-full border border-[#2A2A2A] bg-[#1F1F1F] text-sm text-[#666666]"
+              >
+                <Music className="h-4 w-4" />
+                Lip Sync
+              </button>
+            )}
             <button
               type="button"
               onClick={handleRecreate}
@@ -406,6 +440,16 @@ export function MediaLightbox({
               <Play className="h-4 w-4" />
               Recreate
             </button>
+            {item.type === "image" && (
+              <button
+                type="button"
+                onClick={handleCreateVideo}
+                className="flex h-10 w-full items-center justify-center gap-2 rounded-full border border-[#2A2A2A] bg-[#1F1F1F] text-sm text-[#F5F5F5] transition hover:bg-[#2A2A2A]"
+              >
+                <Clapperboard className="h-4 w-4" />
+                Create Video
+              </button>
+            )}
             <button
               type="button"
               onClick={() => void handlePromptFavorite()}

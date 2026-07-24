@@ -24,7 +24,10 @@ export async function POST(req: NextRequest) {
       resolution,
       start_image_url,
       end_image_url,
+      quality,
     } = body;
+    const qualityLevel: "low" | "medium" | "high" =
+      quality === "low" || quality === "medium" ? quality : "high";
 
     if (!prompt || !model_uuid) {
       return NextResponse.json(
@@ -83,7 +86,7 @@ export async function POST(req: NextRequest) {
         type: "video",
         prompt,
         negative_prompt,
-        params: { aspect_ratio, duration, resolution, start_image_url, end_image_url },
+        params: { aspect_ratio, duration, resolution, start_image_url, end_image_url, quality: qualityLevel },
         status: "pending",
         credits_used: aiModel.credit_cost,
       })
@@ -108,8 +111,24 @@ export async function POST(req: NextRequest) {
       const modelParams = (aiModel.params as Record<string, string>) || {};
       // O catálogo exibido pode mapear para um backend PiAPI real diferente
       // do slug de exibição (params.backend: "kling" | "hailuo")
+      const backend = modelParams.backend || aiModel.model_id;
+
+      // Quality → mode do kling (low=std, medium/high=pro), sem rebaixar o
+      // configurado no modelo (ex.: master permanece master em high)
+      const QUALITY_KLING_MODE: Record<string, string> = {
+        low: "std",
+        medium: "pro",
+        high: "pro",
+      };
+      const effectiveKlingMode =
+        backend === "kling"
+          ? qualityLevel === "high" && modelParams.kling_mode
+            ? modelParams.kling_mode
+            : QUALITY_KLING_MODE[qualityLevel]
+          : modelParams.kling_mode;
+
       const task = await generateVideo({
-        model: modelParams.backend || aiModel.model_id,
+        model: backend,
         prompt,
         negative_prompt,
         aspect_ratio,
@@ -118,7 +137,7 @@ export async function POST(req: NextRequest) {
         start_image_url,
         end_image_url,
         kling_version: modelParams.kling_version,
-        kling_mode: modelParams.kling_mode,
+        kling_mode: effectiveKlingMode,
       });
 
       await supabase

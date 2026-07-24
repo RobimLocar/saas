@@ -1,7 +1,54 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { generateImage } from "@/lib/piapi/client";
+import { generateImageAbacus } from "@/lib/abacus/client";
 import { planAllows } from "@/lib/plans";
+
+// Heurística: o prompt pede TEXTO renderizado na imagem?
+// (aspas, ou palavras típicas de tipografia/rótulos)
+function promptWantsText(prompt: string): boolean {
+  if (/["“”'']/.test(prompt)) return true;
+  return /\b(text|reading|headline|label|badge|logo|typography|slogan|title|caption|lettering|sign|poster|escrito|texto|letreiro|r[óo]tulo)\b/i.test(
+    prompt
+  );
+}
+
+// Reforço tipográfico p/ backends Flux (renderizam texto mal sem instrução)
+const TYPO_BOOST =
+  " Render all text with perfect, crisp, legible typography — exact spelling, clean sans-serif lettering, no garbled or distorted characters, professional graphic design quality.";
+
+// Persiste a imagem gerada (URL http ou data-URL) no Supabase Storage e
+// retorna a URL pública final.
+async function persistImage(
+  userId: string,
+  generationId: string,
+  sourceUrl: string
+): Promise<string> {
+  const service = createServiceClient();
+  const storagePath = `${userId}/image/${generationId}.png`;
+
+  let buffer: Buffer;
+  let contentType = "image/png";
+  if (sourceUrl.startsWith("data:")) {
+    const [meta, b64] = sourceUrl.split(",");
+    contentType = meta.slice(5, meta.indexOf(";")) || "image/png";
+    buffer = Buffer.from(b64, "base64");
+  } else {
+    const res = await fetch(sourceUrl);
+    if (!res.ok) throw new Error(`download ${res.status}`);
+    contentType = res.headers.get("content-type") || "image/png";
+    buffer = Buffer.from(await res.arrayBuffer());
+  }
+
+  const { error } = await service.storage
+    .from("assets")
+    .upload(storagePath, buffer, { contentType, upsert: true });
+  if (error) throw new Error(error.message);
+
+  const { data } = service.storage.from("assets").getPublicUrl(storagePath);
+  return data.publicUrl;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,7 +62,9 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { prompt, model_uuid, negative_prompt, aspect_ratio, width, height, reference_image_url, resolution } = body;
+    const { prompt, model_uuid, negative_prompt, aspect_ratio, width, height, reference_image_url, resolution, quality } = body;
+    const qualityLevel: "low" | "medium" | "high" =
+      quality === "low" || quality === "medium" ? quality : "high";
 
     if (!prompt || !model_uuid) {
       return NextResponse.json(
@@ -79,7 +128,7 @@ export async function POST(req: NextRequest) {
         negative_prompt,
         // resolution (1K/2K/4K) é salvo apenas como rótulo para exibição;
         // as dimensões reais respeitam o limite de ~1MP do Flux (AR_DIMS).
-        params: { aspect_ratio, width, height, reference_image_url, resolution: resolution || null },
+        params: { aspect_ratio, width, height, reference_image_url, resolution: resolution || null, quality: qualityLevel },
         status: "pending",
         credits_used: aiModel.credit_cost,
       })
@@ -117,14 +166,66 @@ export async function POST(req: NextRequest) {
     };
     const dims = aspect_ratio ? AR_DIMS[aspect_ratio] : undefined;
 
-    // Chamar PiAPI
+    // Chamar o provedor
     try {
       const modelParams = (aiModel.params as Record<string, string>) || {};
-      // O catálogo exibido pode mapear para um backend PiAPI real diferente
-      // do slug de exibição (params.backend: "Qubico/flux1-dev" | "Qubico/flux1-schnell")
+
+      // ── Provider ABACUS (modelos premium: GPT Image 2, Nano Banana, Ideogram…)
+      // Geração síncrona de alto nível via RouteLLM — texto renderizado perfeito.
+      if (modelParams.provider === "abacus") {
+        const imageUrl = await generateImageAbacus({
+          model: modelParams.abacus_model || aiModel.model_id,
+          prompt,
+          aspect_ratio,
+          quality: qualityLevel,
+          reference_image_url,
+        });
+
+        let finalUrl = imageUrl;
+        try {
+          finalUrl = await persistImage(user.id, generation.id, imageUrl);
+        } catch (persistErr) {
+          console.warn("[generate/image] persistImage falhou, usando URL do provider:", persistErr);
+          // data-URL gigante não deve ir para o DB — nesse caso é erro real
+          if (imageUrl.startsWith("data:")) throw persistErr;
+        }
+
+        await supabase
+          .from("generations")
+          .update({
+            status: "completed",
+            result_url: finalUrl,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", generation.id);
+
+        return NextResponse.json({
+          generation_id: generation.id,
+          status: "completed",
+          result_url: finalUrl,
+          credits_used: aiModel.credit_cost,
+          balance: newBalance,
+        });
+      }
+
+      // ── Provider PiAPI (Flux) ────────────────────────────────────────────
+      // Quality: low → flux1-schnell (rápido), medium/high → flux1-dev.
+      const configuredBackend = modelParams.backend || aiModel.model_id;
+      const isFluxBackend = configuredBackend.startsWith("Qubico/flux");
+      const effectiveBackend = isFluxBackend
+        ? qualityLevel === "low"
+          ? "Qubico/flux1-schnell"
+          : "Qubico/flux1-dev"
+        : configuredBackend;
+
+      // Reforço tipográfico: Flux renderiza texto mal — reforçar quando o
+      // prompt pede texto (é o que dá o acabamento "alto nível")
+      const effectivePrompt =
+        isFluxBackend && promptWantsText(prompt) ? prompt + TYPO_BOOST : prompt;
+
       const task = await generateImage({
-        model: modelParams.backend || aiModel.model_id,
-        prompt,
+        model: effectiveBackend,
+        prompt: effectivePrompt,
         negative_prompt,
         aspect_ratio,
         width: width || dims?.w,

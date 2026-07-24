@@ -25,6 +25,8 @@ interface StudioState {
   setDuration: (val: number) => void;
   resolution: string;
   setResolution: (val: string) => void;
+  quality: "low" | "medium" | "high";
+  setQuality: (val: "low" | "medium" | "high") => void;
   batchCount: number;
   setBatchCount: (n: number) => void;
 
@@ -87,6 +89,8 @@ export const useStudioStore = create<StudioState>((set) => ({
   setDuration: (duration) => set({ duration }),
   resolution: "1080p",
   setResolution: (resolution) => set({ resolution }),
+  quality: "high",
+  setQuality: (quality) => set({ quality }),
   batchCount: 4,
   setBatchCount: (batchCount) =>
     set({ batchCount: Math.max(1, Math.min(4, Math.floor(batchCount || 1))) }),
@@ -157,6 +161,7 @@ export const useStudioStore = create<StudioState>((set) => ({
       aspectRatio: "1:1",
       duration: 4,
       resolution: "1080p",
+      quality: "high",
       batchCount: 4,
       referenceImageUrl: null,
       startImageUrl: null,

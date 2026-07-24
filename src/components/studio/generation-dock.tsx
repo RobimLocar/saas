@@ -18,6 +18,7 @@ import {
   ChevronUp,
   Clock,
   Expand,
+  Gauge,
   ImageIcon,
   Loader2,
   Monitor,
@@ -85,6 +86,13 @@ const ASPECT_RATIOS: Record<"image" | "video", string[]> = {
 const RESOLUTIONS: Record<"image" | "video", string[]> = {
   image: ["1K", "2K", "4K"],
   video: ["480p", "720p", "1080p"],
+};
+
+const QUALITY_OPTIONS = ["low", "medium", "high"] as const;
+const QUALITY_LABELS: Record<(typeof QUALITY_OPTIONS)[number], string> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
 };
 
 const ASSET_CATEGORIES: { id: string; label: string }[] = [
@@ -374,6 +382,8 @@ export function GenerationDock() {
   const setDuration = useStudioStore((s) => s.setDuration);
   const resolution = useStudioStore((s) => s.resolution);
   const setResolution = useStudioStore((s) => s.setResolution);
+  const quality = useStudioStore((s) => s.quality);
+  const setQuality = useStudioStore((s) => s.setQuality);
   const batchCount = useStudioStore((s) => s.batchCount);
   const setBatchCount = useStudioStore((s) => s.setBatchCount);
   const referenceTab = useStudioStore((s) => s.referenceTab);
@@ -633,6 +643,7 @@ export function GenerationDock() {
 
     if (activeTab !== "audio") {
       body.aspect_ratio = safeAspect;
+      body.quality = quality;
     }
 
     if (activeTab === "image") {
@@ -1289,6 +1300,44 @@ export function GenerationDock() {
                         {option === safeResolution && (
                           <Check className="h-3.5 w-3.5" />
                         )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </Popover>
+            )}
+
+            {/* Quality (imagem/vídeo) */}
+            {activeTab !== "audio" && (
+              <Popover
+                panelClassName="w-32"
+                trigger={() => (
+                  <>
+                    <Gauge className="h-4 w-4 text-[#888888]" />
+                    {QUALITY_LABELS[quality]}
+                    <ChevronUp className="h-3 w-3 text-[#666666]" />
+                  </>
+                )}
+              >
+                {(close) => (
+                  <div className="space-y-0.5">
+                    {QUALITY_OPTIONS.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => {
+                          setQuality(option);
+                          close();
+                        }}
+                        className={cn(
+                          "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm",
+                          option === quality
+                            ? "bg-[#2A2A2A] text-[#F5F5F5]"
+                            : "text-[#888888] hover:bg-[#222222] hover:text-[#F5F5F5]"
+                        )}
+                      >
+                        <span>{QUALITY_LABELS[option]}</span>
+                        {option === quality && <Check className="h-3.5 w-3.5" />}
                       </button>
                     ))}
                   </div>

@@ -53,10 +53,11 @@ export async function GET(req: NextRequest) {
         dur_min: typeof p.dur_min === "number" ? p.dur_min : null,
         dur_max: typeof p.dur_max === "number" ? p.dur_max : null,
         thumbnail_url: m.thumbnail_url,
-        // Disponível se o backend efetivo (params.backend ?? model_id) está integrado
-        available: WORKING_BACKENDS.includes(
-          (p.backend as string) || m.model_id
-        ),
+        // Disponível se o provider é o Abacus (premium, sempre integrado) ou
+        // se o backend efetivo (params.backend ?? model_id) está integrado
+        available:
+          (p.provider as string) === "abacus" ||
+          WORKING_BACKENDS.includes((p.backend as string) || m.model_id),
       };
     });
 
