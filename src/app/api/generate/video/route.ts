@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { generateVideo } from "@/lib/piapi/client";
+import { buildVideoPayload, submitVideoTask } from "@/lib/piapi/client";
+import type { VideoModelParams } from "@/lib/piapi/client";
 import { planAllows } from "@/lib/plans";
 
 export async function POST(req: NextRequest) {
@@ -77,7 +78,12 @@ export async function POST(req: NextRequest) {
       .update({ credits_balance: newBalance })
       .eq("id", user.id);
 
-    // Criar geração
+    // Params de roteamento do modelo (backend/task_type/output_key/dur)
+    const modelParams = (aiModel.params as VideoModelParams) || {};
+    // A rota de status precisa do output_key para extrair a URL certa da PiAPI.
+    const outputKey = modelParams.output_key || "output.video_url";
+
+    // Criar geração — guardamos o output_key nos params da geração
     const { data: generation } = await supabase
       .from("generations")
       .insert({
@@ -86,7 +92,15 @@ export async function POST(req: NextRequest) {
         type: "video",
         prompt,
         negative_prompt,
-        params: { aspect_ratio, duration, resolution, start_image_url, end_image_url, quality: qualityLevel },
+        params: {
+          aspect_ratio,
+          duration,
+          resolution,
+          start_image_url,
+          end_image_url,
+          quality: qualityLevel,
+          output_key: outputKey,
+        },
         status: "pending",
         credits_used: aiModel.credit_cost,
       })
@@ -108,53 +122,25 @@ export async function POST(req: NextRequest) {
 
     // Chamar PiAPI
     try {
-      const modelParams = (aiModel.params as Record<string, string>) || {};
-      // O catálogo exibido pode mapear para um backend PiAPI real diferente
-      // do slug de exibição (params.backend: "kling" | "hailuo")
-      const backend = modelParams.backend || aiModel.model_id;
-
-      // Quality → mode do kling (low=std, medium/high=pro), sem rebaixar o
-      // configurado no modelo (ex.: master permanece master em high)
-      const QUALITY_KLING_MODE: Record<string, string> = {
-        low: "std",
-        medium: "pro",
-        high: "pro",
-      };
-      const effectiveKlingMode =
-        backend === "kling"
-          ? qualityLevel === "high" && modelParams.kling_mode
-            ? modelParams.kling_mode
-            : QUALITY_KLING_MODE[qualityLevel]
-          : modelParams.kling_mode;
-
-      // Proteção extra: kling 2.1 não funciona na PiAPI (nem txt2video nem img2video).
-      // Sempre forçar 1.6 quando o modelo tiver kling_version=2.1 configurado.
-      let effectiveKlingVersion = modelParams.kling_version || "1.6";
-      if (backend === "kling" && effectiveKlingVersion === "2.1") {
-        console.warn(
-          `[generate/video] kling 2.1 bloqueado (PiAPI não suporta) — model=${aiModel.name}, ` +
-          `falling back to 1.6`
-        );
-        effectiveKlingVersion = "1.6";
-      }
-
-      console.log(`[generate/video] model=${aiModel.name} backend=${backend} ` +
-        `kling_version=${effectiveKlingVersion} mode=${effectiveKlingMode} ` +
-        `duration=${duration || 5} aspect=${aspect_ratio} has_start_img=${!!start_image_url}`);
-
-      const task = await generateVideo({
-        model: backend,
+      // Monta o payload correto por backend (kling/kling-turbo/seedance/Wan/
+      // hailuo/veo3/veo3.1) conforme os docs oficiais da PiAPI.
+      const payload = buildVideoPayload({
+        params: modelParams,
         prompt,
-        negative_prompt,
-        aspect_ratio,
-        duration: duration || 5,
-        resolution: resolution || "1080p",
-        start_image_url,
-        end_image_url,
-        kling_version: effectiveKlingVersion,
-        kling_mode: effectiveKlingMode,
         quality: qualityLevel,
+        duration: typeof duration === "number" ? duration : undefined,
+        aspectRatio: aspect_ratio,
+        imageUrl: start_image_url,
+        negativePrompt: negative_prompt,
       });
+
+      console.log(
+        `[generate/video] model=${aiModel.name} backend=${modelParams.backend} ` +
+          `task_type=${payload.task_type} output_key=${outputKey} ` +
+          `duration=${duration} aspect=${aspect_ratio} has_start_img=${!!start_image_url}`
+      );
+
+      const task = await submitVideoTask(payload);
 
       await supabase
         .from("generations")

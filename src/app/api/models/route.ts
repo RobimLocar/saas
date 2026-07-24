@@ -16,6 +16,12 @@ const WORKING_BACKENDS = [
   "music-u",
   "Qubico/diffrhythm",
   "atlas-tts",
+  // Vídeo — backends reais da PiAPI (roteados por buildVideoPayload)
+  "kling-turbo",
+  "seedance",
+  "Wan",
+  "veo3",
+  "veo3.1",
 ];
 
 export async function GET(req: NextRequest) {

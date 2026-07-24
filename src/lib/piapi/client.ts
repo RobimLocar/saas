@@ -217,139 +217,244 @@ export async function generateImageGptSync(
 }
 
 // ─── Vídeo ───────────────────────────────────────────────────────────────────
-// kling  → model="kling", task_type="video_generation", input.version + input.mode
-// hailuo → model="hailuo", task_type="video_generation"
-// Os parâmetros version/mode são extraídos do campo params da tabela ai_models
-export interface VideoGenParams {
-  model: string;             // "kling" ou "hailuo"
-  prompt: string;
-  negative_prompt?: string;
-  aspect_ratio?: string;
-  duration?: number;
+// Roteamento completo por backend conforme docs oficiais da PiAPI (2026-07).
+// Cada modelo do catálogo (ai_models.params) traz: backend, task_type,
+// kling_version/kling_mode, hailuo_model, output_key e dur_min/dur_max.
+//
+//   kling classic  → model=kling,       task_type=video_generation      → output.video_url
+//   kling 3.0      → model=kling,       task_type=video_generation      → output.video
+//   kling omni     → model=kling,       task_type=omni_video_generation → output.video
+//   kling turbo    → model=kling-turbo, task_type=video_generation      → output.video_url
+//   seedance       → model=seedance,    task_type=seedance-2[-fast|-mini]→ output.video_url
+//   wan 2.6        → model=Wan,         task_type=wan26-txt2video        → output.video_url
+//   hailuo         → model=hailuo,      task_type=video_generation       → output.video
+//   veo3 / veo3.1  → model=veo3[.1],    task_type=veo3[.1]-video[-fast]  → output.video
+
+export type Quality = "low" | "medium" | "high";
+
+// Subconjunto de ai_models.params relevante para montar o payload de vídeo.
+export interface VideoModelParams {
+  backend?: string;
+  task_type?: string;
+  kling_version?: string;
+  kling_mode?: string;
+  hailuo_model?: string;
+  output_key?: string;
   resolution?: string;
-  start_image_url?: string;
-  end_image_url?: string;
-  seed?: number;
-  // Nível de qualidade selecionado no dock (low | medium | high)
-  quality?: "low" | "medium" | "high";
-  // Kling-específico (vem do campo params da tabela ai_models)
-  kling_version?: string;    // "1.0" | "1.5" | "1.6" | "2.1"
-  kling_mode?: string;       // "standard" | "pro" | "master"
+  dur_min?: number;
+  dur_max?: number;
+  [k: string]: unknown;
 }
 
-export async function generateVideo(
-  params: VideoGenParams
-): Promise<PiAPITaskResponse> {
-  if (params.model === "kling") {
-    // PiAPI: kling 2.1 não funciona via API (nem txt2video nem img2video).
-    // Sempre cai para 1.6 quando 2.1 é solicitado.
-    let version = params.kling_version || "1.6";
-    if (version === "2.1") {
-      version = "1.6";
-    }
-    const klingMode = params.kling_mode || "standard";
-    const aspect = params.aspect_ratio || "16:9";
+export interface BuildVideoArgs {
+  params: VideoModelParams;
+  prompt: string;
+  quality: Quality;
+  duration?: number;
+  aspectRatio?: string;
+  imageUrl?: string;
+  negativePrompt?: string;
+}
 
-    // Kling standard mode: suporta qualquer duração em 16:9, mas máx 5s em outros aspects.
-    // Pro/master mode: suporta até 10s (a PiAPI limita internamente).
-    let duration = params.duration || 5;
-    if (klingMode === "standard" && aspect !== "16:9") {
-      duration = Math.min(duration, 5);
-    }
+const clampInt = (v: number, lo: number, hi: number) =>
+  Math.max(lo, Math.min(hi, Math.round(v)));
 
+// Snap para o valor permitido mais próximo (ex.: Wan aceita apenas 5/10/15).
+const snap = (v: number, allowed: number[]) =>
+  allowed.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a));
+
+/**
+ * Monta o corpo COMPLETO da requisição PiAPI (POST /task) para um modelo de
+ * vídeo, respeitando as regras de cada backend. Sempre inclui
+ * config.service_mode = "public".
+ */
+export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown> {
+  const { params, prompt, quality, aspectRatio, imageUrl, negativePrompt } = args;
+  const backend = params.backend || "kling";
+  const config = { service_mode: "public" };
+  const aspect = aspectRatio || "16:9";
+  const durMin = params.dur_min ?? 5;
+  const durMax = params.dur_max ?? 10;
+  const userDur = clampInt(args.duration ?? durMin, durMin, durMax);
+
+  // ── SEEDANCE ──────────────────────────────────────────────────────────────
+  if (backend === "seedance") {
+    const taskType = params.task_type || "seedance-2";
+    // 1080p só no Pro (seedance-2); fast/mini limitam a 720p.
+    let resolution = quality === "low" ? "480p" : quality === "medium" ? "720p" : "1080p";
+    if (taskType !== "seedance-2" && resolution === "1080p") resolution = "720p";
     const input: Record<string, unknown> = {
-      prompt: params.prompt,
+      prompt,
+      duration: userDur,
+      resolution,
+      aspect_ratio: aspect,
+    };
+    if (imageUrl) input.image_urls = [imageUrl];
+    if (negativePrompt) input.negative_prompt = negativePrompt;
+    return { model: "seedance", task_type: taskType, input, config };
+  }
+
+  // ── WAN 2.6 ────────────────────────────────────────────────────────────────
+  if (backend === "Wan") {
+    const resolution = quality === "high" ? "1080P" : "720P"; // P maiúsculo!
+    const input: Record<string, unknown> = {
+      prompt,
+      duration: snap(userDur, [5, 10, 15]),
+      resolution,
+      aspect_ratio: aspect,
+    };
+    if (negativePrompt) input.negative_prompt = negativePrompt;
+    return {
+      model: "Wan",
+      task_type: params.task_type || "wan26-txt2video",
+      input,
+      config,
+    };
+  }
+
+  // ── HAILUO (MiniMax) ─────────────────────────────────────────────────────
+  if (backend === "hailuo") {
+    // low → 768/6s ; medium → 768/10s ; high → 1080/6s (nunca 1080+10!)
+    const duration = quality === "medium" ? 10 : 6;
+    const resolution = quality === "high" ? 1080 : 768;
+    const input: Record<string, unknown> = {
+      model: params.hailuo_model || "v2.3",
+      prompt,
+      duration,
+      resolution,
+      aspect_ratio: aspect,
+    };
+    if (imageUrl) input.first_frame_image = imageUrl;
+    return { model: "hailuo", task_type: "video_generation", input, config };
+  }
+
+  // ── VEO 3 / VEO 3.1 ────────────────────────────────────────────────────────
+  if (backend === "veo3" || backend === "veo3.1") {
+    // low → 720p/4s ; medium → 720p/8s ; high → 1080p/8s
+    const resolution = quality === "high" ? "1080p" : "720p";
+    const durStr = quality === "low" ? "4s" : "8s";
+    const input: Record<string, unknown> = {
+      prompt,
+      duration: durStr, // STRING com sufixo "s"
+      resolution,
+      aspect_ratio: aspect === "9:16" ? "9:16" : "16:9",
+      generate_audio: true,
+    };
+    if (imageUrl) input.image_url = imageUrl;
+    const defaultTask = backend === "veo3" ? "veo3-video" : "veo3.1-video";
+    return {
+      model: backend,
+      task_type: params.task_type || defaultTask,
+      input,
+      config,
+    };
+  }
+
+  // ── KLING TURBO (2.5-turbo) ─────────────────────────────────────────────
+  if (backend === "kling-turbo") {
+    const mode = quality === "high" ? "pro" : "standard";
+    const duration = quality === "low" ? 5 : 10;
+    const input: Record<string, unknown> = {
+      prompt,
+      version: params.kling_version || "2.5-turbo",
+      mode,
       duration,
       aspect_ratio: aspect,
+    };
+    if (imageUrl) input.image_url = imageUrl;
+    if (negativePrompt) input.negative_prompt = negativePrompt;
+    return { model: "kling-turbo", task_type: "video_generation", input, config };
+  }
+
+  // ── KLING (classic / 3.0 / omni) ─────────────────────────────────────────
+  const taskType = params.task_type || "video_generation";
+  const version = params.kling_version || "1.6";
+
+  // Kling Omni 3.0 — task_type diferente + resolution + enable_audio
+  if (taskType === "omni_video_generation") {
+    const resolution = quality === "high" ? "1080p" : "720p";
+    const input: Record<string, unknown> = {
+      prompt,
       version,
-      mode: klingMode,
+      duration: clampInt(userDur, 3, 15),
+      resolution,
+      aspect_ratio: aspect,
+      enable_audio: false,
     };
-    if (params.negative_prompt) input.negative_prompt = params.negative_prompt;
-    if (params.start_image_url) input.image = params.start_image_url;
-    if (params.seed !== undefined) input.seed = params.seed;
-
-    return piapiFetch<PiAPITaskResponse>("/task", {
-      method: "POST",
-      body: JSON.stringify({
-        model: "kling",
-        task_type: "video_generation",
-        input,
-      }),
-    });
+    if (imageUrl) input.image_url = imageUrl;
+    if (negativePrompt) input.negative_prompt = negativePrompt;
+    return { model: "kling", task_type: "omni_video_generation", input, config };
   }
 
-  if (params.model === "hailuo") {
-    const taskType = params.start_image_url ? "txt2video" : "video_generation";
-    // Hailuo (MiniMax) aceita resolution 768 | 1080. Quality → resolução:
-    //   low/medium → 768 ; high → 1080 (1080p + 10s não é suportado)
-    const hiRes = params.quality === "high" && (params.duration || 6) <= 6;
+  // Kling 3.0 — mode std/pro, duração livre 3–15
+  if (version === "3.0" || version === "3.0-turbo") {
+    const mode = quality === "high" ? "pro" : "std";
     const input: Record<string, unknown> = {
-      prompt: params.prompt,
-      duration: params.duration || 6,
-      aspect_ratio: params.aspect_ratio || "16:9",
-      resolution: hiRes ? 1080 : 768,
+      prompt,
+      version,
+      mode,
+      duration: clampInt(userDur, 3, 15),
+      aspect_ratio: aspect,
     };
-    if (params.start_image_url) input.first_frame_image = params.start_image_url;
-
-    return piapiFetch<PiAPITaskResponse>("/task", {
-      method: "POST",
-      body: JSON.stringify({ model: "hailuo", task_type: taskType, input }),
-    });
+    if (imageUrl) input.image_url = imageUrl;
+    if (negativePrompt) input.negative_prompt = negativePrompt;
+    return { model: "kling", task_type: "video_generation", input, config };
   }
 
-  // luma (Dream Machine) — validado: task_type video_generation
-  if (params.model === "luma") {
-    // Luma não expõe resolução; o ganho de qualidade vem do "Enhance Prompt"
-    // (expand_prompt). Habilitamos em medium/high.
-    const input: Record<string, unknown> = {
-      prompt: params.prompt,
-      duration: params.duration || 5,
-      aspect_ratio: params.aspect_ratio || "16:9",
-      expand_prompt: params.quality !== "low",
-    };
-    if (params.start_image_url) {
-      input.key_frames = {
-        frame0: { type: "image", url: params.start_image_url },
-        ...(params.end_image_url
-          ? { frame1: { type: "image", url: params.end_image_url } }
-          : {}),
-      };
-    }
-    return piapiFetch<PiAPITaskResponse>("/task", {
-      method: "POST",
-      body: JSON.stringify({ model: "luma", task_type: "video_generation", input }),
-    });
-  }
+  // Kling classic (1.5/1.6/2.1/2.5/2.6) — duração ENUM 5 ou 10
+  const mode = quality === "high" ? "pro" : "standard";
+  const duration = quality === "low" ? 5 : 10;
+  const input: Record<string, unknown> = {
+    prompt,
+    version,
+    mode,
+    duration,
+    aspect_ratio: aspect,
+  };
+  if (imageUrl) input.image_url = imageUrl;
+  if (negativePrompt) input.negative_prompt = negativePrompt;
+  return { model: "kling", task_type: "video_generation", input, config };
+}
 
-  // Qubico/hunyuan — validado: task_type txt2video (só prompt)
-  if (params.model === "Qubico/hunyuan") {
-    return piapiFetch<PiAPITaskResponse>("/task", {
-      method: "POST",
-      body: JSON.stringify({
-        model: "Qubico/hunyuan",
-        task_type: "txt2video",
-        input: { prompt: params.prompt },
-      }),
-    });
-  }
-
-  // Fallback genérico (outros modelos futuros)
-  const taskType = params.start_image_url ? "img2video" : "txt2video";
+/**
+ * Submete uma task de vídeo já montada (POST /task) e devolve o task_id.
+ */
+export async function submitVideoTask(
+  payload: Record<string, unknown>
+): Promise<PiAPITaskResponse> {
   return piapiFetch<PiAPITaskResponse>("/task", {
     method: "POST",
-    body: JSON.stringify({
-      model: params.model,
-      task_type: taskType,
-      input: {
-        prompt: params.prompt,
-        negative_prompt: params.negative_prompt,
-        aspect_ratio: params.aspect_ratio || "16:9",
-        duration: params.duration || 5,
-        ...(params.start_image_url ? { image: params.start_image_url } : {}),
-        ...(params.seed !== undefined ? { seed: params.seed } : {}),
-      },
-    }),
+    body: JSON.stringify(payload),
   });
+}
+
+/**
+ * Extrai a URL do vídeo do output da PiAPI conforme o output_key do modelo.
+ *   output.video      → output.video (string) | output.video.url
+ *   output.video_url  → output.video_url
+ * Sem output_key: tenta ambos.
+ */
+export function extractVideoUrl(
+  output: PiAPIStatusResponse["data"]["output"],
+  outputKey?: string
+): string | null {
+  if (!output) return null;
+  const o = output as Record<string, unknown>;
+  const asUrl = (v: unknown): string | null =>
+    typeof v === "string"
+      ? v
+      : v && typeof v === "object" && typeof (v as { url?: string }).url === "string"
+        ? (v as { url: string }).url
+        : null;
+
+  if (outputKey === "output.video") {
+    return asUrl(o.video) || (typeof o.video_url === "string" ? o.video_url : null);
+  }
+  if (outputKey === "output.video_url") {
+    return (typeof o.video_url === "string" ? o.video_url : null) || asUrl(o.video);
+  }
+  // fallback: tenta ambos
+  return (typeof o.video_url === "string" ? o.video_url : null) || asUrl(o.video);
 }
 
 // ─── Áudio ───────────────────────────────────────────────────────────────────

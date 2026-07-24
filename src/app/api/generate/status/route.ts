@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { getTaskStatus, extractResultUrl } from "@/lib/piapi/client";
+import { getTaskStatus, extractResultUrl, extractVideoUrl } from "@/lib/piapi/client";
 
 /**
  * GET /api/generate/status?id=<generation_id>
@@ -57,7 +57,18 @@ export async function GET(req: NextRequest) {
       const state = taskStatus.data?.status;
 
       if (state === "completed") {
-        const providerUrl = extractResultUrl(taskStatus.data.output);
+        // Vídeo: usa o output_key salvo no modelo (output.video vs output.video_url).
+        // Imagem/áudio: extrator genérico.
+        const genParams =
+          (generation.params as Record<string, unknown> | null) || {};
+        const outputKey =
+          typeof genParams.output_key === "string"
+            ? genParams.output_key
+            : undefined;
+        const providerUrl =
+          generation.type === "video"
+            ? extractVideoUrl(taskStatus.data.output, outputKey)
+            : extractResultUrl(taskStatus.data.output);
         if (!providerUrl) {
           return NextResponse.json({ status: "processing" });
         }
