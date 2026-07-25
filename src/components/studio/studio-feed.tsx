@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import Image from "next/image";
-import { Download, Heart, Loader2, Play, Sparkles } from "lucide-react";
+import { Download, Heart, Loader2, Play, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { useStudioStore } from "@/stores/use-studio-store";
 import { MediaLightbox, type LightboxItem } from "@/components/studio/media-lightbox";
 
@@ -150,6 +151,26 @@ export function StudioFeed() {
     []
   );
 
+  const failedCount = useMemo(
+    () => filtered.filter((g) => g.status === "failed").length,
+    [filtered]
+  );
+
+  const clearAllFailed = useCallback(async () => {
+    const failed = generations.filter((g) => g.status === "failed");
+    if (!failed.length) return;
+    for (let i = 0; i < failed.length; i += 10) {
+      const batch = failed.slice(i, i + 10);
+      await Promise.allSettled(
+        batch.map((g) =>
+          fetch(`/api/generations/${g.id}`, { method: "DELETE" })
+        )
+      );
+    }
+    setGenerations((prev) => prev.filter((g) => g.status !== "failed"));
+    toast.success(`${failed.length} falhas removidas.`);
+  }, [generations]);
+
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center pt-[76px]">
@@ -174,12 +195,33 @@ export function StudioFeed() {
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-1.5 px-1 pb-48 pt-[76px] sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+      {failedCount > 0 && (
+        <div className="flex justify-end px-1 pb-2 pt-[76px]">
+          <button
+            type="button"
+            onClick={() => void clearAllFailed()}
+            className="flex items-center gap-1.5 rounded-lg border border-[#2A2A2A] bg-[#141414] px-3 py-1.5 text-xs text-[#888888] transition-colors hover:border-red-500/30 hover:text-red-400"
+          >
+            <X className="h-3.5 w-3.5" />
+            Limpar falhas ({failedCount})
+          </button>
+        </div>
+      )}
+
+      <div
+        className={cn(
+          "grid grid-cols-2 gap-1.5 px-1 pb-48 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6",
+          failedCount === 0 && "pt-[76px]"
+        )}
+      >
         {filtered.map((generation) => (
           <GenerationCard
             key={generation.id}
             gen={generation}
             onOpen={() => setLightboxId(generation.id)}
+            onDismiss={(id) =>
+              setGenerations((prev) => prev.filter((g) => g.id !== id))
+            }
           />
         ))}
       </div>
@@ -201,7 +243,15 @@ export function StudioFeed() {
   );
 }
 
-function GenerationCard({ gen, onOpen }: { gen: Generation; onOpen: () => void }) {
+function GenerationCard({
+  gen,
+  onOpen,
+  onDismiss,
+}: {
+  gen: Generation;
+  onOpen: () => void;
+  onDismiss: (id: string) => void;
+}) {
   const setReferenceImageUrl = useStudioStore((s) => s.setReferenceImageUrl);
 
   const isPending = gen.status === "pending" || gen.status === "processing";
@@ -215,16 +265,7 @@ function GenerationCard({ gen, onOpen }: { gen: Generation; onOpen: () => void }
   }
 
   if (!isDone) {
-    return (
-      <article
-        style={style}
-        className="relative overflow-hidden rounded-lg bg-[#141414]"
-      >
-        <div className="flex h-full w-full items-center justify-center text-xs text-[#888888]">
-          Falha na geração
-        </div>
-      </article>
-    );
+    return <FailedCard gen={gen} onDismiss={onDismiss} />;
   }
 
   const addAsReference = () => {
@@ -305,6 +346,61 @@ function GenerationCard({ gen, onOpen }: { gen: Generation; onOpen: () => void }
           </div>
         </>
       )}
+    </article>
+  );
+}
+
+function FailedCard({
+  gen,
+  onDismiss,
+}: {
+  gen: Generation;
+  onDismiss: (id: string) => void;
+}) {
+  const [deleting, setDeleting] = useState(false);
+
+  async function dismiss(event: MouseEvent<HTMLButtonElement>) {
+    event.stopPropagation();
+    setDeleting(true);
+    try {
+      await fetch(`/api/generations/${gen.id}`, { method: "DELETE" });
+      onDismiss(gen.id);
+    } catch {
+      setDeleting(false);
+    }
+  }
+
+  const errShort = gen.error_message
+    ? gen.error_message
+        .replace(/PiAPIError:\s*/i, "")
+        .replace(/AbacusImageError:\s*/i, "")
+        .slice(0, 45)
+    : "Erro desconhecido";
+
+  return (
+    <article className="col-span-1 flex h-16 items-center gap-2.5 overflow-hidden rounded-lg bg-[#1A1A1A] px-3">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-500/10 text-red-400">
+        <X className="h-4 w-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-medium text-[#F5F5F5]">Falha na geração</p>
+        <p className="truncate text-[10px] text-[#666666]">
+          {gen.type} · {errShort}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={dismiss}
+        disabled={deleting}
+        title="Descartar"
+        className="shrink-0 rounded p-1 text-[#555555] transition-colors hover:text-[#F5F5F5] disabled:opacity-40"
+      >
+        {deleting ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <X className="h-4 w-4" />
+        )}
+      </button>
     </article>
   );
 }
