@@ -956,6 +956,7 @@ export function GenerationDock() {
 
       setPrompt("");
       setViewFilter("all");
+      setCollapsed(true);
       triggerRefresh();
       void loadCredits();
     } catch (error) {

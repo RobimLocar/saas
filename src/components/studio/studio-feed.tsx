@@ -24,6 +24,19 @@ interface Generation {
 
 const POLL_MS = 3000;
 
+/**
+ * Calcula o aspect-ratio de cada card via style inline (evita purge do Tailwind).
+ * Áudio usa altura fixa; vídeo/imagem usam aspect_ratio do params ou padrão.
+ */
+function aspectStyle(gen: Generation): React.CSSProperties {
+  if (gen.type === "audio") return { height: "80px" };
+  const ar = gen.params?.aspect_ratio;
+  if (!ar) return { aspectRatio: gen.type === "video" ? "16/9" : "1/1" };
+  const [w, h] = ar.split(":").map(Number);
+  if (!w || !h) return { aspectRatio: "1/1" };
+  return { aspectRatio: `${w}/${h}` };
+}
+
 export function StudioFeed() {
   const [generations, setGenerations] = useState<Generation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -161,7 +174,7 @@ export function StudioFeed() {
 
   return (
     <>
-      <div className="px-1 pb-48 pt-[76px] [column-count:2] [column-gap:6px] sm:[column-count:3] lg:[column-count:4] xl:[column-count:5] 2xl:[column-count:6]">
+      <div className="grid grid-cols-2 gap-1.5 px-1 pb-48 pt-[76px] sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
         {filtered.map((generation) => (
           <GenerationCard
             key={generation.id}
@@ -195,15 +208,19 @@ function GenerationCard({ gen, onOpen }: { gen: Generation; onOpen: () => void }
   const isDone = gen.status === "completed" && gen.result_url;
   const modelText = gen.model_label || gen.model_slug || "modelo";
   const aspect = gen.params?.aspect_ratio || (gen.type === "video" ? "16:9" : "1:1");
+  const style = aspectStyle(gen);
 
   if (isPending) {
-    return <PendingCard type={gen.type} modelText={modelText} aspect={aspect} />;
+    return <PendingCard type={gen.type} modelText={modelText} aspect={aspect} style={style} />;
   }
 
   if (!isDone) {
     return (
-      <article className="relative mb-1.5 break-inside-avoid overflow-hidden rounded-lg bg-[#141414]">
-        <div className="flex aspect-square items-center justify-center text-xs text-[#888888]">
+      <article
+        style={style}
+        className="relative overflow-hidden rounded-lg bg-[#141414]"
+      >
+        <div className="flex h-full w-full items-center justify-center text-xs text-[#888888]">
           Falha na geração
         </div>
       </article>
@@ -218,7 +235,8 @@ function GenerationCard({ gen, onOpen }: { gen: Generation; onOpen: () => void }
   return (
     <article
       onClick={onOpen}
-      className="group relative mb-1.5 cursor-pointer break-inside-avoid overflow-hidden rounded-lg"
+      style={gen.type === "audio" ? undefined : style}
+      className="group relative cursor-pointer overflow-hidden rounded-lg"
     >
       {gen.type === "image" ? (
         <Image
@@ -325,13 +343,14 @@ function PendingCard({
   type,
   modelText,
   aspect,
+  style,
 }: {
   type: Generation["type"];
   modelText: string;
   aspect: string;
+  style: React.CSSProperties;
 }) {
   const [progress, setProgress] = useState(6);
-  const aspectClass = type === "video" ? "aspect-video" : "aspect-square";
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -347,7 +366,7 @@ function PendingCard({
   const label = type === "video" ? "Gerando vídeo..." : type === "audio" ? "Gerando áudio..." : "Gerando imagem...";
 
   return (
-    <article className={cnPending(aspectClass)}>
+    <article style={style} className="relative overflow-hidden rounded-lg">
       <div className="relative flex h-full flex-col items-center justify-center bg-[#141414]">
         <Loader2 className="h-6 w-6 animate-spin text-[#F5F5F5]" />
         <p className="mt-2 text-xs text-[#888888]">{label}</p>
@@ -381,8 +400,4 @@ function ActionIcon({
       {children}
     </button>
   );
-}
-
-function cnPending(aspectClass: string) {
-  return `relative mb-1.5 break-inside-avoid overflow-hidden rounded-lg ${aspectClass}`;
 }
