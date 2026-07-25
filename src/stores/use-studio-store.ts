@@ -69,6 +69,13 @@ interface StudioState {
   refreshKey: number;
   triggerRefresh: () => void;
 
+  // Cards optimistas: aparecem imediatamente ao clicar Generate, antes da resposta do servidor
+  optimisticCount: number;
+  optimisticType: Modality;
+  optimisticAspect: string;
+  addOptimistic: (type: Modality, aspect: string, count?: number) => void;
+  clearOptimistic: () => void;
+
   // Reset
   resetParams: () => void;
 }
@@ -172,6 +179,12 @@ export const useStudioStore = create<StudioState>((set) => ({
 
   refreshKey: 0,
   triggerRefresh: () => set((s) => ({ refreshKey: s.refreshKey + 1 })),
+
+  optimisticCount: 0,
+  optimisticType: "image",
+  optimisticAspect: "1:1",
+  addOptimistic: (type, aspect, count = 1) => set({ optimisticCount: count, optimisticType: type, optimisticAspect: aspect }),
+  clearOptimistic: () => set({ optimisticCount: 0 }),
 
   resetParams: () =>
     set({

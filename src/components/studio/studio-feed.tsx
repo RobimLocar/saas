@@ -44,6 +44,9 @@ export function StudioFeed() {
   const [lightboxId, setLightboxId] = useState<string | null>(null);
   const refreshKey = useStudioStore((s) => s.refreshKey);
   const viewFilter = useStudioStore((s) => s.viewFilter);
+  const optimisticCount = useStudioStore((s) => s.optimisticCount);
+  const optimisticType = useStudioStore((s) => s.optimisticType);
+  const optimisticAspect = useStudioStore((s) => s.optimisticAspect);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchGenerations = useCallback(async () => {
@@ -179,7 +182,7 @@ export function StudioFeed() {
     );
   }
 
-  if (!filtered.length) {
+  if (!filtered.length && optimisticCount === 0) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 pt-[76px] text-center">
         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
@@ -211,9 +214,22 @@ export function StudioFeed() {
       <div
         className={cn(
           "grid grid-cols-2 gap-1.5 px-1 pb-48 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6",
-          failedCount === 0 && "pt-[76px]"
+          failedCount === 0 && optimisticCount === 0 && "pt-[76px]"
         )}
       >
+        {/* Cards optimistas: aparecem imediatamente ao clicar Generate */}
+        {Array.from({ length: optimisticCount }).map((_, i) => (
+          <PendingCard
+            key={`optimistic-${i}`}
+            type={optimisticType}
+            modelText=""
+            aspect={optimisticAspect}
+            style={(() => {
+              const [w, h] = optimisticAspect.split(":").map(Number);
+              return w && h ? { aspectRatio: `${w}/${h}` } : { aspectRatio: "1/1" };
+            })()}
+          />
+        ))}
         {filtered.map((generation) => (
           <GenerationCard
             key={generation.id}

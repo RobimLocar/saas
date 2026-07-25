@@ -628,6 +628,8 @@ export function GenerationDock() {
   const addReferenceAudio = useStudioStore((s) => s.addReferenceAudio);
   const removeReferenceAudio = useStudioStore((s) => s.removeReferenceAudio);
   const triggerRefresh = useStudioStore((s) => s.triggerRefresh);
+  const addOptimistic = useStudioStore((s) => s.addOptimistic);
+  const clearOptimistic = useStudioStore((s) => s.clearOptimistic);
   const setViewFilter = useStudioStore((s) => s.setViewFilter);
 
   const [models, setModels] = useState<ApiModel[]>([]);
@@ -936,6 +938,12 @@ export function GenerationDock() {
     }
 
     setLoading(true);
+    // Mostrar cards optimistas no feed IMEDIATAMENTE (antes da resposta do servidor)
+    const count = activeTab === "image" && batchCount > 1 ? batchCount : 1;
+    addOptimistic(activeTab, safeAspect, count);
+    setViewFilter("all");
+    setCollapsed(true);
+
     try {
       if (activeTab === "image" && batchCount > 1) {
         const jobs = Array.from({ length: batchCount }).map(() =>
@@ -955,11 +963,11 @@ export function GenerationDock() {
       }
 
       setPrompt("");
-      setViewFilter("all");
-      setCollapsed(true);
+      clearOptimistic();
       triggerRefresh();
       void loadCredits();
     } catch (error) {
+      clearOptimistic();
       toast.error(
         error instanceof Error ? error.message : "Não foi possível gerar."
       );
