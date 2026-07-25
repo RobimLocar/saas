@@ -233,7 +233,8 @@ export async function generateImageGptSync(
 //   kling omni     → model=kling,       task_type=omni_video_generation → output.video
 //   kling turbo    → model=kling-turbo, task_type=video_generation      → output.video_url
 //   seedance       → model=seedance,    task_type=seedance-2[-fast|-mini]→ output.video_url
-//   wan 2.6        → model=Wan,         task_type=wan26-txt2video        → output.video_url
+//   wan 2.6        → model=Wan,         task_type=wan26-txt2video/img2video → output.video_url
+//                    (img2video usa campo "image"; txt2video usa aspect_ratio)
 //   hailuo         → model=hailuo,      task_type=video_generation       → output.video
 //   veo3 / veo3.1  → model=veo3[.1],    task_type=veo3[.1]-video[-fast]  → output.video
 
@@ -311,15 +312,15 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
       resolution,
       aspect_ratio: aspect,
     };
-    // image_urls: PiAPI Seedance só aceita [start, end] (2 itens) — modo first_last_frames.
-    // Com 1 imagem apenas (start sem end), a PiAPI retorna erro 400.
-    // Nesse caso deixamos sem image_urls e a geração usa text_to_video.
+    // image_urls: aceita 1 ou 2 imagens.
+    // 1 imagem = first_last_frames (first frame only).
+    // 2 imagens = first_last_frames (first + last frame).
+    // Com video_urls/audio_urls = omni_reference.
+    // O modo é inferido automaticamente pela PiAPI.
     const imgUrls: string[] = [];
-    if (imageUrl && endImageUrl) {
-      imgUrls.push(imageUrl);
-      imgUrls.push(endImageUrl);
-    }
-    if (imgUrls.length === 2) input.image_urls = imgUrls;
+    if (imageUrl) imgUrls.push(imageUrl);
+    if (endImageUrl) imgUrls.push(endImageUrl);
+    if (imgUrls.length > 0) input.image_urls = imgUrls;
     if (referenceVideos && referenceVideos.length > 0) {
       input.video_urls = referenceVideos;
     }
@@ -338,16 +339,18 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
   // ── WAN 2.6 ────────────────────────────────────────────────────────────────
   if (backend === "Wan") {
     const resolution = quality === "high" ? "1080P" : "720P"; // P maiúsculo!
+    const hasImage = Boolean(imageUrl);
     const input: Record<string, unknown> = {
       prompt,
       duration: snap(userDur, [5, 10, 15]),
       resolution,
-      aspect_ratio: aspect,
+      ...(hasImage ? {} : { aspect_ratio: aspect }), // aspect_ratio não é suportado em img2video
     };
+    if (imageUrl) input.image = imageUrl; // campo correto: "image", não "image_url"
     if (negativePrompt) input.negative_prompt = negativePrompt;
     return {
       model: "Wan",
-      task_type: params.task_type || "wan26-txt2video",
+      task_type: hasImage ? "wan26-img2video" : (params.task_type || "wan26-txt2video"),
       input,
       config,
     };
@@ -402,7 +405,7 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
       duration,
       aspect_ratio: aspect,
     };
-    if (imageUrl) input.image_url = imageUrl;
+    if (imageUrl) input.start_image_url = imageUrl;
     if (endImageUrl) input.end_image_url = endImageUrl;
     if (referenceVideos && referenceVideos.length > 0) {
       input.reference_video_url = referenceVideos[0];
@@ -426,10 +429,23 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
       aspect_ratio: aspect,
       enable_audio: args.withAudio ?? false,
     };
-    if (imageUrl) input.image_url = imageUrl;
-    if (endImageUrl) input.end_image_url = endImageUrl;
+    // Kling Omni usa images[] com @image_N no prompt
+    const omniImages: string[] = [];
+    if (imageUrl) omniImages.push(imageUrl);
+    if (endImageUrl) omniImages.push(endImageUrl);
+    if (omniImages.length > 0) {
+      input.images = omniImages;
+      // Prepend @image_N refs ao prompt (obrigatório pela PiAPI para Kling Omni)
+      const imgRefs = omniImages.map((_, i) => `@image_${i + 1}`).join(" ");
+      input.prompt = `${imgRefs} ${prompt}`;
+    }
+    // Vídeo de referência: campo "video" (singular) + @video no prompt
     if (referenceVideos && referenceVideos.length > 0) {
-      input.reference_video_url = referenceVideos[0];
+      input.video = referenceVideos[0];
+      const currentPrompt = (input.prompt as string) || prompt;
+      if (!currentPrompt.includes("@video")) {
+        input.prompt = `@video ${currentPrompt}`;
+      }
     }
     if (negativePrompt) input.negative_prompt = negativePrompt;
     return { model: "kling", task_type: "omni_video_generation", input, config };
@@ -446,7 +462,7 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
       aspect_ratio: aspect,
     };
     if (imageUrl) input.image_url = imageUrl;
-    if (endImageUrl) input.end_image_url = endImageUrl;
+    if (endImageUrl) input.image_tail_url = endImageUrl;
     if (referenceVideos && referenceVideos.length > 0) {
       input.reference_video_url = referenceVideos[0];
     }
@@ -472,7 +488,7 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
     aspect_ratio: aspect,
   };
   if (imageUrl) input.image_url = imageUrl;
-  if (endImageUrl) input.end_image_url = endImageUrl;
+  if (endImageUrl) input.image_tail_url = endImageUrl;
   if (referenceVideos && referenceVideos.length > 0) {
     input.reference_video_url = referenceVideos[0];
   }
