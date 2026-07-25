@@ -262,6 +262,7 @@ export interface BuildVideoArgs {
   aspectRatio?: string;
   imageUrl?: string;
   endImageUrl?: string;
+  referenceImages?: string[];
   referenceVideos?: string[];
   referenceAudios?: string[];
   shots?: Array<{ prompt: string; duration: number }>;
@@ -289,6 +290,7 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
     aspectRatio,
     imageUrl,
     endImageUrl,
+    referenceImages,
     referenceVideos,
     referenceAudios,
     negativePrompt,
@@ -318,8 +320,14 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
     // Com video_urls/audio_urls = omni_reference.
     // O modo é inferido automaticamente pela PiAPI.
     const imgUrls: string[] = [];
-    if (imageUrl) imgUrls.push(imageUrl);
-    if (endImageUrl) imgUrls.push(endImageUrl);
+    if (referenceImages && referenceImages.length > 0) {
+      // Omni Reference: usa todas as imagens (até 9) diretamente.
+      imgUrls.push(...referenceImages.slice(0, 9));
+    } else {
+      // Start / End Frame: 1 ou 2 imagens.
+      if (imageUrl) imgUrls.push(imageUrl);
+      if (endImageUrl) imgUrls.push(endImageUrl);
+    }
     if (imgUrls.length > 0) input.image_urls = imgUrls;
     if (referenceVideos && referenceVideos.length > 0) {
       input.video_urls = referenceVideos;
@@ -441,10 +449,12 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
       aspect_ratio: aspect,
       enable_audio: args.withAudio ?? false,
     };
-    // Kling Omni usa images[] com @image_N no prompt
-    const omniImages: string[] = [];
-    if (imageUrl) omniImages.push(imageUrl);
-    if (endImageUrl) omniImages.push(endImageUrl);
+    // Kling Omni usa images[] com @image_N no prompt.
+    // Prioriza referenceImages (aba Omni Reference); senão usa start/end frame.
+    const omniImages: string[] =
+      referenceImages && referenceImages.length > 0
+        ? referenceImages.slice(0, 4)
+        : ([imageUrl, endImageUrl].filter(Boolean) as string[]);
     if (omniImages.length > 0) {
       input.images = omniImages;
       // Prepend @image_N refs ao prompt (obrigatório pela PiAPI para Kling Omni)

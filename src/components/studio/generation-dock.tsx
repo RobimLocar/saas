@@ -63,6 +63,7 @@ interface ApiModel {
   dur_min?: number;
   dur_max?: number;
   backend?: string | null;
+  task_type?: string;
 }
 
 interface UserAsset {
@@ -592,6 +593,8 @@ export function GenerationDock() {
   const setActiveTab = useStudioStore((s) => s.setActiveTab);
   const prompt = useStudioStore((s) => s.prompt);
   const setPrompt = useStudioStore((s) => s.setPrompt);
+  const negativePrompt = useStudioStore((s) => s.negativePrompt);
+  const setNegativePrompt = useStudioStore((s) => s.setNegativePrompt);
   const selectedModelId = useStudioStore((s) => s.selectedModelId);
   const setSelectedModelId = useStudioStore((s) => s.setSelectedModelId);
   const aspectRatio = useStudioStore((s) => s.aspectRatio);
@@ -762,10 +765,38 @@ export function GenerationDock() {
     return groups;
   }, [models]);
 
-  const aspectOptions =
-    activeTab === "video" ? ASPECT_RATIOS.video : ASPECT_RATIOS.image;
-  const resolutionOptions =
-    activeTab === "video" ? RESOLUTIONS.video : RESOLUTIONS.image;
+  // Aspect ratios suportados variam por backend de vídeo.
+  const aspectOptions = useMemo(() => {
+    if (activeTab !== "video") return ASPECT_RATIOS.image;
+    if (!selectedModel) return ASPECT_RATIOS.video;
+    const backend = (selectedModel.backend || "").toLowerCase();
+    const family = (selectedModel.family || "").toLowerCase();
+    if (backend === "veo3" || backend === "veo3.1") return ["16:9", "9:16"];
+    if (backend === "hailuo") return ["16:9", "9:16", "1:1"];
+    if (family === "kling" || backend === "kling" || backend === "kling-turbo") {
+      return ["16:9", "9:16", "1:1"];
+    }
+    if (backend === "wan") return ["16:9", "9:16", "1:1", "4:3", "3:4"];
+    // Seedance e demais: todos
+    return ASPECT_RATIOS.video;
+  }, [activeTab, selectedModel]);
+
+  // Resoluções suportadas variam por backend de vídeo.
+  const resolutionOptions = useMemo(() => {
+    if (activeTab !== "video") return RESOLUTIONS.image;
+    if (!selectedModel) return RESOLUTIONS.video;
+    const backend = (selectedModel.backend || "").toLowerCase();
+    const taskType = (selectedModel.task_type || "").toLowerCase();
+    if (backend === "wan") return ["720p", "1080p"];
+    if (backend === "veo3" || backend === "veo3.1") return ["720p", "1080p"];
+    if (
+      backend === "seedance" &&
+      (taskType.includes("fast") || taskType.includes("mini"))
+    ) {
+      return ["480p", "720p"];
+    }
+    return RESOLUTIONS.video;
+  }, [activeTab, selectedModel]);
   const safeAspect = aspectOptions.includes(aspectRatio)
     ? aspectRatio
     : aspectOptions[0];
@@ -778,7 +809,23 @@ export function GenerationDock() {
 
   const durMin = selectedModel?.dur_min ?? 4;
   const durMax = selectedModel?.dur_max ?? 15;
-  const safeDuration = Math.min(Math.max(duration, durMin), durMax);
+
+  // Alguns backends só aceitam durações enum (não contínuas).
+  const durationSnapValues = useMemo<number[] | null>(() => {
+    if (activeTab !== "video" || !selectedModel) return null;
+    const backend = (selectedModel.backend || "").toLowerCase();
+    if (backend === "wan") return [5, 10, 15];
+    if (backend === "hailuo") return [6, 10];
+    if (backend === "veo3" || backend === "veo3.1") return [4, 6, 8];
+    return null; // slider livre
+  }, [activeTab, selectedModel]);
+
+  // Se houver valores enum, garantir que a duração cai em um deles.
+  const safeDuration = durationSnapValues
+    ? durationSnapValues.reduce((a, b) =>
+        Math.abs(b - duration) < Math.abs(a - duration) ? b : a
+      )
+    : Math.min(Math.max(duration, durMin), durMax);
   const totalRefs =
     referenceImages.length + referenceVideos.length + referenceAudios.length;
 
@@ -932,15 +979,26 @@ export function GenerationDock() {
     if (activeTab === "video") {
       body.duration = safeDuration;
       body.resolution = safeResolution;
+      if (negativePrompt.trim()) body.negative_prompt = negativePrompt.trim();
       if (referenceTab === "omni") {
-        const ref = referenceImages[0] || referenceImageUrl;
-        if (ref) body.start_image_url = ref;
+        // Omni Reference: enviar TODAS as imagens de referência (não apenas a 1ª).
+        if (referenceImages.length > 0) {
+          body.reference_images = referenceImages;
+        } else if (referenceImageUrl) {
+          body.reference_images = [referenceImageUrl];
+        }
       }
       if (referenceTab === "start-end") {
         if (startImageUrl) body.start_image_url = startImageUrl;
         if (endImageUrl) body.end_image_url = endImageUrl;
       }
-      if (referenceVideos.length > 0) body.reference_videos = referenceVideos;
+      // reference_videos não é suportado por hailuo/veo3/veo3.1.
+      const backendSupportsRefVideos = !["hailuo", "veo3", "veo3.1"].includes(
+        (selectedModel?.backend || "").toLowerCase()
+      );
+      if (referenceVideos.length > 0 && backendSupportsRefVideos) {
+        body.reference_videos = referenceVideos;
+      }
       if (referenceAudios.length > 0) body.reference_audios = referenceAudios;
       if (multiShotEnabled && supportsMultiShot) {
         body.shots = buildShots();
@@ -1239,6 +1297,23 @@ export function GenerationDock() {
             </button>
           </div>
         </div>
+
+        {/* Negative prompt (vídeo) */}
+        {!collapsed && activeTab === "video" && (
+          <div className="mb-3">
+            <label className="mb-1 block text-xs font-medium text-[#888888]">
+              Negative Prompt
+            </label>
+            <textarea
+              value={negativePrompt}
+              maxLength={2000}
+              rows={2}
+              onChange={(event) => setNegativePrompt(event.target.value)}
+              placeholder="Negative prompt (optional)"
+              className="w-full resize-none rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-2 text-sm leading-5 text-[#F5F5F5] outline-none placeholder:text-[#666666] focus:border-[#3A3A3A]"
+            />
+          </div>
+        )}
 
         {/* Segmentada Start/End Frame | Omni Reference (vídeo) */}
         {!collapsed && activeTab === "video" && (
@@ -1853,7 +1928,26 @@ export function GenerationDock() {
             )}
 
             {/* Duração (vídeo) */}
-            {activeTab === "video" && (
+            {activeTab === "video" && durationSnapValues && (
+              <div className="flex h-9 items-center gap-1 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-1">
+                {durationSnapValues.map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setDuration(value)}
+                    className={cn(
+                      "h-7 rounded-md px-2 text-xs",
+                      value === safeDuration
+                        ? "bg-[#2A2A2A] font-medium text-[#F5F5F5]"
+                        : "text-[#888888] hover:text-[#F5F5F5]"
+                    )}
+                  >
+                    {value}s
+                  </button>
+                ))}
+              </div>
+            )}
+            {activeTab === "video" && !durationSnapValues && (
               <div className="flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3">
                 <input
                   type="range"
@@ -1946,8 +2040,8 @@ export function GenerationDock() {
               </Popover>
             )}
 
-            {/* Áudio on/off (vídeo) */}
-            {activeTab === "video" && (
+            {/* Áudio on/off (vídeo) — só para modelos com suporte a áudio */}
+            {activeTab === "video" && selectedModel?.has_audio !== false && (
               <button
                 type="button"
                 onClick={() => {
