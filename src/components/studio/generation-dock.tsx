@@ -1322,13 +1322,7 @@ export function GenerationDock() {
           </div>
         )}
 
-        {/* Aviso Seedance: precisa de start + end para usar referência */}
-        {!collapsed && activeTab === "video" && referenceTab === "start-end" &&
-          selectedModel?.backend === "seedance" && startImageUrl && !endImageUrl && (
-          <p className="mb-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-400">
-            Seedance requer Start + End frame para usar referência. Adicione o End Frame ou use Kling / Wan que aceitam frame único.
-          </p>
-        )}
+
 
         {/* Multi-Shot (storyboard) — só Kling 3.0 */}
         {!collapsed && activeTab === "video" && supportsMultiShot && (
@@ -1621,12 +1615,7 @@ export function GenerationDock() {
               </div>
             </div>
 
-            {/* Aviso Seedance na aba Omni Reference */}
-            {activeTab === "video" && selectedModel?.backend === "seedance" && referenceImages.length > 0 && (
-              <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-400">
-                Seedance não suporta referência de imagem no modo Omni. Use Start + End Frame ou mude para Kling / Wan.
-              </p>
-            )}
+
 
             {activeTab === "video" && (
               <>
