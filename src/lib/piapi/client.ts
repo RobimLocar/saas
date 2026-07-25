@@ -414,15 +414,17 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
     };
   }
 
-  // ── KLING TURBO (2.5-turbo) ─────────────────────────────────────────────
+  // ── KLING TURBO (2.5) ────────────────────────────────────────────────────
+  // AUDITORIA 2: model="kling-turbo" falha 100% das vezes com internal 500.
+  // A solução correta é usar model="kling" com version="2.5" e mode="turbo".
+  // Confirmado funcionando em 2026-07-25.
   if (backend === "kling-turbo") {
-    const mode = quality === "high" ? "pro" : "standard";
     const duration = quality === "low" ? 5 : 10;
-    // NÃO enviar "version" no kling-turbo — a versão errada causa internal server
-    // error na PiAPI (auditoria 2). O backend já define a versão do modelo.
+    const klingVersion = (params.kling_version || "2.5").replace("-turbo", "");
     const input: Record<string, unknown> = {
       prompt,
-      mode,
+      version: klingVersion,  // "2.5" — sem o sufixo "-turbo"
+      mode: "turbo",           // mode=turbo é o correto para este modelo
       duration,
       aspect_ratio: aspect,
     };
@@ -432,7 +434,8 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
       input.reference_video_url = referenceVideos[0];
     }
     if (negativePrompt) input.negative_prompt = negativePrompt;
-    return { model: "kling-turbo", task_type: "video_generation", input, config };
+    // Usa model="kling" (não "kling-turbo") — confirmado pela PiAPI
+    return { model: "kling", task_type: "video_generation", input, config };
   }
 
   // ── KLING (classic / 3.0 / omni) ─────────────────────────────────────────
