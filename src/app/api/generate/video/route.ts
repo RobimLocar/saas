@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
       reference_videos,
       reference_audios,
       shots,
+      with_audio,
       quality,
     } = body;
     const qualityLevel: "low" | "medium" | "high" =
@@ -141,6 +142,7 @@ export async function POST(req: NextRequest) {
         referenceVideos: Array.isArray(reference_videos) ? reference_videos : undefined,
         referenceAudios: Array.isArray(reference_audios) ? reference_audios : undefined,
         shots: Array.isArray(shots) ? shots : undefined,
+        withAudio: typeof with_audio === "boolean" ? with_audio : undefined,
         negativePrompt: negative_prompt,
       });
 

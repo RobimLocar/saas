@@ -976,7 +976,7 @@ export function GenerationDock() {
     }
 
     if (insufficient) {
-      toast.error(`Need ${totalCost} credits. ${credits ?? 0} available.`);
+      toast.error(`Créditos insuficientes. Precisa de ${totalCost}, disponível: ${credits ?? 0}.`);
       return;
     }
 

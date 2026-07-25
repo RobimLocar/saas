@@ -264,6 +264,7 @@ export interface BuildVideoArgs {
   referenceVideos?: string[];
   referenceAudios?: string[];
   shots?: Array<{ prompt: string; duration: number }>;
+  withAudio?: boolean;
   negativePrompt?: string;
 }
 
@@ -419,7 +420,7 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
       duration: clampInt(userDur, 3, 15),
       resolution,
       aspect_ratio: aspect,
-      enable_audio: false,
+      enable_audio: args.withAudio ?? false,
     };
     if (imageUrl) input.image_url = imageUrl;
     if (endImageUrl) input.end_image_url = endImageUrl;
