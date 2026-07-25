@@ -152,6 +152,7 @@ export interface GptImageParams {
   prompt: string;
   aspect_ratio?: string;
   quality?: "low" | "medium" | "high";
+  reference_image_url?: string; // URL pública da imagem de referência (aceita por gpt-image-2)
 }
 
 /**
@@ -174,19 +175,25 @@ export async function generateImageGptSync(
         ? "1536x1024"
         : "1024x1536";
 
+  const reqBody: Record<string, unknown> = {
+    model: "gpt-image-2",
+    prompt: params.prompt,
+    n: 1,
+    size,
+    quality: params.quality || "high",
+  };
+  // Imagem de referência — aceita como "image" no body JSON (validado PiAPI 2026-07)
+  if (params.reference_image_url) {
+    reqBody.image = params.reference_image_url;
+  }
+
   const res = await fetch(`${PIAPI_OPENAI_BASE}/images/generations`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model: "gpt-image-2",
-      prompt: params.prompt,
-      n: 1,
-      size,
-      quality: params.quality || "high",
-    }),
+    body: JSON.stringify(reqBody),
   });
 
   const data = (await res.json().catch(() => null)) as {

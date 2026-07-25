@@ -175,13 +175,16 @@ export async function POST(req: NextRequest) {
       const isPremium =
         modelParams.provider === "gpt-image" ||
         modelParams.provider === "abacus"; // compat com mapeamento antigo
-      const useGptSync =
-        !reference_image_url && (isPremium || qualityLevel === "high");
+      // Premium: usa GPT Image 2 sempre (suporta referência via campo "image").
+      // Não-premium com qualidade alta e sem referência: também usa GPT.
+      // Não-premium com referência: usa Flux img2img.
+      const useGptSync = isPremium || (!reference_image_url && qualityLevel === "high");
       if (useGptSync) {
         const imageUrl = await generateImageGptSync({
           prompt,
           aspect_ratio,
           quality: qualityLevel,
+          reference_image_url: reference_image_url || undefined,
         });
 
         let finalUrl = imageUrl;
