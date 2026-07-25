@@ -418,9 +418,10 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
   if (backend === "kling-turbo") {
     const mode = quality === "high" ? "pro" : "standard";
     const duration = quality === "low" ? 5 : 10;
+    // NÃO enviar "version" no kling-turbo — a versão errada causa internal server
+    // error na PiAPI (auditoria 2). O backend já define a versão do modelo.
     const input: Record<string, unknown> = {
       prompt,
-      version: params.kling_version || "2.5-turbo",
       mode,
       duration,
       aspect_ratio: aspect,

@@ -35,6 +35,27 @@ export async function POST(req: NextRequest) {
     const qualityLevel: "low" | "medium" | "high" =
       quality === "low" || quality === "medium" ? quality : "high";
 
+    console.log(
+      "[video/generate] REQUEST",
+      JSON.stringify({
+        prompt: typeof prompt === "string" ? prompt.slice(0, 50) : prompt,
+        model_uuid,
+        aspect_ratio,
+        duration,
+        resolution,
+        has_start_img: !!start_image_url,
+        has_end_img: !!end_image_url,
+        reference_images_count: Array.isArray(reference_images)
+          ? reference_images.length
+          : 0,
+        reference_videos_count: Array.isArray(reference_videos)
+          ? reference_videos.length
+          : 0,
+        with_audio,
+        quality: qualityLevel,
+      })
+    );
+
     if (!prompt || !model_uuid) {
       return NextResponse.json(
         { error: "Prompt e modelo são obrigatórios" },
@@ -51,7 +72,22 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (!aiModel) {
+      console.warn("[video/generate] MODEL_NOT_FOUND", model_uuid);
       return NextResponse.json({ error: "Modelo não encontrado" }, { status: 404 });
+    }
+
+    {
+      const mp = (aiModel.params as VideoModelParams) || {};
+      console.log(
+        "[video/generate] MODEL",
+        JSON.stringify({
+          name: aiModel.name,
+          backend: mp.backend,
+          task_type: mp.task_type,
+          output_key: mp.output_key,
+          credit_cost: aiModel.credit_cost,
+        })
+      );
     }
 
     // Verificar créditos e plano
@@ -149,13 +185,17 @@ export async function POST(req: NextRequest) {
         negativePrompt: negative_prompt,
       });
 
-      console.log(
-        `[generate/video] model=${aiModel.name} backend=${modelParams.backend} ` +
-          `task_type=${payload.task_type} output_key=${outputKey} ` +
-          `duration=${duration} aspect=${aspect_ratio} has_start_img=${!!start_image_url}`
-      );
+      console.log("[video/generate] PAYLOAD", JSON.stringify(payload));
 
       const task = await submitVideoTask(payload);
+
+      console.log(
+        "[video/generate] PIAPI_RESPONSE",
+        JSON.stringify({
+          task_id: task?.data?.task_id,
+          status: task?.data?.status,
+        })
+      );
 
       await supabase
         .from("generations")
@@ -169,6 +209,10 @@ export async function POST(req: NextRequest) {
         balance: newBalance,
       });
     } catch (apiError) {
+      console.error("[video/generate] PIAPI_ERROR", {
+        message: apiError instanceof Error ? apiError.message : String(apiError),
+        stack: apiError instanceof Error ? apiError.stack : undefined,
+      });
       // Reverter créditos
       await supabase.from("profiles").update({ credits_balance: profile.credits_balance }).eq("id", user.id);
       await supabase.from("generations").update({ status: "failed", error_message: String(apiError) }).eq("id", generation.id);

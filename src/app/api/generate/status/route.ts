@@ -55,6 +55,14 @@ export async function GET(req: NextRequest) {
     try {
       const taskStatus = await getTaskStatus(generation.provider_task_id);
       const state = taskStatus.data?.status;
+      console.log(
+        "[status] task_id=",
+        generation.provider_task_id,
+        "state=",
+        state,
+        "output_keys=",
+        Object.keys(taskStatus.data?.output || {})
+      );
 
       if (state === "completed") {
         // Vídeo: usa o output_key salvo no modelo (output.video vs output.video_url).
@@ -70,6 +78,12 @@ export async function GET(req: NextRequest) {
             ? extractVideoUrl(taskStatus.data.output, outputKey)
             : extractResultUrl(taskStatus.data.output);
         if (!providerUrl) {
+          console.warn(
+            "[status] URL not extracted! output_key=",
+            outputKey,
+            "output=",
+            JSON.stringify(taskStatus.data.output)
+          );
           return NextResponse.json({ status: "processing" });
         }
 

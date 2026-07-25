@@ -67,6 +67,7 @@ export async function GET(req: NextRequest) {
         dur_min: typeof p.dur_min === "number" ? p.dur_min : null,
         dur_max: typeof p.dur_max === "number" ? p.dur_max : null,
         backend: (p.backend as string) || null,
+        task_type: (p.task_type as string) || null,
         thumbnail_url: m.thumbnail_url,
         // Disponível se é modelo premium (provider gpt-image/abacus) ou
         // se o backend efetivo (params.backend ?? model_id) está integrado

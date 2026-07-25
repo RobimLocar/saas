@@ -1006,11 +1006,27 @@ export function GenerationDock() {
       body.with_audio = audioEnabled;
     }
 
+    console.log(
+      "[dock] submitSingleGeneration model=",
+      selectedModel?.name,
+      "backend=",
+      selectedModel?.backend,
+      "body=",
+      JSON.stringify(body)
+    );
+
     const res = await fetch(`/api/generate/${activeTab}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
+
+    console.log(
+      "[dock] response status=",
+      res.status,
+      "ok=",
+      res.ok
+    );
 
     const data = await parseJsonSafe<{ error?: string }>(res);
     if (!res.ok) {
@@ -1029,6 +1045,16 @@ export function GenerationDock() {
   }
 
   async function handleGenerate() {
+    console.log("[dock] handleGenerate clicked", {
+      tab: activeTab,
+      prompt: prompt.slice(0, 30),
+      model: selectedModel?.name,
+      backend: selectedModel?.backend,
+      credits,
+      totalCost,
+      insufficient,
+    });
+
     if (!prompt.trim()) {
       toast.error("Escreva um prompt para gerar.");
       return;
