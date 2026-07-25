@@ -179,9 +179,12 @@ export async function POST(req: NextRequest) {
       // Propaga o erro real da PiAPI para o frontend (ex.: "insufficient credits").
       const errMsg =
         apiError instanceof Error ? apiError.message : String(apiError);
-      const status = errMsg.toLowerCase().includes("insufficient credits")
-        ? 402
-        : 502;
+      const isInsufficientCredits =
+        errMsg.toLowerCase().includes("insufficient credits") ||
+        errMsg.toLowerCase().includes("freeze credit") ||
+        errMsg.toLowerCase().includes("quota not enough") ||
+        errMsg.toLowerCase().includes("account point");
+      const status = isInsufficientCredits ? 402 : 502;
       return NextResponse.json({ error: errMsg }, { status });
     }
   } catch (err) {

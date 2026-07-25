@@ -62,6 +62,7 @@ interface ApiModel {
   duration_range?: string;
   dur_min?: number;
   dur_max?: number;
+  backend?: string | null;
 }
 
 interface UserAsset {
@@ -956,9 +957,14 @@ export function GenerationDock() {
     const data = await parseJsonSafe<{ error?: string }>(res);
     if (!res.ok) {
       let errMsg = data?.error || "Falha ao enviar geração";
-      if (errMsg.toLowerCase().includes("insufficient credits")) {
+      if (
+        errMsg.toLowerCase().includes("insufficient credits") ||
+        errMsg.toLowerCase().includes("freeze credit") ||
+        errMsg.toLowerCase().includes("quota not enough") ||
+        errMsg.toLowerCase().includes("account point")
+      ) {
         errMsg =
-          "Saldo PiAPI insuficiente. Adicione créditos em piapi.ai para gerar vídeos.";
+          "Saldo PiAPI insuficiente. Adicione créditos em piapi.ai para continuar gerando.";
       }
       throw new Error(errMsg);
     }
@@ -1316,6 +1322,14 @@ export function GenerationDock() {
           </div>
         )}
 
+        {/* Aviso Seedance: precisa de start + end para usar referência */}
+        {!collapsed && activeTab === "video" && referenceTab === "start-end" &&
+          selectedModel?.backend === "seedance" && startImageUrl && !endImageUrl && (
+          <p className="mb-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-400">
+            Seedance requer Start + End frame para usar referência. Adicione o End Frame ou use Kling / Wan que aceitam frame único.
+          </p>
+        )}
+
         {/* Multi-Shot (storyboard) — só Kling 3.0 */}
         {!collapsed && activeTab === "video" && supportsMultiShot && (
           <div className="mb-4">
@@ -1606,6 +1620,13 @@ export function GenerationDock() {
                 )}
               </div>
             </div>
+
+            {/* Aviso Seedance na aba Omni Reference */}
+            {activeTab === "video" && selectedModel?.backend === "seedance" && referenceImages.length > 0 && (
+              <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-400">
+                Seedance não suporta referência de imagem no modo Omni. Use Start + End Frame ou mude para Kling / Wan.
+              </p>
+            )}
 
             {activeTab === "video" && (
               <>
