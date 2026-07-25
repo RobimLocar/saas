@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
       end_image_url,
       reference_videos,
       reference_audios,
+      shots,
       quality,
     } = body;
     const qualityLevel: "low" | "medium" | "high" =
@@ -102,6 +103,7 @@ export async function POST(req: NextRequest) {
           end_image_url,
           reference_videos,
           reference_audios,
+          shots: Array.isArray(shots) ? shots : undefined,
           quality: qualityLevel,
           output_key: outputKey,
         },
@@ -138,6 +140,7 @@ export async function POST(req: NextRequest) {
         endImageUrl: end_image_url,
         referenceVideos: Array.isArray(reference_videos) ? reference_videos : undefined,
         referenceAudios: Array.isArray(reference_audios) ? reference_audios : undefined,
+        shots: Array.isArray(shots) ? shots : undefined,
         negativePrompt: negative_prompt,
       });
 

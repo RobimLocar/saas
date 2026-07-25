@@ -263,6 +263,7 @@ export interface BuildVideoArgs {
   endImageUrl?: string;
   referenceVideos?: string[];
   referenceAudios?: string[];
+  shots?: Array<{ prompt: string; duration: number }>;
   negativePrompt?: string;
 }
 
@@ -443,6 +444,13 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
     if (endImageUrl) input.end_image_url = endImageUrl;
     if (referenceVideos && referenceVideos.length > 0) {
       input.reference_video_url = referenceVideos[0];
+    }
+    // Multi-Shot (storyboard) — exclusivo do Kling 3.0.
+    if (args.shots && args.shots.length > 0) {
+      input.shots = args.shots.slice(0, 6).map((s) => ({
+        prompt: s.prompt,
+        duration: clampInt(s.duration, 3, 15),
+      }));
     }
     if (negativePrompt) input.negative_prompt = negativePrompt;
     return { model: "kling", task_type: "video_generation", input, config };

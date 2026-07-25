@@ -648,6 +648,18 @@ export function GenerationDock() {
   const [enhancing, setEnhancing] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // Multi-Shot (storyboard) — só Kling 3.0 (não omni/turbo)
+  const [multiShotEnabled, setMultiShotEnabled] = useState(false);
+  const [multiShotMode, setMultiShotMode] = useState<"auto" | "custom">("auto");
+  const [autoShotCount, setAutoShotCount] = useState(3);
+  const [autoShotDuration, setAutoShotDuration] = useState(5);
+  const [customShots, setCustomShots] = useState<
+    Array<{ prompt: string; duration: number }>
+  >([
+    { prompt: "", duration: 5 },
+    { prompt: "", duration: 5 },
+  ]);
+
   const startInputRef = useRef<HTMLInputElement>(null);
   const endInputRef = useRef<HTMLInputElement>(null);
   const refImageInputRef = useRef<HTMLInputElement>(null);
@@ -768,6 +780,34 @@ export function GenerationDock() {
   const safeDuration = Math.min(Math.max(duration, durMin), durMax);
   const totalRefs =
     referenceImages.length + referenceVideos.length + referenceAudios.length;
+
+  // Multi-Shot suportado apenas em Kling 3.0 (não Omni, não Turbo).
+  const supportsMultiShot = useMemo(() => {
+    if (!selectedModel || activeTab !== "video") return false;
+    const name = selectedModel.name.toLowerCase();
+    return (
+      selectedModel.family === "Kling" &&
+      !name.includes("omni") &&
+      !name.includes("turbo") &&
+      selectedModel.dur_min === 3 &&
+      selectedModel.dur_max === 15
+    );
+  }, [selectedModel, activeTab]);
+
+  useEffect(() => {
+    if (!supportsMultiShot && multiShotEnabled) setMultiShotEnabled(false);
+  }, [supportsMultiShot, multiShotEnabled]);
+
+  function buildShots(): Array<{ prompt: string; duration: number }> {
+    if (multiShotMode === "auto") {
+      return Array.from({ length: autoShotCount }, () => ({
+        prompt: prompt.trim(),
+        duration: autoShotDuration,
+      }));
+    }
+    const filled = customShots.filter((s) => s.prompt.trim().length > 0);
+    return filled.length > 0 ? filled : customShots.slice(0, 1);
+  }
 
   function selectModel(model: ApiModel) {
     setSelectedModelId(model.id);
@@ -901,6 +941,9 @@ export function GenerationDock() {
       }
       if (referenceVideos.length > 0) body.reference_videos = referenceVideos;
       if (referenceAudios.length > 0) body.reference_audios = referenceAudios;
+      if (multiShotEnabled && supportsMultiShot) {
+        body.shots = buildShots();
+      }
       body.with_audio = audioEnabled;
     }
 
@@ -1270,6 +1313,251 @@ export function GenerationDock() {
               )}
               End Frame
             </button>
+          </div>
+        )}
+
+        {/* Multi-Shot (storyboard) — só Kling 3.0 */}
+        {!collapsed && activeTab === "video" && supportsMultiShot && (
+          <div className="mb-4">
+            <div className="mb-2 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setMultiShotEnabled((v) => !v)}
+                className={cn(
+                  "relative h-6 w-11 shrink-0 rounded-full transition-colors",
+                  multiShotEnabled ? "bg-[#7C3AED]" : "bg-[#2A2A2A]"
+                )}
+              >
+                <span
+                  className={cn(
+                    "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform",
+                    multiShotEnabled ? "translate-x-5" : "translate-x-0.5"
+                  )}
+                />
+              </button>
+              <div>
+                <p className="text-sm text-[#F5F5F5]">
+                  Multi-Shot (up to 6 scenes)
+                </p>
+                {multiShotEnabled && (
+                  <p className="text-[11px] text-[#666666]">
+                    Storyboard shots — each with prompt + duration (max 6 shots,
+                    15s total)
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {multiShotEnabled && (
+              <div className="rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] p-3">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-semibold uppercase tracking-widest text-[#666666]">
+                      SEQUENCE
+                    </span>
+                    <span
+                      title="AUTO: model designs the storyboard. CUSTOM: you author each shot's prompt + duration. Total ≤ 15s across all shots."
+                      className="flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-[#444444] text-[10px] text-[#666666]"
+                    >
+                      i
+                    </span>
+                  </div>
+                  <div className="flex gap-1">
+                    {(["auto", "custom"] as const).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setMultiShotMode(m)}
+                        className={cn(
+                          "rounded-lg px-3 py-1 text-xs font-semibold uppercase tracking-wide transition-colors",
+                          multiShotMode === m
+                            ? "bg-[#2A2A2A] text-[#F5F5F5]"
+                            : "text-[#555555] hover:text-[#F5F5F5]"
+                        )}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {multiShotMode === "auto" && (
+                  <div className="space-y-3">
+                    <div>
+                      <div className="mb-1 flex items-center justify-between">
+                        <span className="text-xs text-[#888888]">Shots</span>
+                        <span className="text-xs text-[#888888]">
+                          {autoShotCount}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAutoShotCount((v) => Math.max(1, v - 1))
+                          }
+                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#2A2A2A] text-[#888888] hover:text-[#F5F5F5]"
+                        >
+                          −
+                        </button>
+                        <input
+                          type="range"
+                          min={1}
+                          max={6}
+                          value={autoShotCount}
+                          onChange={(e) =>
+                            setAutoShotCount(Number(e.target.value))
+                          }
+                          className="flex-1 accent-[#7C3AED]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAutoShotCount((v) => Math.min(6, v + 1))
+                          }
+                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#2A2A2A] text-[#888888] hover:text-[#F5F5F5]"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="mb-1 flex items-center justify-between">
+                        <span className="text-xs text-[#888888]">Per Shot</span>
+                        <span className="text-xs text-[#888888]">
+                          {autoShotDuration}s
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAutoShotDuration((v) => Math.max(3, v - 1))
+                          }
+                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#2A2A2A] text-[#888888] hover:text-[#F5F5F5]"
+                        >
+                          −
+                        </button>
+                        <input
+                          type="range"
+                          min={3}
+                          max={15}
+                          value={autoShotDuration}
+                          onChange={(e) =>
+                            setAutoShotDuration(Number(e.target.value))
+                          }
+                          className="flex-1 accent-[#7C3AED]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAutoShotDuration((v) => Math.min(15, v + 1))
+                          }
+                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#2A2A2A] text-[#888888] hover:text-[#F5F5F5]"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <p className="mt-1 text-[10px] text-[#555555]">
+                        Total: {autoShotCount * autoShotDuration}s
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {multiShotMode === "custom" && (
+                  <div className="space-y-2">
+                    {customShots.map((shot, i) => (
+                      <div key={i} className="flex items-start gap-2">
+                        <span className="mt-2 min-w-[44px] text-[11px] text-[#555555]">
+                          Shot {i + 1}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCustomShots((prev) =>
+                                prev.map((s, j) =>
+                                  j === i
+                                    ? { ...s, duration: Math.max(3, s.duration - 1) }
+                                    : s
+                                )
+                              )
+                            }
+                            className="flex h-7 w-7 items-center justify-center rounded border border-[#2A2A2A] text-xs text-[#888888] hover:text-[#F5F5F5]"
+                          >
+                            −
+                          </button>
+                          <span className="w-8 text-center text-xs text-[#F5F5F5]">
+                            {shot.duration}s
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCustomShots((prev) =>
+                                prev.map((s, j) =>
+                                  j === i
+                                    ? { ...s, duration: Math.min(15, s.duration + 1) }
+                                    : s
+                                )
+                              )
+                            }
+                            className="flex h-7 w-7 items-center justify-center rounded border border-[#2A2A2A] text-xs text-[#888888] hover:text-[#F5F5F5]"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <textarea
+                          value={shot.prompt}
+                          onChange={(e) =>
+                            setCustomShots((prev) =>
+                              prev.map((s, j) =>
+                                j === i ? { ...s, prompt: e.target.value } : s
+                              )
+                            )
+                          }
+                          placeholder={`Shot ${i + 1} scene description...`}
+                          rows={1}
+                          className="flex-1 resize-none rounded-lg border border-[#2A2A2A] bg-[#141414] px-2.5 py-1.5 text-xs text-[#F5F5F5] outline-none placeholder:text-[#444444] focus:border-[#444444]"
+                        />
+                        {customShots.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCustomShots((prev) =>
+                                prev.filter((_, j) => j !== i)
+                              )
+                            }
+                            className="mt-2 text-sm text-[#444444] hover:text-red-400"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    <div className="flex items-center justify-between pt-1">
+                      <button
+                        type="button"
+                        disabled={customShots.length >= 6}
+                        onClick={() =>
+                          setCustomShots((prev) => [
+                            ...prev,
+                            { prompt: "", duration: 5 },
+                          ])
+                        }
+                        className="text-xs text-[#7C3AED] hover:text-[#9F67FF] disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        + Add Shot
+                      </button>
+                      <span className="text-[11px] text-[#555555]">
+                        Total:{" "}
+                        {customShots.reduce((s, sh) => s + sh.duration, 0)}s
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
