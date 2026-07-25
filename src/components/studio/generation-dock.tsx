@@ -980,6 +980,20 @@ export function GenerationDock() {
       return;
     }
 
+    if (
+      activeTab === "video" &&
+      referenceTab === "start-end" &&
+      startImageUrl &&
+      !endImageUrl &&
+      (selectedModel?.family?.toLowerCase().includes("seedance") ||
+        selectedModel?.name?.toLowerCase().includes("seedance"))
+    ) {
+      toast("Seedance precisa de start + end frame. Gerando apenas com o prompt.", {
+        icon: "⚠️",
+        duration: 4000,
+      });
+    }
+
     setLoading(true);
     // Mostrar cards optimistas no feed IMEDIATAMENTE (antes da resposta do servidor)
     const count = activeTab === "image" && batchCount > 1 ? batchCount : 1;

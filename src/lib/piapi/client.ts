@@ -311,11 +311,16 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
       resolution,
       aspect_ratio: aspect,
     };
-    // image_urls: [start] ou [start, end] (end sozinho não funciona como end frame).
-    const imgUrls: string[] = [];
-    if (imageUrl) imgUrls.push(imageUrl);
-    if (endImageUrl && imageUrl) imgUrls.push(endImageUrl);
-    if (imgUrls.length > 0) input.image_urls = imgUrls;
+    // Semântica do image_urls[] do Seedance na PiAPI:
+    //   1 item  → força mode=first_last_frames → ERRO (precisa de 2 imagens)
+    //   2 itens → first_last_frames → OK (start + end)
+    //   0 itens → text_to_video    → OK
+    // Portanto, só enviar image_urls quando tivermos AMBOS start + end frame.
+    const hasBothFrames = Boolean(imageUrl && endImageUrl);
+    if (hasBothFrames) {
+      input.image_urls = [imageUrl as string, endImageUrl as string];
+    }
+    // (start frame isolado é ignorado → gera como text_to_video; aviso no frontend)
     if (referenceVideos && referenceVideos.length > 0) {
       input.video_urls = referenceVideos;
     }
@@ -323,7 +328,7 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
     if (
       referenceAudios &&
       referenceAudios.length > 0 &&
-      (imgUrls.length > 0 || (referenceVideos && referenceVideos.length > 0))
+      (hasBothFrames || (referenceVideos && referenceVideos.length > 0))
     ) {
       input.audio_urls = referenceAudios;
     }
