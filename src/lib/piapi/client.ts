@@ -344,10 +344,18 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
       prompt,
       duration: snap(userDur, [5, 10, 15]),
       resolution,
+      watermark: false,
       ...(hasImage ? {} : { aspect_ratio: aspect }), // aspect_ratio não é suportado em img2video
     };
     if (imageUrl) input.image = imageUrl; // campo correto: "image", não "image_url"
     if (negativePrompt) input.negative_prompt = negativePrompt;
+    // Audio: usa audio_url externo se fornecido; senão gera áudio nativo por padrão.
+    if (referenceAudios && referenceAudios.length > 0) {
+      input.audio_url = referenceAudios[0];
+      input.audio = true;
+    } else {
+      input.audio = args.withAudio ?? true;
+    }
     return {
       model: "Wan",
       task_type: hasImage ? "wan26-img2video" : (params.task_type || "wan26-txt2video"),
@@ -358,14 +366,15 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
 
   // ── HAILUO (MiniMax) ─────────────────────────────────────────────────────
   if (backend === "hailuo") {
-    // low → 768/6s ; medium → 768/10s ; high → 1080/6s (nunca 1080+10!)
-    const duration = quality === "medium" ? 10 : 6;
-    const resolution = quality === "high" ? 1080 : 768;
+    // Duração válida: 6 ou 10 — snap conforme o pedido do usuário.
+    const hailuoDur = userDur <= 8 ? 6 : 10;
+    // Resolução: 1080p só é aceito com duration=6 (1080+10 não existe na PiAPI).
+    const resolution = quality === "high" && hailuoDur === 6 ? 1080 : 768;
     // Hailuo NÃO aceita aspect_ratio no input; o campo de imagem é image_url.
     const input: Record<string, unknown> = {
       model: params.hailuo_model || "v2.3",
       prompt,
-      duration,
+      duration: hailuoDur,
       resolution,
     };
     if (imageUrl) input.image_url = imageUrl;
@@ -374,16 +383,19 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
 
   // ── VEO 3 / VEO 3.1 ────────────────────────────────────────────────────────
   if (backend === "veo3" || backend === "veo3.1") {
-    // low → 720p/4s ; medium → 720p/8s ; high → 1080p/8s
+    // resolução: 720p (low/medium) ou 1080p (high)
     const resolution = quality === "high" ? "1080p" : "720p";
-    const durStr = quality === "low" ? "4s" : "8s";
+    // duração válida: [4, 6, 8] — snap ao mais próximo do pedido, formatado como "Xs"
+    const veoDur = snap(userDur, [4, 6, 8]);
+    const durStr = `${veoDur}s`; // STRING com sufixo "s"
     const input: Record<string, unknown> = {
       prompt,
-      duration: durStr, // STRING com sufixo "s"
+      duration: durStr,
       resolution,
       aspect_ratio: aspect === "9:16" ? "9:16" : "16:9",
-      generate_audio: true,
+      generate_audio: args.withAudio ?? Boolean(params.has_audio),
     };
+    if (negativePrompt) input.negative_prompt = negativePrompt;
     if (imageUrl) input.image_url = imageUrl;
     const defaultTask = backend === "veo3" ? "veo3-video" : "veo3.1-video";
     return {
@@ -466,12 +478,19 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
     if (referenceVideos && referenceVideos.length > 0) {
       input.reference_video_url = referenceVideos[0];
     }
-    // Multi-Shot (storyboard) — exclusivo do Kling 3.0.
+    // enable_audio: suportado no Kling 3.0 (não no 3.0-turbo).
+    if (version !== "3.0-turbo") {
+      input.enable_audio = args.withAudio ?? false;
+    }
+    // Multi-Shot (storyboard) — campo correto é multi_shots + prefer_multi_shots.
     if (args.shots && args.shots.length > 0) {
-      input.shots = args.shots.slice(0, 6).map((s) => ({
+      input.prefer_multi_shots = true;
+      input.multi_shots = args.shots.slice(0, 6).map((s) => ({
         prompt: s.prompt,
         duration: clampInt(s.duration, 3, 15),
       }));
+    } else {
+      input.prefer_multi_shots = false;
     }
     if (negativePrompt) input.negative_prompt = negativePrompt;
     return { model: "kling", task_type: "video_generation", input, config };
