@@ -311,11 +311,15 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
       resolution,
       aspect_ratio: aspect,
     };
-    // image_urls: [start] ou [start, end] (end sozinho não funciona como end frame).
+    // image_urls: PiAPI Seedance só aceita [start, end] (2 itens) — modo first_last_frames.
+    // Com 1 imagem apenas (start sem end), a PiAPI retorna erro 400.
+    // Nesse caso deixamos sem image_urls e a geração usa text_to_video.
     const imgUrls: string[] = [];
-    if (imageUrl) imgUrls.push(imageUrl);
-    if (endImageUrl && imageUrl) imgUrls.push(endImageUrl);
-    if (imgUrls.length > 0) input.image_urls = imgUrls;
+    if (imageUrl && endImageUrl) {
+      imgUrls.push(imageUrl);
+      imgUrls.push(endImageUrl);
+    }
+    if (imgUrls.length === 2) input.image_urls = imgUrls;
     if (referenceVideos && referenceVideos.length > 0) {
       input.video_urls = referenceVideos;
     }
