@@ -7,6 +7,7 @@ import { planAllows } from "@/lib/plans";
 import { debitCredits, effectiveCost, refundCredits } from "@/lib/credits";
 import { HIGH_COST_THRESHOLD_CREDITS, HIGH_COST_COOLDOWN_SECONDS } from "@/lib/constants";
 import { validateVideoRequest } from "@/lib/generation-validation";
+import { validateGenerationInput } from "@/lib/validate-generation";
 import { auditLog, newRequestId, truncate } from "@/lib/audit-log";
 
 export async function POST(req: NextRequest) {
@@ -49,6 +50,23 @@ export async function POST(req: NextRequest) {
     } = body;
     const qualityLevel: "low" | "medium" | "high" =
       quality === "low" || quality === "medium" ? quality : "high";
+
+    // Validação local anti-SSRF/entrada (antes de qualquer DB ou débito)
+    const inputValidation = validateGenerationInput({
+      aspect_ratio,
+      start_image_url,
+      end_image_url,
+      reference_images,
+      reference_videos,
+      reference_audios,
+      duration,
+    });
+    if (!inputValidation.ok) {
+      auditLog("api.generate.video", "validacao_local_400", requestId, {
+        error: inputValidation.error,
+      });
+      return NextResponse.json({ error: inputValidation.error }, { status: 400 });
+    }
 
     console.log(
       "[video/generate] REQUEST",

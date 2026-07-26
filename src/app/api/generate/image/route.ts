@@ -6,6 +6,7 @@ import { planAllows } from "@/lib/plans";
 import { debitCredits, effectiveCost, refundCredits } from "@/lib/credits";
 import { HIGH_COST_THRESHOLD_CREDITS, HIGH_COST_COOLDOWN_SECONDS } from "@/lib/constants";
 import { auditLog, newRequestId } from "@/lib/audit-log";
+import { validateGenerationInput } from "@/lib/validate-generation";
 
 // Heurística: o prompt pede TEXTO renderizado na imagem?
 // (aspas, ou palavras típicas de tipografia/rótulos)
@@ -69,6 +70,18 @@ export async function POST(req: NextRequest) {
     const { prompt, model_uuid, negative_prompt, aspect_ratio, width, height, reference_image_url, resolution, quality } = body;
     const qualityLevel: "low" | "medium" | "high" =
       quality === "low" || quality === "medium" ? quality : "high";
+
+    // Validação local anti-SSRF/entrada (antes de qualquer DB ou débito)
+    const inputValidation = validateGenerationInput({
+      aspect_ratio,
+      reference_image_url,
+    });
+    if (!inputValidation.ok) {
+      auditLog("api.generate.image", "validacao_local_400", requestId, {
+        error: inputValidation.error,
+      });
+      return NextResponse.json({ error: inputValidation.error }, { status: 400 });
+    }
 
     if (!prompt || !model_uuid) {
       return NextResponse.json(

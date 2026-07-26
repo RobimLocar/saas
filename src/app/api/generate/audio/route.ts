@@ -8,6 +8,7 @@ import { planAllows } from "@/lib/plans";
 import { debitCredits, effectiveCost, refundCredits } from "@/lib/credits";
 import { HIGH_COST_THRESHOLD_CREDITS, HIGH_COST_COOLDOWN_SECONDS } from "@/lib/constants";
 import { auditLog, newRequestId } from "@/lib/audit-log";
+import { validateGenerationInput } from "@/lib/validate-generation";
 
 // Persiste um áudio (Buffer) no Supabase Storage e retorna a URL pública.
 async function persistAudio(
@@ -72,6 +73,22 @@ export async function POST(req: NextRequest) {
     } = body;
     const qualityLevel: "low" | "medium" | "high" =
       quality === "low" || quality === "medium" ? quality : "high";
+
+    // Validação local anti-SSRF/entrada (antes de qualquer DB ou débito)
+    const inputValidation = validateGenerationInput({
+      duration,
+      reference_image_url: body.reference_image_url,
+      reference_images: body.reference_images,
+      reference_videos: body.reference_videos,
+      reference_audios: body.reference_audios,
+    });
+    if (!inputValidation.ok) {
+      auditLog("api.generate.audio", "validacao_local_400", requestId, {
+        error: inputValidation.error,
+      });
+      return NextResponse.json({ error: inputValidation.error }, { status: 400 });
+    }
+
     // Normaliza os parâmetros de voz (0–1 para stability/similarity, 0.1–4 speed)
     const clamp = (n: unknown, lo: number, hi: number, dflt: number) =>
       typeof n === "number" && !Number.isNaN(n)
