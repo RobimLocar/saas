@@ -415,11 +415,12 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
       input,
       config,
     };
-    // Quando há imagens de referência, a PiAPI pode rejeitar fotos com rosto de
-    // pessoa real ("content restriction"). Definir auto_upload_assets:true faz a
-    // PiAPI hospedar/reprocessar a imagem internamente, contornando a restrição
-    // (conforme instrução retornada nos logs da própria PiAPI).
-    if (imgUrls.length > 0) seedancePayload.auto_upload_assets = true;
+    // OBS.: NÃO enviamos `auto_upload_assets: true`. Esse flag havia sido
+    // adicionado como tentativa de contornar a restrição de conteúdo ("real
+    // person") da PiAPI, mas (a) não é um parâmetro oficial/documentado do
+    // Seedance e (b) comprovadamente NÃO contorna o bloqueio (auditoria da
+    // Etapa 1: tasks continuaram falhando com o mesmo erro mesmo com o flag).
+    // A decisão de aceitar ou rejeitar a imagem é 100% do provedor.
     return seedancePayload;
   }
 

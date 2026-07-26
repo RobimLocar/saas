@@ -228,27 +228,17 @@ export async function GET(req: NextRequest) {
           piapi_logs: logs,
         }, Date.now() - t0);
 
-        const logsText = logs.join(" \n ").toLowerCase();
-        let errMsg = providerMsg;
-        if (
-          logsText.includes("real person") ||
-          logsText.includes("content restriction")
-        ) {
-          errMsg =
-            "Imagem rejeitada: a foto contém rosto de pessoa real. O Seedance não aceita imagens com pessoas reais por restrições de deepfake. Use uma imagem sem rostos visíveis.";
-        } else if (
-          logsText.includes("plan limit") ||
-          logsText.includes("active task count")
-        ) {
-          errMsg =
-            "Limite de tarefas simultâneas atingido. Aguarde a conclusão das gerações em andamento e tente novamente.";
-        } else if (
-          logsText.includes("nsfw") ||
-          logsText.includes("content policy")
-        ) {
-          errMsg =
-            "Conteúdo rejeitado pela política do provedor. Revise o prompt ou a imagem de referência.";
-        }
+        // NÃO classificamos nem substituímos a mensagem do provedor por texto
+        // interno. Preservamos SEMPRE a mensagem original (error.message +
+        // logs[] concatenados quando houver), com um prefixo neutro em PT-BR.
+        // A validação de conteúdo é responsabilidade exclusiva do provedor.
+        const providerDetail = [providerMsg, ...logs]
+          .map((s) => String(s).trim())
+          .filter(Boolean)
+          .join(" | ");
+        const errMsg = providerDetail
+          ? `O provider rejeitou a solicitação: ${providerDetail}`
+          : "O provider rejeitou a solicitação.";
 
         await service
           .from("generations")
