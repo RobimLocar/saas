@@ -110,7 +110,44 @@ async function piapiFetch<T = unknown>(
     throw netErr;
   }
 
-  const data = await res.json();
+  // A PiAPI passa por Cloudflare. Quando sobrecarregada / sob challenge, ela
+  // pode responder com HTML (challenge page) em vez de JSON. Chamar res.json()
+  // direto explode com SyntaxError ("Unexpected token '<'"). Verificamos o
+  // Content-Type e lemos como texto primeiro para tratar esses casos.
+  const contentType = res.headers.get("content-type") || "";
+  const rawText = await res.text();
+  let data: any;
+  if (contentType.includes("application/json")) {
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      // Header diz JSON, mas o corpo é inválido.
+      auditLog("piapi.fetch", "parse_error", requestId, {
+        url: `${PIAPI_BASE_URL}${path}`,
+        http_status: res.status,
+        content_type: contentType,
+        raw_preview: rawText.slice(0, 300),
+      }, Date.now() - t0);
+      throw new PiAPIError(
+        `Provider retornou JSON inválido (HTTP ${res.status}). Tente novamente em alguns instantes.`,
+        502,
+        { raw: rawText.slice(0, 500) }
+      );
+    }
+  } else {
+    // Conteúdo não-JSON (HTML de challenge Cloudflare, XML, texto puro, etc.).
+    auditLog("piapi.fetch", "non_json_response", requestId, {
+      url: `${PIAPI_BASE_URL}${path}`,
+      http_status: res.status,
+      content_type: contentType,
+      raw_preview: rawText.slice(0, 300),
+    }, Date.now() - t0);
+    throw new PiAPIError(
+      `Provider temporariamente indisponível (HTTP ${res.status}, recebeu ${contentType || "HTML"} em vez de JSON). Tente novamente em alguns instantes.`,
+      503,
+      { raw: rawText.slice(0, 500) }
+    );
+  }
 
   // AUDIT: response completa da PiAPI (inclui logs[] quando presentes)
   auditLog("piapi.fetch", "response", requestId, {
@@ -298,6 +335,9 @@ export interface BuildVideoArgs {
   prompt: string;
   quality: Quality;
   duration?: number;
+  /** resolução escolhida pelo usuário (ex.: "480p" | "720p" | "1080p"); tem
+   *  prioridade sobre a derivada de `quality`. */
+  resolution?: string;
   aspectRatio?: string;
   imageUrl?: string;
   endImageUrl?: string;
@@ -373,8 +413,11 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
   // ── SEEDANCE ──────────────────────────────────────────────────────────────
   if (backend === "seedance") {
     const taskType = params.task_type || "seedance-2";
-    // 1080p só no Pro (seedance-2); fast/mini limitam a 720p.
-    let resolution = quality === "low" ? "480p" : quality === "medium" ? "720p" : "1080p";
+    // Respeita a resolução escolhida pelo usuário; só cai no fallback por quality
+    // quando o usuário não informou nada. 1080p só no Pro (seedance-2);
+    // fast/mini limitam a 720p.
+    let resolution =
+      args.resolution || (quality === "low" ? "480p" : quality === "medium" ? "720p" : "1080p");
     if (taskType !== "seedance-2" && resolution === "1080p") resolution = "720p";
     const input: Record<string, unknown> = {
       prompt,
@@ -426,7 +469,10 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
 
   // ── WAN 2.6 ────────────────────────────────────────────────────────────────
   if (backend === "Wan") {
-    const resolution = quality === "high" ? "1080P" : "720P"; // P maiúsculo!
+    // Wan aceita 720P / 1080P (P maiúsculo). Respeita a escolha do usuário; 480p
+    // não é suportado pela Wan → sobe para 720P.
+    let resolution = (args.resolution || (quality === "high" ? "1080p" : "720p")).toUpperCase();
+    if (resolution === "480P") resolution = "720P";
     const hasImage = Boolean(imageUrl);
     const input: Record<string, unknown> = {
       prompt,
@@ -456,8 +502,13 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
   if (backend === "hailuo") {
     // Duração válida: 6 ou 10 — snap conforme o pedido do usuário.
     const hailuoDur = userDur <= 8 ? 6 : 10;
-    // Resolução: 1080p só é aceito com duration=6 (1080+10 não existe na PiAPI).
-    const resolution = quality === "high" && hailuoDur === 6 ? 1080 : 768;
+    // Hailuo usa resolução NUMÉRICA (1080 ou 768) por limitação do provider.
+    // Respeita a escolha do usuário quando viável: 1080 só é aceito com
+    // duration=6 (1080+10 não existe na PiAPI); caso contrário cai para 768.
+    const wants1080 = args.resolution
+      ? args.resolution.includes("1080")
+      : quality === "high";
+    const resolution = wants1080 && hailuoDur === 6 ? 1080 : 768;
     // Hailuo NÃO aceita aspect_ratio no input; o campo de imagem é image_url.
     const input: Record<string, unknown> = {
       model: params.hailuo_model || "v2.3",
@@ -471,8 +522,9 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
 
   // ── VEO 3 / VEO 3.1 ────────────────────────────────────────────────────────
   if (backend === "veo3" || backend === "veo3.1") {
-    // resolução: 720p (low/medium) ou 1080p (high)
-    const resolution = quality === "high" ? "1080p" : "720p";
+    // Respeita a resolução do usuário; Veo3 aceita 720p/1080p → 480p sobe p/ 720p.
+    let resolution = args.resolution || (quality === "high" ? "1080p" : "720p");
+    if (resolution === "480p") resolution = "720p";
     // duração válida: [4, 6, 8] — snap ao mais próximo do pedido, formatado como "Xs"
     const veoDur = snap(userDur, [4, 6, 8]);
     const durStr = `${veoDur}s`; // STRING com sufixo "s"
@@ -524,7 +576,9 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
 
   // Kling Omni 3.0 — task_type diferente + resolution + enable_audio
   if (taskType === "omni_video_generation") {
-    const resolution = quality === "high" ? "1080p" : "720p";
+    // Respeita a resolução do usuário; Kling Omni aceita 720p/1080p → 480p→720p.
+    let resolution = args.resolution || (quality === "high" ? "1080p" : "720p");
+    if (resolution === "480p") resolution = "720p";
     const input: Record<string, unknown> = {
       prompt,
       version,

@@ -218,6 +218,7 @@ export async function POST(req: NextRequest) {
         prompt,
         quality: qualityLevel,
         duration: typeof duration === "number" ? duration : undefined,
+        resolution: typeof resolution === "string" ? resolution : undefined,
         aspectRatio: aspect_ratio,
         imageUrl: start_image_url,
         endImageUrl: end_image_url,
@@ -279,12 +280,24 @@ export async function POST(req: NextRequest) {
       // Propaga o erro real da PiAPI para o frontend (ex.: "insufficient credits").
       const errMsg =
         apiError instanceof Error ? apiError.message : String(apiError);
+      const lower = errMsg.toLowerCase();
       const isInsufficientCredits =
-        errMsg.toLowerCase().includes("insufficient credits") ||
-        errMsg.toLowerCase().includes("freeze credit") ||
-        errMsg.toLowerCase().includes("quota not enough") ||
-        errMsg.toLowerCase().includes("account point");
-      const status = isInsufficientCredits ? 402 : 502;
+        lower.includes("insufficient credits") ||
+        lower.includes("freeze credit") ||
+        lower.includes("quota not enough") ||
+        lower.includes("account point");
+      // Provider indisponível (HTML/non-JSON, ex.: challenge Cloudflare / sobrecarga)
+      // → 503, sinalizando ao frontend que é temporário e pode tentar novamente.
+      const isProviderUnavailable =
+        lower.includes("temporariamente indisponível") ||
+        lower.includes("recebeu html") ||
+        lower.includes("em vez de json") ||
+        lower.includes("non_json");
+      const status = isInsufficientCredits
+        ? 402
+        : isProviderUnavailable
+        ? 503
+        : 502;
       // AUDIT: falha na PiAPI — créditos estornados, geração marcada failed
       auditLog("api.generate.video", "piapi_erro_estorno", requestId, {
         generation_id: generation.id,
