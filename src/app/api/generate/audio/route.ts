@@ -5,6 +5,8 @@ import { generateAudio } from "@/lib/piapi/client";
 import { generateSpeechAtlas, AtlasError } from "@/lib/atlas/client";
 import { resolveAtlasVoice } from "@/lib/tts-voices";
 import { planAllows } from "@/lib/plans";
+import { debitCredits, refundCredits } from "@/lib/credits";
+import { newRequestId } from "@/lib/audit-log";
 
 // Persiste um áudio (Buffer) no Supabase Storage e retorna a URL pública.
 async function persistAudio(
@@ -43,8 +45,10 @@ async function downloadAndPersist(
 }
 
 export async function POST(req: NextRequest) {
+  const requestId = newRequestId();
   try {
     const supabase = await createClient();
+    const service = createServiceClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -117,13 +121,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Deduzir créditos
-    const newBalance = profile.credits_balance - aiModel.credit_cost;
-    await supabase
-      .from("profiles")
-      .update({ credits_balance: newBalance })
-      .eq("id", user.id);
-
     // Criar geração
     const { data: generation } = await supabase
       .from("generations")
@@ -148,17 +145,26 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (!generation) {
-      await supabase.from("profiles").update({ credits_balance: profile.credits_balance }).eq("id", user.id);
       return NextResponse.json({ error: "Erro ao registrar geração" }, { status: 500 });
     }
 
-    // Ledger de créditos
-    await supabase.from("credit_transactions").insert({
-      user_id: user.id,
-      amount: -aiModel.credit_cost,
-      reason: "generation",
-      related_job_id: generation.id,
-    });
+    const debitResult = await debitCredits(service, user.id, aiModel.credit_cost, generation.id, requestId);
+    if (!debitResult.ok) {
+      await service
+        .from("generations")
+        .update({ status: "failed", error_message: "Falha ao debitar créditos" })
+        .eq("id", generation.id);
+
+      if ("insufficient" in debitResult) {
+        return NextResponse.json(
+          { error: "Créditos insuficientes", required: aiModel.credit_cost, available: 0 },
+          { status: 402 }
+        );
+      }
+      return NextResponse.json({ error: debitResult.error }, { status: 500 });
+    }
+
+    const newBalance = debitResult.balance;
 
     try {
       const modelParams = (aiModel.params as Record<string, string>) || {};
@@ -215,14 +221,8 @@ export async function POST(req: NextRequest) {
         balance: newBalance,
       });
     } catch (apiError) {
-      await supabase.from("profiles").update({ credits_balance: profile.credits_balance }).eq("id", user.id);
-      await supabase.from("generations").update({ status: "failed", error_message: String(apiError) }).eq("id", generation.id);
-      await supabase.from("credit_transactions").insert({
-        user_id: user.id,
-        amount: aiModel.credit_cost,
-        reason: "refund",
-        related_job_id: generation.id,
-      });
+      await refundCredits(service, user.id, generation.id, aiModel.credit_cost, requestId);
+      await service.from("generations").update({ status: "failed", error_message: String(apiError) }).eq("id", generation.id);
 
       // Erros do Atlas trazem status/mensagem PT-BR prontos para o usuário
       // (ex.: 503 sem chave, 402 saldo insuficiente). Créditos já reembolsados.

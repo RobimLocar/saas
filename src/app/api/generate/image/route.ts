@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { generateImage, generateImageGptSync } from "@/lib/piapi/client";
 import { planAllows } from "@/lib/plans";
+import { debitCredits, refundCredits } from "@/lib/credits";
+import { newRequestId } from "@/lib/audit-log";
 
 // Heurística: o prompt pede TEXTO renderizado na imagem?
 // (aspas, ou palavras típicas de tipografia/rótulos)
@@ -50,8 +52,10 @@ async function persistImage(
 }
 
 export async function POST(req: NextRequest) {
+  const requestId = newRequestId();
   try {
     const supabase = await createClient();
+    const service = createServiceClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -109,13 +113,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Deduzir créditos (otimista)
-    const newBalance = profile.credits_balance - aiModel.credit_cost;
-    await supabase
-      .from("profiles")
-      .update({ credits_balance: newBalance })
-      .eq("id", user.id);
-
     // Criar registro de geração
     const { data: generation, error: genError } = await supabase
       .from("generations")
@@ -135,24 +132,29 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (genError || !generation) {
-      // Reverter créditos
-      await supabase
-        .from("profiles")
-        .update({ credits_balance: profile.credits_balance })
-        .eq("id", user.id);
       return NextResponse.json(
         { error: "Erro ao registrar geração" },
         { status: 500 }
       );
     }
 
-    // Registrar transação de créditos (ledger)
-    await supabase.from("credit_transactions").insert({
-      user_id: user.id,
-      amount: -aiModel.credit_cost,
-      reason: "generation",
-      related_job_id: generation.id,
-    });
+    const debitResult = await debitCredits(service, user.id, aiModel.credit_cost, generation.id, requestId);
+    if (!debitResult.ok) {
+      await service
+        .from("generations")
+        .update({ status: "failed", error_message: "Falha ao debitar créditos" })
+        .eq("id", generation.id);
+
+      if ("insufficient" in debitResult) {
+        return NextResponse.json(
+          { error: "Créditos insuficientes", required: aiModel.credit_cost, available: 0 },
+          { status: 402 }
+        );
+      }
+      return NextResponse.json({ error: debitResult.error }, { status: 500 });
+    }
+
+    const newBalance = debitResult.balance;
 
     // Mapear proporção -> dimensões (Flux usa width/height)
     const AR_DIMS: Record<string, { w: number; h: number }> = {
@@ -257,24 +259,12 @@ export async function POST(req: NextRequest) {
     } catch (apiError) {
       console.error("[PiAPI] Erro detalhado:", apiError);
       
-      // Reverter créditos em caso de erro na API
-      await supabase
-        .from("profiles")
-        .update({ credits_balance: profile.credits_balance })
-        .eq("id", user.id);
+      await refundCredits(service, user.id, generation.id, aiModel.credit_cost, requestId);
 
-      await supabase
+      await service
         .from("generations")
         .update({ status: "failed", error_message: String(apiError) })
         .eq("id", generation.id);
-
-      // Reembolso no ledger
-      await supabase.from("credit_transactions").insert({
-        user_id: user.id,
-        amount: aiModel.credit_cost,
-        reason: "refund",
-        related_job_id: generation.id,
-      });
 
       return NextResponse.json(
         { error: "Erro ao chamar provedor de IA", details: String(apiError) },

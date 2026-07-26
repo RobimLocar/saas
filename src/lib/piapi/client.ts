@@ -579,7 +579,9 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
       prompt,
       duration: durStr,
       resolution,
-      aspect_ratio: aspect === "9:16" ? "9:16" : "16:9",
+      // Veo3 aceita mais que 16:9/9:16 (doc ecoa 1:1). Whitelist conservadora;
+      // confirme a lista completa numa geração real antes de ampliar.
+      aspect_ratio: ["16:9", "9:16", "1:1"].includes(aspect) ? aspect : "16:9",
       generate_audio: args.withAudio ?? Boolean(params.has_audio),
     };
     if (negativePrompt) input.negative_prompt = negativePrompt;
@@ -692,7 +694,7 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
   }
 
   // Kling classic (1.5/1.6/2.1/2.5/2.6) — duração ENUM 5 ou 10
-  const mode = quality === "high" ? "pro" : "standard";
+  const mode = quality === "high" ? "pro" : "std";
   const duration = quality === "low" ? 5 : 10;
   const input: Record<string, unknown> = {
     prompt,
