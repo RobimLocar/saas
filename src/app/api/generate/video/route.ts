@@ -4,7 +4,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { buildVideoPayload, submitVideoTask } from "@/lib/piapi/client";
 import type { VideoModelParams } from "@/lib/piapi/client";
 import { planAllows } from "@/lib/plans";
-import { debitCredits, refundCredits } from "@/lib/credits";
+import { debitCredits, effectiveCost, refundCredits } from "@/lib/credits";
 import { HIGH_COST_THRESHOLD_CREDITS, HIGH_COST_COOLDOWN_SECONDS } from "@/lib/constants";
 import { validateVideoRequest } from "@/lib/generation-validation";
 import { auditLog, newRequestId, truncate } from "@/lib/audit-log";
@@ -100,6 +100,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Modelo não encontrado" }, { status: 404 });
     }
 
+    // Verificação de e-mail para modelos Rosto Real (less_restriction)
+    const modelParamsCheck = (aiModel.params as Record<string, unknown>) || {};
+    if (modelParamsCheck.less_restriction === true) {
+      if (!user.email_confirmed_at) {
+        auditLog("api.generate.video", "email_nao_verificado_403", requestId, {
+          model: aiModel.name,
+          user_id: user.id,
+        }, Date.now() - t0);
+        return NextResponse.json(
+          { error: "Verifique seu e-mail para usar o modelo Rosto Real." },
+          { status: 403 }
+        );
+      }
+    }
+
     {
       const mp = (aiModel.params as VideoModelParams) || {};
       console.log(
@@ -121,15 +136,18 @@ export async function POST(req: NextRequest) {
       .eq("id", user.id)
       .single();
 
-    if (!profile || profile.credits_balance < aiModel.credit_cost) {
+    const cost = effectiveCost(aiModel.credit_cost, profile?.plan ?? "free");
+
+    if (!profile || profile.credits_balance < cost) {
       // AUDIT: saldo insuficiente — bloqueado ANTES do débito e ANTES da PiAPI
       auditLog("api.generate.video", "creditos_insuficientes_402", requestId, {
         credits_balance: profile?.credits_balance ?? null,
-        credit_cost: aiModel.credit_cost,
+        credit_cost_base: aiModel.credit_cost,
+        credit_cost_effective: cost,
         model: aiModel.name,
       }, Date.now() - t0);
       return NextResponse.json(
-        { error: "Créditos insuficientes", required: aiModel.credit_cost, available: profile?.credits_balance || 0 },
+        { error: "Créditos insuficientes", required: cost, available: profile?.credits_balance || 0 },
         { status: 402 }
       );
     }
@@ -233,7 +251,7 @@ export async function POST(req: NextRequest) {
           output_key: outputKey,
         },
         status: "pending",
-        credits_used: aiModel.credit_cost,
+        credits_used: cost,
       })
       .select()
       .single();
@@ -255,7 +273,7 @@ export async function POST(req: NextRequest) {
     const debit = await debitCredits(
       service,
       user.id,
-      aiModel.credit_cost,
+      cost,
       generation.id,
       requestId
     );
@@ -268,10 +286,11 @@ export async function POST(req: NextRequest) {
       if ("insufficient" in debit) {
         auditLog("api.generate.video", "creditos_insuficientes_402", requestId, {
           generation_id: generation.id,
-          credit_cost: aiModel.credit_cost,
+          credit_cost_base: aiModel.credit_cost,
+          credit_cost_effective: cost,
         }, Date.now() - t0);
         return NextResponse.json(
-          { error: "Créditos insuficientes", required: aiModel.credit_cost, available: profile.credits_balance },
+          { error: "Créditos insuficientes", required: cost, available: profile.credits_balance },
           { status: 402 }
         );
       }
@@ -283,7 +302,7 @@ export async function POST(req: NextRequest) {
     }
     const newBalance = debit.balance;
     auditLog("api.generate.video", "creditos_debitados", requestId, {
-      custo: aiModel.credit_cost,
+      custo: cost,
       depois: newBalance,
     }, Date.now() - t0);
 
@@ -340,14 +359,14 @@ export async function POST(req: NextRequest) {
       auditLog("api.generate.video", "sucesso_200", requestId, {
         generation_id: generation.id,
         task_id: task.data.task_id,
-        credits_used: aiModel.credit_cost,
+        credits_used: cost,
         balance: newBalance,
       }, Date.now() - t0);
 
       return NextResponse.json({
         generation_id: generation.id,
         task_id: task.data.task_id,
-        credits_used: aiModel.credit_cost,
+        credits_used: cost,
         balance: newBalance,
       });
     } catch (apiError) {
@@ -360,7 +379,7 @@ export async function POST(req: NextRequest) {
         apiError instanceof Error ? apiError.message : String(apiError);
       // Estorno IDEMPOTENTE (§3.3): credita de volta só se ainda não houve refund
       // para este job — evita estorno duplicado se o webhook/polling também rodar.
-      await refundCredits(service, user.id, generation.id, aiModel.credit_cost, requestId);
+      await refundCredits(service, user.id, generation.id, cost, requestId);
       await service
         .from("generations")
         .update({ status: "failed", error_message: errMsg })
@@ -388,7 +407,7 @@ export async function POST(req: NextRequest) {
         generation_id: generation.id,
         http_status_devolvido: status,
         error: errMsg,
-        creditos_estornados: aiModel.credit_cost,
+        creditos_estornados: cost,
       }, Date.now() - t0);
       return NextResponse.json({ error: errMsg }, { status });
     }

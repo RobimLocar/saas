@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { auditLog } from "@/lib/audit-log";
+import { FREE_PLAN_COST_MULTIPLIER } from "@/lib/constants";
 
 /**
  * Helpers de crédito — débito atômico (compare-and-swap) e estorno idempotente.
@@ -180,4 +181,10 @@ export async function refundCredits(
     balance_after: restored,
   });
   return { ok: true, refunded: true, balance: restored };
+}
+
+/** Custo efectivo do modelo para o plano do utilizador.
+ * Plano free paga 2x (surcharge). Outros planos pagam o custo base. */
+export function effectiveCost(baseCost: number, plan: string): number {
+  return plan === "free" ? Math.ceil(baseCost * FREE_PLAN_COST_MULTIPLIER) : baseCost;
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { effectiveCost } from "@/lib/credits";
 
 // Backends PiAPI realmente integrados e funcionando hoje.
 // Cada modelo do catálogo aponta para um deles via params.backend
@@ -28,6 +29,14 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = await createClient();
 
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const userPlan: string = user
+      ? ((await supabase.from("profiles").select("plan").eq("id", user.id).single()).data
+          ?.plan ?? "free")
+      : "base"; // "base" não é "free", portanto não aplica surcharge para landing page
+
     const type = req.nextUrl.searchParams.get("type"); // image | video | audio | null
 
     let query = supabase
@@ -54,7 +63,7 @@ export async function GET(req: NextRequest) {
         provider: m.provider,
         type: m.type,
         model_id: m.model_id,
-        credit_cost: m.credit_cost,
+        credit_cost: effectiveCost(m.credit_cost, userPlan),
         min_plan: m.min_plan,
         family: (p.family as string) || m.provider || "Outros",
         family_description: (p.family_description as string) || "",

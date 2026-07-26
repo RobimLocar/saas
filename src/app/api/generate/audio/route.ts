@@ -5,7 +5,7 @@ import { generateAudio } from "@/lib/piapi/client";
 import { generateSpeechAtlas, AtlasError } from "@/lib/atlas/client";
 import { resolveAtlasVoice } from "@/lib/tts-voices";
 import { planAllows } from "@/lib/plans";
-import { debitCredits, refundCredits } from "@/lib/credits";
+import { debitCredits, effectiveCost, refundCredits } from "@/lib/credits";
 import { HIGH_COST_THRESHOLD_CREDITS, HIGH_COST_COOLDOWN_SECONDS } from "@/lib/constants";
 import { auditLog, newRequestId } from "@/lib/audit-log";
 
@@ -107,9 +107,11 @@ export async function POST(req: NextRequest) {
       .eq("id", user.id)
       .single();
 
-    if (!profile || profile.credits_balance < aiModel.credit_cost) {
+    const cost = effectiveCost(aiModel.credit_cost, profile?.plan ?? "free");
+
+    if (!profile || profile.credits_balance < cost) {
       return NextResponse.json(
-        { error: "Créditos insuficientes", required: aiModel.credit_cost, available: profile?.credits_balance || 0 },
+        { error: "Créditos insuficientes", required: cost, available: profile?.credits_balance || 0 },
         { status: 402 }
       );
     }
@@ -172,7 +174,7 @@ export async function POST(req: NextRequest) {
           speed: speedVal,
         },
         status: "pending",
-        credits_used: aiModel.credit_cost,
+        credits_used: cost,
       })
       .select()
       .single();
@@ -181,7 +183,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Erro ao registrar geração" }, { status: 500 });
     }
 
-    const debitResult = await debitCredits(service, user.id, aiModel.credit_cost, generation.id, requestId);
+    const debitResult = await debitCredits(service, user.id, cost, generation.id, requestId);
     if (!debitResult.ok) {
       await service
         .from("generations")
@@ -190,7 +192,7 @@ export async function POST(req: NextRequest) {
 
       if ("insufficient" in debitResult) {
         return NextResponse.json(
-          { error: "Créditos insuficientes", required: aiModel.credit_cost, available: 0 },
+          { error: "Créditos insuficientes", required: cost, available: 0 },
           { status: 402 }
         );
       }
@@ -229,7 +231,7 @@ export async function POST(req: NextRequest) {
           generation_id: generation.id,
           status: "completed",
           result_url: url,
-          credits_used: aiModel.credit_cost,
+          credits_used: cost,
           balance: newBalance,
         });
       }
@@ -250,11 +252,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         generation_id: generation.id,
         task_id: task.data.task_id,
-        credits_used: aiModel.credit_cost,
+        credits_used: cost,
         balance: newBalance,
       });
     } catch (apiError) {
-      await refundCredits(service, user.id, generation.id, aiModel.credit_cost, requestId);
+      await refundCredits(service, user.id, generation.id, cost, requestId);
       await service.from("generations").update({ status: "failed", error_message: String(apiError) }).eq("id", generation.id);
 
       // Erros do Atlas trazem status/mensagem PT-BR prontos para o usuário

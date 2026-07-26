@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { generateImage, generateImageGptSync } from "@/lib/piapi/client";
 import { planAllows } from "@/lib/plans";
-import { debitCredits, refundCredits } from "@/lib/credits";
+import { debitCredits, effectiveCost, refundCredits } from "@/lib/credits";
 import { HIGH_COST_THRESHOLD_CREDITS, HIGH_COST_COOLDOWN_SECONDS } from "@/lib/constants";
 import { auditLog, newRequestId } from "@/lib/audit-log";
 
@@ -99,9 +99,11 @@ export async function POST(req: NextRequest) {
       .eq("id", user.id)
       .single();
 
-    if (!profile || profile.credits_balance < aiModel.credit_cost) {
+    const cost = effectiveCost(aiModel.credit_cost, profile?.plan ?? "free");
+
+    if (!profile || profile.credits_balance < cost) {
       return NextResponse.json(
-        { error: "Créditos insuficientes", required: aiModel.credit_cost, available: profile?.credits_balance || 0 },
+        { error: "Créditos insuficientes", required: cost, available: profile?.credits_balance || 0 },
         { status: 402 }
       );
     }
@@ -159,7 +161,7 @@ export async function POST(req: NextRequest) {
         // as dimensões reais respeitam o limite de ~1MP do Flux (AR_DIMS).
         params: { aspect_ratio, width, height, reference_image_url, resolution: resolution || null, quality: qualityLevel },
         status: "pending",
-        credits_used: aiModel.credit_cost,
+        credits_used: cost,
       })
       .select()
       .single();
@@ -171,7 +173,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const debitResult = await debitCredits(service, user.id, aiModel.credit_cost, generation.id, requestId);
+    const debitResult = await debitCredits(service, user.id, cost, generation.id, requestId);
     if (!debitResult.ok) {
       await service
         .from("generations")
@@ -180,7 +182,7 @@ export async function POST(req: NextRequest) {
 
       if ("insufficient" in debitResult) {
         return NextResponse.json(
-          { error: "Créditos insuficientes", required: aiModel.credit_cost, available: 0 },
+          { error: "Créditos insuficientes", required: cost, available: 0 },
           { status: 402 }
         );
       }
@@ -244,7 +246,7 @@ export async function POST(req: NextRequest) {
           generation_id: generation.id,
           status: "completed",
           result_url: finalUrl,
-          credits_used: aiModel.credit_cost,
+          credits_used: cost,
           balance: newBalance,
         });
       }
@@ -286,13 +288,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         generation_id: generation.id,
         task_id: task.data.task_id,
-        credits_used: aiModel.credit_cost,
+        credits_used: cost,
         balance: newBalance,
       });
     } catch (apiError) {
       console.error("[PiAPI] Erro detalhado:", apiError);
       
-      await refundCredits(service, user.id, generation.id, aiModel.credit_cost, requestId);
+      await refundCredits(service, user.id, generation.id, cost, requestId);
 
       await service
         .from("generations")
