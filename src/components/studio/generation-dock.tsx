@@ -230,6 +230,39 @@ function Popover({
   );
 }
 
+// ─── Logging estruturado da auditoria (console do browser) ───────────────────
+// Formato: [FLUXYRA-GEN] {ts, scope, event, requestId, ms?, data}
+function genLog(
+  event: string,
+  requestId: string,
+  data?: Record<string, unknown>,
+  ms?: number
+) {
+  try {
+    console.log(
+      "[FLUXYRA-GEN]",
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        scope: "frontend.generation-dock",
+        event,
+        requestId,
+        ...(typeof ms === "number" ? { ms: Math.round(ms) } : {}),
+        ...(data ? { data } : {}),
+      })
+    );
+  } catch {
+    console.log("[FLUXYRA-GEN]", event, requestId, data);
+  }
+}
+
+function newClientRequestId(): string {
+  try {
+    return crypto.randomUUID().slice(0, 8);
+  } catch {
+    return Math.random().toString(36).slice(2, 10);
+  }
+}
+
 async function uploadReferenceFile(file: File): Promise<string> {
   const formData = new FormData();
   formData.append("file", file);
@@ -950,7 +983,9 @@ export function GenerationDock() {
     }
   }
 
-  async function submitSingleGeneration() {
+  async function submitSingleGeneration(parentRequestId?: string) {
+    const requestId = parentRequestId || newClientRequestId();
+    const t0 = performance.now();
     const body: Record<string, unknown> = {
       prompt,
       model_uuid: selectedModelId,
@@ -1006,29 +1041,38 @@ export function GenerationDock() {
       body.with_audio = audioEnabled;
     }
 
-    console.log(
-      "[dock] submitSingleGeneration model=",
-      selectedModel?.name,
-      "backend=",
-      selectedModel?.backend,
-      "body=",
-      JSON.stringify(body)
-    );
-
-    const res = await fetch(`/api/generate/${activeTab}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+    // AUDIT: payload completo que será enviado ao backend
+    genLog("submit.request", requestId, {
+      endpoint: `/api/generate/${activeTab}`,
+      model: selectedModel?.name,
+      backend: selectedModel?.backend,
+      body,
     });
 
-    console.log(
-      "[dock] response status=",
-      res.status,
-      "ok=",
-      res.ok
-    );
+    let res: Response;
+    try {
+      res = await fetch(`/api/generate/${activeTab}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    } catch (netErr) {
+      // AUDIT: exceção de rede antes de qualquer resposta
+      genLog("submit.network_error", requestId, {
+        error: netErr instanceof Error ? netErr.message : String(netErr),
+      }, performance.now() - t0);
+      throw netErr;
+    }
 
     const data = await parseJsonSafe<{ error?: string }>(res);
+
+    // AUDIT: resposta completa recebida do backend
+    genLog("submit.response", requestId, {
+      http_status: res.status,
+      ok: res.ok,
+      response: data,
+    }, performance.now() - t0);
+
     if (!res.ok) {
       let errMsg = data?.error || "Falha ao enviar geração";
       if (
@@ -1040,32 +1084,57 @@ export function GenerationDock() {
         errMsg =
           "Saldo PiAPI insuficiente. Adicione créditos em piapi.ai para continuar gerando.";
       }
+      genLog("submit.failed", requestId, { error_message: errMsg }, performance.now() - t0);
       throw new Error(errMsg);
     }
+
+    genLog("submit.success", requestId, {}, performance.now() - t0);
   }
 
   async function handleGenerate() {
-    console.log("[dock] handleGenerate clicked", {
+    const requestId = newClientRequestId();
+    const t0 = performance.now();
+
+    // AUDIT: clique em Generate — estado completo dos parâmetros
+    genLog("handleGenerate.entrada", requestId, {
       tab: activeTab,
-      prompt: prompt.slice(0, 30),
+      prompt_preview: prompt.slice(0, 80),
       model: selectedModel?.name,
       backend: selectedModel?.backend,
+      model_uuid: selectedModelId,
+      aspect_ratio: safeAspect,
+      duration: safeDuration,
+      resolution: safeResolution,
+      quality,
       credits,
       totalCost,
       insufficient,
+      referenceTab,
+      startImageUrl: Boolean(startImageUrl),
+      endImageUrl: Boolean(endImageUrl),
+      referenceImages: referenceImages.length,
+      referenceVideos: referenceVideos.length,
+      referenceAudios: referenceAudios.length,
     });
 
     if (!prompt.trim()) {
+      genLog("handleGenerate.bloqueado", requestId, { motivo: "prompt_vazio" }, performance.now() - t0);
       toast.error("Escreva um prompt para gerar.");
       return;
     }
 
     if (selectedModel && !selectedModel.available) {
+      genLog("handleGenerate.bloqueado", requestId, { motivo: "modelo_indisponivel" }, performance.now() - t0);
       toast.error("Este modelo ainda não está disponível.");
       return;
     }
 
     if (insufficient) {
+      genLog("handleGenerate.bloqueado", requestId, {
+        motivo: "creditos_insuficientes",
+        totalCost,
+        credits,
+      }, performance.now() - t0);
       toast.error(`Créditos insuficientes. Precisa de ${totalCost}, disponível: ${credits ?? 0}.`);
       return;
     }
@@ -1080,7 +1149,7 @@ export function GenerationDock() {
     try {
       if (activeTab === "image" && batchCount > 1) {
         const jobs = Array.from({ length: batchCount }).map(() =>
-          submitSingleGeneration()
+          submitSingleGeneration(requestId)
         );
         const results = await Promise.allSettled(jobs);
         const successCount = results.filter(
@@ -1091,7 +1160,7 @@ export function GenerationDock() {
 
         toast.success(`${successCount} gerações enviadas.`);
       } else {
-        await submitSingleGeneration();
+        await submitSingleGeneration(requestId);
         toast.success("Geração enviada! Acompanhe no feed.");
       }
 
@@ -1099,8 +1168,13 @@ export function GenerationDock() {
       clearOptimistic();
       triggerRefresh();
       void loadCredits();
+      genLog("handleGenerate.sucesso", requestId, {}, performance.now() - t0);
     } catch (error) {
       clearOptimistic();
+      // AUDIT: exceção durante o fluxo de geração
+      genLog("handleGenerate.excecao", requestId, {
+        error: error instanceof Error ? error.message : String(error),
+      }, performance.now() - t0);
       toast.error(
         error instanceof Error ? error.message : "Não foi possível gerar."
       );

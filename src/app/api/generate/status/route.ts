@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getTaskStatus, extractResultUrl, extractVideoUrl } from "@/lib/piapi/client";
+import { auditLog, newRequestId, truncate } from "@/lib/audit-log";
 
 /**
  * GET /api/generate/status?id=<generation_id>
@@ -10,6 +11,8 @@ import { getTaskStatus, extractResultUrl, extractVideoUrl } from "@/lib/piapi/cl
  * O feed do Studio lê diretamente da tabela `generations`.
  */
 export async function GET(req: NextRequest) {
+  const requestId = newRequestId();
+  const t0 = Date.now();
   try {
     const supabase = await createClient();
     const {
@@ -17,13 +20,21 @@ export async function GET(req: NextRequest) {
     } = await supabase.auth.getUser();
 
     if (!user) {
+      auditLog("api.generate.status", "auth_falhou_401", requestId, {}, Date.now() - t0);
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
 
     const generationId = req.nextUrl.searchParams.get("id");
     if (!generationId) {
+      auditLog("api.generate.status", "validacao_falhou_400", requestId, {}, Date.now() - t0);
       return NextResponse.json({ error: "ID obrigatório" }, { status: 400 });
     }
+
+    // AUDIT: entrada do polling de status
+    auditLog("api.generate.status", "entrada", requestId, {
+      user_id: user.id,
+      generation_id: generationId,
+    });
 
     const { data: generation } = await supabase
       .from("generations")
@@ -33,11 +44,18 @@ export async function GET(req: NextRequest) {
       .single();
 
     if (!generation) {
+      auditLog("api.generate.status", "generation_nao_encontrada_404", requestId, {
+        generation_id: generationId,
+      }, Date.now() - t0);
       return NextResponse.json({ error: "Geração não encontrada" }, { status: 404 });
     }
 
     // Se já tem resultado final, retornar direto
     if (generation.status === "completed" || generation.status === "failed") {
+      auditLog("api.generate.status", "estado_final_cacheado", requestId, {
+        generation_id: generationId,
+        status: generation.status,
+      }, Date.now() - t0);
       return NextResponse.json({
         status: generation.status,
         result_url: generation.result_url,
@@ -53,7 +71,7 @@ export async function GET(req: NextRequest) {
     const service = createServiceClient();
 
     try {
-      const taskStatus = await getTaskStatus(generation.provider_task_id);
+      const taskStatus = await getTaskStatus(generation.provider_task_id, requestId);
       const state = taskStatus.data?.status;
       console.log(
         "[status] task_id=",
@@ -84,8 +102,20 @@ export async function GET(req: NextRequest) {
             "output=",
             JSON.stringify(taskStatus.data.output)
           );
+          // AUDIT: task completa na PiAPI mas URL não extraída (output_key incorreto?)
+          auditLog("api.generate.status", "url_nao_extraida", requestId, {
+            generation_id: generation.id,
+            output_key: outputKey,
+            output: truncate(JSON.stringify(taskStatus.data.output), 2000),
+          }, Date.now() - t0);
           return NextResponse.json({ status: "processing" });
         }
+
+        // AUDIT: transição — task completed na PiAPI, iniciando download/persistência
+        auditLog("api.generate.status", "task_completed_download_inicio", requestId, {
+          generation_id: generation.id,
+          provider_url: truncate(providerUrl, 300),
+        }, Date.now() - t0);
 
         // Baixar a mídia e persistir no Supabase Storage
         let finalUrl = providerUrl;
@@ -98,8 +128,17 @@ export async function GET(req: NextRequest) {
               : "mp3";
           const storagePath = `${user.id}/${generation.type}/${generation.id}.${ext}`;
 
+          const tDl = Date.now();
           const mediaRes = await fetch(providerUrl);
           const mediaBuffer = await mediaRes.arrayBuffer();
+          auditLog("api.generate.status", "download_concluido", requestId, {
+            generation_id: generation.id,
+            http_status: mediaRes.status,
+            bytes: mediaBuffer.byteLength,
+            content_type: mediaRes.headers.get("content-type"),
+          }, Date.now() - tDl);
+
+          const tUp = Date.now();
 
           const { error: uploadError } = await service.storage
             .from("assets")
@@ -116,7 +155,16 @@ export async function GET(req: NextRequest) {
 
           if (uploadError) {
             console.warn("[status] Upload falhou:", uploadError.message);
+            auditLog("api.generate.status", "upload_storage_falhou", requestId, {
+              generation_id: generation.id,
+              storage_path: storagePath,
+              error: uploadError.message,
+            }, Date.now() - tUp);
           } else {
+            auditLog("api.generate.status", "upload_storage_ok", requestId, {
+              generation_id: generation.id,
+              storage_path: storagePath,
+            }, Date.now() - tUp);
             const { data: publicData } = service.storage
               .from("assets")
               .getPublicUrl(storagePath);
@@ -124,6 +172,10 @@ export async function GET(req: NextRequest) {
           }
         } catch (storageErr) {
           console.warn("[status] Erro no Storage, usando URL do provider:", storageErr);
+          auditLog("api.generate.status", "storage_excecao_fallback_provider", requestId, {
+            generation_id: generation.id,
+            error: storageErr instanceof Error ? storageErr.message : String(storageErr),
+          }, Date.now() - t0);
         }
 
         await service
@@ -134,6 +186,12 @@ export async function GET(req: NextRequest) {
             updated_at: new Date().toISOString(),
           })
           .eq("id", generation.id);
+
+        // AUDIT: persistência concluída — geração marcada completed
+        auditLog("api.generate.status", "persistencia_completed", requestId, {
+          generation_id: generation.id,
+          result_url: truncate(finalUrl, 300),
+        }, Date.now() - t0);
 
         return NextResponse.json({ status: "completed", result_url: finalUrl });
       }
@@ -161,6 +219,14 @@ export async function GET(req: NextRequest) {
           "logs=",
           JSON.stringify(logs)
         );
+
+        // AUDIT: task falhou na PiAPI — registrar erro cru + logs[] completos
+        auditLog("api.generate.status", "task_failed_piapi", requestId, {
+          generation_id: generation.id,
+          provider_task_id: generation.provider_task_id,
+          provider_error: providerMsg,
+          piapi_logs: logs,
+        }, Date.now() - t0);
 
         const logsText = logs.join(" \n ").toLowerCase();
         let errMsg = providerMsg;
@@ -214,16 +280,34 @@ export async function GET(req: NextRequest) {
           });
         }
 
+        // AUDIT: falha persistida + créditos estornados
+        auditLog("api.generate.status", "falha_persistida_estorno", requestId, {
+          generation_id: generation.id,
+          error_message: String(errMsg),
+          creditos_estornados: generation.credits_used,
+        }, Date.now() - t0);
+
         return NextResponse.json({ status: "failed", error_message: String(errMsg) });
       }
 
+      auditLog("api.generate.status", "ainda_processando", requestId, {
+        generation_id: generation.id,
+        piapi_state: state,
+      }, Date.now() - t0);
       return NextResponse.json({ status: state || "processing" });
     } catch (err) {
       console.warn("[status] Erro ao consultar PiAPI:", err);
+      auditLog("api.generate.status", "erro_consulta_piapi", requestId, {
+        generation_id: generation.id,
+        error: err instanceof Error ? err.message : String(err),
+      }, Date.now() - t0);
       return NextResponse.json({ status: "processing" });
     }
   } catch (err) {
     console.error("[generate/status] Error:", err);
+    auditLog("api.generate.status", "excecao_500", requestId, {
+      error: err instanceof Error ? err.message : String(err),
+    }, Date.now() - t0);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
   }
 }

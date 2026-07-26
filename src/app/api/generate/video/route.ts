@@ -3,8 +3,11 @@ import { createClient } from "@/lib/supabase/server";
 import { buildVideoPayload, submitVideoTask } from "@/lib/piapi/client";
 import type { VideoModelParams } from "@/lib/piapi/client";
 import { planAllows } from "@/lib/plans";
+import { auditLog, newRequestId, truncate } from "@/lib/audit-log";
 
 export async function POST(req: NextRequest) {
+  const requestId = newRequestId();
+  const t0 = Date.now();
   try {
     const supabase = await createClient();
     const {
@@ -12,10 +15,18 @@ export async function POST(req: NextRequest) {
     } = await supabase.auth.getUser();
 
     if (!user) {
+      // AUDIT: falha de autenticação — request rejeitada ANTES de qualquer chamada externa
+      auditLog("api.generate.video", "auth_falhou_401", requestId, {}, Date.now() - t0);
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
 
     const body = await req.json();
+
+    // AUDIT: entrada da rota com body completo (URLs longas truncadas)
+    auditLog("api.generate.video", "entrada", requestId, {
+      user_id: user.id,
+      body: JSON.parse(JSON.stringify(body, (k, v) => truncate(v, 500))),
+    });
     const {
       prompt,
       model_uuid,
@@ -57,6 +68,11 @@ export async function POST(req: NextRequest) {
     );
 
     if (!prompt || !model_uuid) {
+      // AUDIT: validação de entrada falhou — nada foi debitado, PiAPI NÃO foi chamada
+      auditLog("api.generate.video", "validacao_falhou_400", requestId, {
+        has_prompt: Boolean(prompt),
+        has_model_uuid: Boolean(model_uuid),
+      }, Date.now() - t0);
       return NextResponse.json(
         { error: "Prompt e modelo são obrigatórios" },
         { status: 400 }
@@ -73,6 +89,10 @@ export async function POST(req: NextRequest) {
 
     if (!aiModel) {
       console.warn("[video/generate] MODEL_NOT_FOUND", model_uuid);
+      // AUDIT: modelo inexistente/inativo — nada debitado, PiAPI NÃO foi chamada
+      auditLog("api.generate.video", "modelo_nao_encontrado_404", requestId, {
+        model_uuid,
+      }, Date.now() - t0);
       return NextResponse.json({ error: "Modelo não encontrado" }, { status: 404 });
     }
 
@@ -98,6 +118,12 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (!profile || profile.credits_balance < aiModel.credit_cost) {
+      // AUDIT: saldo insuficiente — bloqueado ANTES do débito e ANTES da PiAPI
+      auditLog("api.generate.video", "creditos_insuficientes_402", requestId, {
+        credits_balance: profile?.credits_balance ?? null,
+        credit_cost: aiModel.credit_cost,
+        model: aiModel.name,
+      }, Date.now() - t0);
       return NextResponse.json(
         { error: "Créditos insuficientes", required: aiModel.credit_cost, available: profile?.credits_balance || 0 },
         { status: 402 }
@@ -106,6 +132,11 @@ export async function POST(req: NextRequest) {
 
     // Gating por plano mínimo do modelo
     if (!planAllows(profile.plan, aiModel.min_plan)) {
+      // AUDIT: plano insuficiente — bloqueado antes do débito e da PiAPI
+      auditLog("api.generate.video", "plano_insuficiente_403", requestId, {
+        user_plan: profile.plan,
+        min_plan: aiModel.min_plan,
+      }, Date.now() - t0);
       return NextResponse.json(
         { error: `Este modelo requer o plano ${aiModel.min_plan}` },
         { status: 403 }
@@ -118,6 +149,13 @@ export async function POST(req: NextRequest) {
       .from("profiles")
       .update({ credits_balance: newBalance })
       .eq("id", user.id);
+
+    // AUDIT: débito de créditos efetuado
+    auditLog("api.generate.video", "creditos_debitados", requestId, {
+      antes: profile.credits_balance,
+      custo: aiModel.credit_cost,
+      depois: newBalance,
+    }, Date.now() - t0);
 
     // Params de roteamento do modelo (backend/task_type/output_key/dur)
     const modelParams = (aiModel.params as VideoModelParams) || {};
@@ -154,8 +192,14 @@ export async function POST(req: NextRequest) {
 
     if (!generation) {
       await supabase.from("profiles").update({ credits_balance: profile.credits_balance }).eq("id", user.id);
+      auditLog("api.generate.video", "insert_generation_falhou_500", requestId, {}, Date.now() - t0);
       return NextResponse.json({ error: "Erro ao registrar geração" }, { status: 500 });
     }
+
+    auditLog("api.generate.video", "generation_criada", requestId, {
+      generation_id: generation.id,
+      status: "pending",
+    }, Date.now() - t0);
 
     // Ledger de créditos
     await supabase.from("credit_transactions").insert({
@@ -183,11 +227,12 @@ export async function POST(req: NextRequest) {
         shots: Array.isArray(shots) ? shots : undefined,
         withAudio: typeof with_audio === "boolean" ? with_audio : undefined,
         negativePrompt: negative_prompt,
+        requestId,
       });
 
       console.log("[video/generate] PAYLOAD", JSON.stringify(payload));
 
-      const task = await submitVideoTask(payload);
+      const task = await submitVideoTask(payload, requestId);
 
       console.log(
         "[video/generate] PIAPI_RESPONSE",
@@ -201,6 +246,14 @@ export async function POST(req: NextRequest) {
         .from("generations")
         .update({ provider_task_id: task.data.task_id, status: "processing" })
         .eq("id", generation.id);
+
+      // AUDIT: sucesso — task criada na PiAPI, geração em processing
+      auditLog("api.generate.video", "sucesso_200", requestId, {
+        generation_id: generation.id,
+        task_id: task.data.task_id,
+        credits_used: aiModel.credit_cost,
+        balance: newBalance,
+      }, Date.now() - t0);
 
       return NextResponse.json({
         generation_id: generation.id,
@@ -232,10 +285,21 @@ export async function POST(req: NextRequest) {
         errMsg.toLowerCase().includes("quota not enough") ||
         errMsg.toLowerCase().includes("account point");
       const status = isInsufficientCredits ? 402 : 502;
+      // AUDIT: falha na PiAPI — créditos estornados, geração marcada failed
+      auditLog("api.generate.video", "piapi_erro_estorno", requestId, {
+        generation_id: generation.id,
+        http_status_devolvido: status,
+        error: errMsg,
+        creditos_estornados: aiModel.credit_cost,
+      }, Date.now() - t0);
       return NextResponse.json({ error: errMsg }, { status });
     }
   } catch (err) {
     console.error("[generate/video] Error:", err);
+    auditLog("api.generate.video", "excecao_500", requestId, {
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? truncate(err.stack, 1500) : undefined,
+    }, Date.now() - t0);
     return NextResponse.json({ error: "Erro interno do servidor" }, { status: 500 });
   }
 }

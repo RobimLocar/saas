@@ -14,6 +14,8 @@
  *            kling 2.1 txt2video (só img2video), skyreels/wanx (task types inválidos)
  */
 
+import { auditLog, maskSecret, truncate } from "@/lib/audit-log";
+
 const PIAPI_BASE_URL = "https://api.piapi.ai/api/v1";
 const PIAPI_OPENAI_BASE = "https://api.piapi.ai/v1";
 
@@ -72,27 +74,61 @@ class PiAPIError extends Error {
 
 async function piapiFetch<T = unknown>(
   path: string,
-  init?: RequestInit
+  init?: RequestInit,
+  requestId = "-"
 ): Promise<T> {
   const apiKey = process.env.PIAPI_API_KEY;
   if (!apiKey) throw new PiAPIError("PIAPI_API_KEY não configurada");
 
-  const res = await fetch(`${PIAPI_BASE_URL}${path}`, {
-    ...init,
+  const t0 = Date.now();
+  // AUDIT: request completo à PiAPI (API key MASCARADA — nunca logar o valor real)
+  auditLog("piapi.fetch", "request", requestId, {
+    method: init?.method || "GET",
+    url: `${PIAPI_BASE_URL}${path}`,
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      ...(init?.headers || {}),
+      "x-api-key": maskSecret(apiKey),
     },
+    body: truncate(typeof init?.body === "string" ? init.body : undefined, 4000),
   });
 
+  let res: Response;
+  try {
+    res = await fetch(`${PIAPI_BASE_URL}${path}`, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        ...(init?.headers || {}),
+      },
+    });
+  } catch (netErr) {
+    auditLog("piapi.fetch", "network_error", requestId, {
+      url: `${PIAPI_BASE_URL}${path}`,
+      error: netErr instanceof Error ? netErr.message : String(netErr),
+    }, Date.now() - t0);
+    throw netErr;
+  }
+
   const data = await res.json();
+
+  // AUDIT: response completa da PiAPI (inclui logs[] quando presentes)
+  auditLog("piapi.fetch", "response", requestId, {
+    url: `${PIAPI_BASE_URL}${path}`,
+    http_status: res.status,
+    ok: res.ok,
+    body: truncate(JSON.stringify(data), 8000),
+  }, Date.now() - t0);
 
   if (!res.ok || (data?.code && data.code !== 200)) {
     const msg =
       data?.message ||
       data?.data?.error?.message ||
       `PiAPI error ${res.status}`;
+    auditLog("piapi.fetch", "error", requestId, {
+      http_status: res.status,
+      message: msg,
+    }, Date.now() - t0);
     throw new PiAPIError(msg, res.status, data);
   }
 
@@ -271,6 +307,8 @@ export interface BuildVideoArgs {
   shots?: Array<{ prompt: string; duration: number }>;
   withAudio?: boolean;
   negativePrompt?: string;
+  /** id de correlação para logging estruturado da auditoria */
+  requestId?: string;
 }
 
 const clampInt = (v: number, lo: number, hi: number) =>
@@ -286,6 +324,33 @@ const snap = (v: number, allowed: number[]) =>
  * config.service_mode = "public".
  */
 export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown> {
+  const rid = args.requestId || "-";
+  // AUDIT: entrada do adapter (parâmetros normalizados do modelo + do usuário)
+  auditLog("piapi.buildVideoPayload", "entrada", rid, {
+    backend: args.params.backend,
+    task_type: args.params.task_type,
+    prompt_preview: typeof args.prompt === "string" ? args.prompt.slice(0, 80) : args.prompt,
+    quality: args.quality,
+    duration: args.duration,
+    aspectRatio: args.aspectRatio,
+    has_imageUrl: Boolean(args.imageUrl),
+    has_endImageUrl: Boolean(args.endImageUrl),
+    referenceImages: args.referenceImages?.length || 0,
+    referenceVideos: args.referenceVideos?.length || 0,
+    referenceAudios: args.referenceAudios?.length || 0,
+    shots: args.shots?.length || 0,
+    withAudio: args.withAudio,
+    has_negativePrompt: Boolean(args.negativePrompt),
+  });
+  const payload = buildVideoPayloadInner(args);
+  // AUDIT: saída do adapter (payload final que será enviado à PiAPI)
+  auditLog("piapi.buildVideoPayload", "saida", rid, {
+    payload: JSON.parse(JSON.stringify(payload, (k, v) => truncate(v, 500))),
+  });
+  return payload;
+}
+
+function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
   const {
     params,
     prompt,
@@ -547,12 +612,30 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
  * Submete uma task de vídeo já montada (POST /task) e devolve o task_id.
  */
 export async function submitVideoTask(
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
+  requestId = "-"
 ): Promise<PiAPITaskResponse> {
-  return piapiFetch<PiAPITaskResponse>("/task", {
-    method: "POST",
-    body: JSON.stringify(payload),
+  const t0 = Date.now();
+  auditLog("piapi.submitVideoTask", "entrada", requestId, {
+    model: payload.model,
+    task_type: payload.task_type,
   });
+  try {
+    const res = await piapiFetch<PiAPITaskResponse>("/task", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }, requestId);
+    auditLog("piapi.submitVideoTask", "sucesso", requestId, {
+      task_id: res?.data?.task_id,
+      status: res?.data?.status,
+    }, Date.now() - t0);
+    return res;
+  } catch (err) {
+    auditLog("piapi.submitVideoTask", "falha", requestId, {
+      error: err instanceof Error ? err.message : String(err),
+    }, Date.now() - t0);
+    throw err;
+  }
 }
 
 /**
@@ -652,9 +735,32 @@ export async function generateAudio(
 
 // ─── Status da Task ──────────────────────────────────────────────────────────
 export async function getTaskStatus(
-  taskId: string
+  taskId: string,
+  requestId = "-"
 ): Promise<PiAPIStatusResponse> {
-  return piapiFetch<PiAPIStatusResponse>(`/task/${taskId}`, { method: "GET" });
+  const t0 = Date.now();
+  auditLog("piapi.getTaskStatus", "entrada", requestId, { task_id: taskId });
+  try {
+    const res = await piapiFetch<PiAPIStatusResponse>(
+      `/task/${taskId}`,
+      { method: "GET" },
+      requestId
+    );
+    auditLog("piapi.getTaskStatus", "sucesso", requestId, {
+      task_id: taskId,
+      status: res?.data?.status,
+      has_output: Boolean(res?.data?.output),
+      logs: res?.data?.logs || [],
+      error: res?.data?.error || null,
+    }, Date.now() - t0);
+    return res;
+  } catch (err) {
+    auditLog("piapi.getTaskStatus", "falha", requestId, {
+      task_id: taskId,
+      error: err instanceof Error ? err.message : String(err),
+    }, Date.now() - t0);
+    throw err;
+  }
 }
 
 // ─── Extrair URL do resultado ────────────────────────────────────────────────
