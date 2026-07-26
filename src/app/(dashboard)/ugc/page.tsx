@@ -8,9 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { BROLL_PRESETS } from "@/lib/ugc-broll-presets";
 
 type ViewMode = "list" | "project";
-type UgcTab = "script" | "avatar" | "broll";
+type UgcTab = "script" | "avatar" | "broll" | "generations";
 
 interface ProductItem {
   id: string;
@@ -52,6 +53,18 @@ interface ProductCardEditState {
   name: string;
   description: string;
   tags: string;
+}
+
+interface BrollClip {
+  preset: string;
+  label?: string;
+  generation_id: string;
+  status: "processing" | "completed" | "failed";
+  duration?: number;
+  audio?: boolean;
+  created_at?: string;
+  result_url?: string;
+  product_image_url?: string;
 }
 
 type AvatarFormat = "9:16" | "1:1" | "16:9";
@@ -211,6 +224,15 @@ function normalizeScript(raw: unknown): ScriptShape {
   };
 }
 
+function normalizeBroll(raw: unknown): BrollClip[] {
+  return Array.isArray(raw) ? (raw as BrollClip[]) : [];
+}
+
+function brollPresetLabel(key: string): string {
+  const found = BROLL_PRESETS.find((x) => x.key === key);
+  return found?.label || key;
+}
+
 export default function UGCPage() {
   const [view, setView] = useState<ViewMode>("list");
   const [activeTab, setActiveTab] = useState<UgcTab>("script");
@@ -256,6 +278,15 @@ export default function UGCPage() {
   const [avatarGenerating, setAvatarGenerating] = useState(false);
   const [userCredits, setUserCredits] = useState<number | null>(null);
   const [pollingSegments, setPollingSegments] = useState<Record<string, string>>({});
+
+  // ── B-Roll ──
+  const [brollProductImageUrl, setBrollProductImageUrl] = useState("");
+  const [brollProductUploading, setBrollProductUploading] = useState(false);
+  const [brollSelectedPresets, setBrollSelectedPresets] = useState<string[]>([]);
+  const [brollDuration, setBrollDuration] = useState(8);
+  const [brollAudio, setBrollAudio] = useState(false);
+  const [brollGenerating, setBrollGenerating] = useState(false);
+  const [brollUnitCost, setBrollUnitCost] = useState(0);
 
   // Produtos (seção 4c-1 mantida)
   const [products, setProducts] = useState<ProductItem[]>([]);
@@ -479,11 +510,65 @@ export default function UGCPage() {
         }
       }
 
+      const rawBroll = normalizeBroll(project?.broll);
+      const mergedBroll: BrollClip[] = [...rawBroll];
+      let brollChanged = false;
+
+      for (let i = 0; i < mergedBroll.length; i++) {
+        const clip = mergedBroll[i];
+        if (clip?.status !== "processing" || !clip?.generation_id) continue;
+
+        try {
+          const stRes = await fetch(`/api/generate/status?id=${clip.generation_id}`, {
+            cache: "no-store",
+          });
+          const stData = await stRes.json().catch(() => null);
+
+          if (!stRes.ok) {
+            nextPolling[`broll:${clip.generation_id}`] = clip.generation_id;
+            continue;
+          }
+
+          if (stData?.status === "completed" || stData?.status === "failed") {
+            mergedBroll[i] = {
+              ...clip,
+              status: stData.status,
+              ...(stData?.status === "completed" && stData?.result_url
+                ? { result_url: stData.result_url }
+                : {}),
+            };
+            brollChanged = true;
+          } else {
+            nextPolling[`broll:${clip.generation_id}`] = clip.generation_id;
+          }
+        } catch {
+          nextPolling[`broll:${clip.generation_id}`] = clip.generation_id;
+        }
+      }
+
+      if (brollChanged) {
+        const patchRes = await fetch(`/api/ugc/projects/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ broll: mergedBroll }),
+        });
+        const patchData = await patchRes.json().catch(() => null);
+        if (patchRes.ok && patchData?.project) {
+          project = patchData.project as UgcProject;
+        } else {
+          project = { ...project, broll: mergedBroll };
+        }
+      }
+
       setPollingSegments(nextPolling);
       setSelectedProject(project);
       setScriptDraft(normalizeScript(project?.script));
       setScriptProductId(project?.product_id || "");
       setNameDraft(project?.name || "");
+      setBrollProductImageUrl(
+        normalizeBroll(project?.broll).find((clip) => typeof clip.product_image_url === "string")
+          ?.product_image_url || ""
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao carregar projeto.");
     }
@@ -501,16 +586,57 @@ export default function UGCPage() {
     }
   }, []);
 
+  const loadBrollUnitCost = useCallback(async () => {
+    try {
+      const res = await fetch("/api/models?type=video", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) return;
+      const models = Array.isArray(data?.models) ? data.models : [];
+
+      const byModelId = models.find((m: { model_id?: string }) => m.model_id === "seedance-2.0-fast");
+      const byName = models.find((m: { name?: string }) =>
+        typeof m.name === "string" && /seedance/i.test(m.name) && /fast/i.test(m.name)
+      );
+      const byBackend = models.find((m: { backend?: string }) => m.backend === "seedance");
+      const picked = byModelId || byName || byBackend;
+
+      if (picked && typeof picked.credit_cost === "number") {
+        setBrollUnitCost(picked.credit_cost);
+      }
+    } catch {
+      // silencioso
+    }
+  }, []);
+
   useEffect(() => {
     void loadProducts();
     void loadProjects();
     void loadMe();
-  }, [loadProducts, loadProjects, loadMe]);
+    void loadBrollUnitCost();
+  }, [loadProducts, loadProjects, loadMe, loadBrollUnitCost]);
 
   useEffect(() => {
     if (view !== "project" || !selectedProjectId) return;
     void loadProject(selectedProjectId);
   }, [view, selectedProjectId, loadProject]);
+
+  useEffect(() => {
+    if (!selectedProject) return;
+    if (brollProductImageUrl) return;
+
+    const fromProject = normalizeBroll(selectedProject.broll).find(
+      (clip) => typeof clip.product_image_url === "string" && clip.product_image_url
+    )?.product_image_url;
+    if (fromProject) {
+      setBrollProductImageUrl(fromProject);
+      return;
+    }
+
+    const linkedProduct = products.find((p) => p.id === selectedProject.product_id);
+    if (linkedProduct?.image_url) {
+      setBrollProductImageUrl(linkedProduct.image_url);
+    }
+  }, [selectedProject, products, brollProductImageUrl]);
 
   const projectCount = projects.length;
 
@@ -919,6 +1045,103 @@ export default function UGCPage() {
     });
   }
 
+  async function handleBrollProductImageUpload(file: File) {
+    setBrollProductUploading(true);
+    const toastId = toast.loading("Enviando imagem do produto...");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.url) {
+        throw new Error(data?.error || "Falha no upload da imagem do produto.");
+      }
+      setBrollProductImageUrl(data.url);
+      toast.success("Imagem do produto enviada.", { id: toastId });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha no upload.", { id: toastId });
+    } finally {
+      setBrollProductUploading(false);
+    }
+  }
+
+  function toggleBrollPreset(presetKey: string) {
+    setBrollSelectedPresets((prev) =>
+      prev.includes(presetKey)
+        ? prev.filter((x) => x !== presetKey)
+        : [...prev, presetKey]
+    );
+  }
+
+  async function handleGenerateBroll() {
+    if (!selectedProject) return;
+
+    if (!brollProductImageUrl) {
+      toast.error("Envie a imagem do produto antes de gerar B-Roll.");
+      return;
+    }
+
+    if (brollSelectedPresets.length === 0) {
+      toast.error("Selecione pelo menos 1 preset de camera angle.");
+      return;
+    }
+
+    setBrollGenerating(true);
+    const toastId = toast.loading("Iniciando geração de B-Roll...");
+
+    try {
+      const res = await fetch(`/api/ugc/projects/${selectedProject.id}/broll`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_image_url: brollProductImageUrl,
+          presets: brollSelectedPresets,
+          duration: brollDuration,
+          audio: brollAudio,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.error || "Falha ao iniciar B-Roll.");
+      }
+
+      const clips = Array.isArray(data?.clips) ? (data.clips as BrollClip[]) : [];
+      if (clips.length === 0) {
+        throw new Error("Nenhum clipe foi iniciado.");
+      }
+
+      setSelectedProject((prev) => {
+        if (!prev) return prev;
+        const curr = normalizeBroll(prev.broll);
+        return {
+          ...prev,
+          broll: [...curr, ...clips],
+        };
+      });
+
+      setPollingSegments((prev) => {
+        const next = { ...prev };
+        for (const clip of clips) {
+          next[`broll:${clip.generation_id}`] = clip.generation_id;
+        }
+        return next;
+      });
+
+      if (typeof data?.remaining === "number") {
+        setUserCredits(data.remaining);
+      } else {
+        void loadMe();
+      }
+
+      toast.success(`${clips.length} clipe(s) de B-Roll em processamento.`, { id: toastId });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao gerar B-Roll.", { id: toastId });
+    } finally {
+      setBrollGenerating(false);
+    }
+  }
+
   async function handleGenerateSegment() {
     if (!selectedProject || !avatarModal) return;
     setAvatarGenerating(true);
@@ -1019,49 +1242,90 @@ export default function UGCPage() {
             });
 
             const currentProject = selectedProject;
-            const segs = (currentProject?.segments as Record<string, unknown> | null) ?? {};
-            const seg = (segs[key] as Record<string, unknown>) ?? {};
-            const segResultUrl = typeof seg.result_url === "string" ? seg.result_url : null;
 
-            const segmentsForPatch: Record<string, unknown> = {
-              ...segs,
-              [key]: {
-                ...seg,
-                generation_id:
-                  typeof seg.generation_id === "string" ? seg.generation_id : generationId,
-                status: data.status,
-                ...(data?.status === "completed"
-                  ? { result_url: data.result_url ?? segResultUrl }
-                  : {}),
-              },
-            };
-
-            setSelectedProject((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    segments: segmentsForPatch,
-                  }
-                : prev
-            );
-
-            // Persistir no DB: evita card preso em "Gerando..." após refresh.
-            if (currentProject?.id) {
-              void fetch(`/api/ugc/projects/${currentProject.id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ segments: segmentsForPatch }),
+            if (key.startsWith("broll:")) {
+              const broll = normalizeBroll(currentProject?.broll);
+              const nextBroll = broll.map((clip) => {
+                if (clip.generation_id !== generationId) return clip;
+                return {
+                  ...clip,
+                  status: data.status,
+                  ...(data?.status === "completed" && data?.result_url
+                    ? { result_url: data.result_url }
+                    : {}),
+                } as BrollClip;
               });
-            }
 
-            if (data?.status === "completed") {
-              toast.success(`Segmento ${key} concluído!`);
-              void loadMe();
-            }
+              setSelectedProject((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      broll: nextBroll,
+                    }
+                  : prev
+              );
 
-            if (data?.status === "failed") {
-              toast.error(`Segmento ${key} falhou. Tente de novo.`);
-              void loadMe();
+              if (currentProject?.id) {
+                void fetch(`/api/ugc/projects/${currentProject.id}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ broll: nextBroll }),
+                });
+              }
+
+              if (data?.status === "completed") {
+                toast.success("Clipe de B-Roll concluído!");
+                void loadMe();
+              }
+
+              if (data?.status === "failed") {
+                toast.error("Clipe de B-Roll falhou. Tente novamente.");
+                void loadMe();
+              }
+            } else {
+              const segs = (currentProject?.segments as Record<string, unknown> | null) ?? {};
+              const seg = (segs[key] as Record<string, unknown>) ?? {};
+              const segResultUrl = typeof seg.result_url === "string" ? seg.result_url : null;
+
+              const segmentsForPatch: Record<string, unknown> = {
+                ...segs,
+                [key]: {
+                  ...seg,
+                  generation_id:
+                    typeof seg.generation_id === "string" ? seg.generation_id : generationId,
+                  status: data.status,
+                  ...(data?.status === "completed"
+                    ? { result_url: data.result_url ?? segResultUrl }
+                    : {}),
+                },
+              };
+
+              setSelectedProject((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      segments: segmentsForPatch,
+                    }
+                  : prev
+              );
+
+              if (currentProject?.id) {
+                void fetch(`/api/ugc/projects/${currentProject.id}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ segments: segmentsForPatch }),
+                });
+              }
+
+              if (data?.status === "completed") {
+                toast.success(`Segmento ${key} concluído!`);
+                void loadMe();
+              }
+
+              if (data?.status === "failed") {
+                toast.error(`Segmento ${key} falhou. Tente de novo.`);
+                void loadMe();
+              }
             }
           }
         } catch {
@@ -1079,6 +1343,54 @@ export default function UGCPage() {
       scriptDraft.body2.text ||
       scriptDraft.cta.text
   );
+
+  const brollTotalCost = brollUnitCost * brollSelectedPresets.length;
+  const brollInsufficientCredits =
+    userCredits !== null ? userCredits < brollTotalCost : false;
+
+  const completedProjectGenerations = useMemo(() => {
+    const result: Array<{ label: string; result_url: string; created_at?: string }> = [];
+
+    const segmentLabels: Record<string, string> = {
+      hook: "Avatar • Hook",
+      body1: "Avatar • Body 1",
+      body2: "Avatar • Body 2",
+      cta: "Avatar • CTA",
+    };
+
+    const segments =
+      ((selectedProject?.segments as Record<string, unknown> | null) ?? {}) as Record<
+        string,
+        Record<string, unknown>
+      >;
+
+    for (const [key, label] of Object.entries(segmentLabels)) {
+      const seg = segments[key];
+      if (seg?.status === "completed" && typeof seg.result_url === "string") {
+        result.push({
+          label,
+          result_url: seg.result_url,
+          created_at: typeof seg.created_at === "string" ? seg.created_at : undefined,
+        });
+      }
+    }
+
+    for (const clip of normalizeBroll(selectedProject?.broll)) {
+      if (clip.status === "completed" && typeof clip.result_url === "string") {
+        result.push({
+          label: `B-Roll • ${clip.label || brollPresetLabel(clip.preset)}`,
+          result_url: clip.result_url,
+          created_at: clip.created_at,
+        });
+      }
+    }
+
+    return result.sort((a, b) => {
+      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tb - ta;
+    });
+  }, [selectedProject]);
 
   return (
     <div className="space-y-6">
@@ -1349,7 +1661,7 @@ export default function UGCPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                <div className="mt-4 grid gap-2 sm:grid-cols-4">
                   <button
                     type="button"
                     onClick={() => setActiveTab("script")}
@@ -1376,13 +1688,26 @@ export default function UGCPage() {
 
                   <button
                     type="button"
-                    disabled
-                    className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-2 text-left text-[#777777]"
+                    onClick={() => setActiveTab("broll")}
+                    className={`rounded-lg border px-3 py-2 text-left transition ${
+                      activeTab === "broll"
+                        ? "border-[#7C3AED] bg-[#7C3AED]/10 text-[#F5F5F5]"
+                        : "border-[#2A2A2A] bg-[#1A1A1A] text-[#BDBDBD]"
+                    }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium">B-Roll</p>
-                      <Badge className="bg-[#2A2A2A] text-[#888888]">Próxima etapa</Badge>
-                    </div>
+                    <p className="text-sm font-medium">B-Roll</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("generations")}
+                    className={`rounded-lg border px-3 py-2 text-left transition ${
+                      activeTab === "generations"
+                        ? "border-[#7C3AED] bg-[#7C3AED]/10 text-[#F5F5F5]"
+                        : "border-[#2A2A2A] bg-[#1A1A1A] text-[#BDBDBD]"
+                    }`}
+                  >
+                    <p className="text-sm font-medium">Project Generations</p>
                   </button>
                 </div>
               </div>
@@ -1659,12 +1984,244 @@ export default function UGCPage() {
                     </Button>
                     <Button
                       variant="outline"
-                      disabled
-                      className="border-[#2A2A2A] text-[#777777]"
+                      className="border-[#2A2A2A] text-[#F5F5F5]"
+                      onClick={() => setActiveTab("broll")}
                     >
-                      Next: B-Roll Studio →
+                      Ir para B-Roll →
                     </Button>
                   </div>
+                </div>
+              )}
+
+              {activeTab === "broll" && selectedProject && (
+                <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-5 space-y-4">
+                  <h2 className="text-base font-semibold text-[#F5F5F5]">B-Roll Studio</h2>
+                  <div className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3 text-sm text-[#A3A3A3]">
+                    Gere quantos clipes precisar — mire 1 clipe por seção de 5–8s.
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs text-[#A3A3A3]">Product Image</label>
+                    {brollProductImageUrl && (
+                      <div className="overflow-hidden rounded-lg border border-[#2A2A2A] bg-[#111111]">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={brollProductImageUrl}
+                          alt="Produto para B-Roll"
+                          className="h-28 w-full object-cover"
+                        />
+                      </div>
+                    )}
+                    <ImageDropzone
+                      id="ugc-broll-product-drop"
+                      disabled={brollProductUploading}
+                      title={brollProductUploading ? "Enviando imagem..." : "Imagem do produto"}
+                      subtitle="Arraste e solte ou clique para selecionar"
+                      cta={brollProductImageUrl ? "Trocar imagem" : "Enviar imagem"}
+                      onFileSelect={(file) => {
+                        void handleBrollProductImageUpload(file);
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-xs text-[#A3A3A3]">Camera Angle</label>
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                      {BROLL_PRESETS.map((preset) => {
+                        const selected = brollSelectedPresets.includes(preset.key);
+                        return (
+                          <button
+                            key={preset.key}
+                            type="button"
+                            onClick={() => toggleBrollPreset(preset.key)}
+                            className={`rounded-lg border p-3 text-left transition ${
+                              selected
+                                ? "border-[#7C3AED] bg-[#7C3AED]/10"
+                                : "border-[#2A2A2A] bg-[#1A1A1A] hover:border-[#7C3AED]/50"
+                            }`}
+                          >
+                            <div className="mb-2 flex items-center justify-between">
+                              <span className="text-lg">🎬</span>
+                              <span className={`h-4 w-4 rounded border ${
+                                selected
+                                  ? "border-[#7C3AED] bg-[#7C3AED]"
+                                  : "border-[#555555]"
+                              }`} />
+                            </div>
+                            <p className="text-sm font-medium text-[#F5F5F5]">{preset.label}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-xs text-[#A3A3A3]">Duration: {brollDuration}s</label>
+                      <input
+                        type="range"
+                        min={4}
+                        max={15}
+                        step={1}
+                        value={brollDuration}
+                        onChange={(e) => setBrollDuration(Number(e.target.value))}
+                        className="w-full"
+                      />
+                    </div>
+
+                    <div className="flex items-end">
+                      <label className="inline-flex items-center gap-2 text-sm text-[#F5F5F5]">
+                        <button
+                          type="button"
+                          onClick={() => setBrollAudio((v) => !v)}
+                          className={`relative h-5 w-9 rounded-full transition-colors ${
+                            brollAudio ? "bg-[#7C3AED]" : "bg-[#2A2A2A]"
+                          }`}
+                        >
+                          <span
+                            className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
+                              brollAudio ? "translate-x-4" : "translate-x-0.5"
+                            }`}
+                          />
+                        </button>
+                        Audio On
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    {(() => {
+                      const balance = userCredits ?? 0;
+                      const disabled =
+                        brollGenerating ||
+                        brollSelectedPresets.length === 0 ||
+                        !brollProductImageUrl ||
+                        brollInsufficientCredits;
+
+                      return (
+                        <Button
+                          className="w-full bg-[#7C3AED] text-white hover:bg-[#6D28D9] disabled:opacity-50"
+                          disabled={disabled}
+                          onClick={() => void handleGenerateBroll()}
+                        >
+                          {brollGenerating
+                            ? "Gerando B-Roll..."
+                            : `Generate B-Roll — ~${brollTotalCost} créditos (only ${balance} available)`}
+                        </Button>
+                      );
+                    })()}
+
+                    {brollInsufficientCredits && (
+                      <p className="text-xs text-[#FCA5A5]">
+                        Créditos insuficientes para os presets selecionados.
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <h3 className="mb-2 text-sm font-semibold text-[#F5F5F5]">Clipes B-Roll</h3>
+                    {normalizeBroll(selectedProject.broll).length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] p-4 text-sm text-[#888888]">
+                        Nenhum clipe de B-Roll gerado ainda.
+                      </div>
+                    ) : (
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {normalizeBroll(selectedProject.broll).map((clip) => {
+                          const processing = clip.status === "processing";
+                          const completed = clip.status === "completed" && clip.result_url;
+                          const failed = clip.status === "failed";
+                          return (
+                            <div key={clip.generation_id} className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
+                              <div className="mb-2 flex items-center justify-between">
+                                <p className="text-sm font-medium text-[#F5F5F5]">
+                                  {clip.label || brollPresetLabel(clip.preset)}
+                                </p>
+                                {processing && (
+                                  <span className="inline-flex items-center gap-1 text-xs text-[#A78BFA]">
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                    Gerando
+                                  </span>
+                                )}
+                              </div>
+
+                              {completed ? (
+                                <video src={clip.result_url} controls className="w-full rounded-lg" />
+                              ) : (
+                                <div className="rounded-lg border border-dashed border-[#2A2A2A] bg-[#111111] p-6 text-center text-xs text-[#777777]">
+                                  {failed ? "Falhou — tente novamente" : "Processando..."}
+                                </div>
+                              )}
+
+                              <Button
+                                className="mt-2 w-full bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
+                                disabled={processing}
+                                onClick={() => {
+                                  setActiveTab("broll");
+                                  setBrollSelectedPresets([clip.preset]);
+                                  setBrollDuration(
+                                    typeof clip.duration === "number" ? clip.duration : 8
+                                  );
+                                  setBrollAudio(Boolean(clip.audio));
+                                }}
+                              >
+                                {failed ? "Tentar de novo" : "Re-gerar"}
+                              </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <Button
+                      variant="outline"
+                      className="border-[#2A2A2A] text-[#F5F5F5]"
+                      onClick={() => setActiveTab("avatar")}
+                    >
+                      ← Back to avatar
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="border-[#2A2A2A] text-[#F5F5F5]"
+                      onClick={() => setActiveTab("generations")}
+                    >
+                      Ver Project Generations →
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "generations" && selectedProject && (
+                <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-5">
+                  <h2 className="text-base font-semibold text-[#F5F5F5]">Project Generations</h2>
+
+                  {completedProjectGenerations.length === 0 ? (
+                    <div className="mt-4 rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] p-5 text-sm text-[#888888]">
+                      No clips yet — generate your first segment or B-Roll clip.
+                    </div>
+                  ) : (
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {completedProjectGenerations.map((item, index) => (
+                        <div
+                          key={`${item.label}-${item.result_url}-${index}`}
+                          className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3"
+                        >
+                          <p className="mb-2 text-sm font-medium text-[#F5F5F5]">{item.label}</p>
+                          <video src={item.result_url} controls className="w-full rounded-lg" />
+                          <a
+                            href={item.result_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-2 inline-flex w-full items-center justify-center rounded-md border border-[#2A2A2A] px-3 py-2 text-sm text-[#F5F5F5] hover:bg-[#202020]"
+                            download
+                          >
+                            Download
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </>
