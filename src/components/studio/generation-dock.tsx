@@ -64,6 +64,7 @@ interface ApiModel {
   dur_max?: number;
   backend?: string | null;
   task_type?: string;
+  less_restriction?: boolean;
 }
 
 interface UserAsset {
@@ -866,7 +867,11 @@ export function GenerationDock() {
   const isRealFaceModel = useMemo(() => {
     if (!selectedModel) return false;
     const tt = (selectedModel.task_type || "").toLowerCase();
-    return tt.includes("less-restriction") || selectedModel.badge === "REAL";
+    return (
+      selectedModel.less_restriction === true ||
+      tt.includes("less-restriction") ||
+      selectedModel.badge === "REAL"
+    );
   }, [selectedModel]);
 
   // Há alguma imagem anexada (start frame, referência única ou omni).
