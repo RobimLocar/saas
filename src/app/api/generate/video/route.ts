@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { buildVideoPayload, submitVideoTask } from "@/lib/piapi/client";
 import type { VideoModelParams } from "@/lib/piapi/client";
 import { planAllows } from "@/lib/plans";
+import { debitCredits, refundCredits } from "@/lib/credits";
+import { validateVideoRequest } from "@/lib/generation-validation";
 import { auditLog, newRequestId, truncate } from "@/lib/audit-log";
 
 export async function POST(req: NextRequest) {
@@ -143,22 +146,34 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Deduzir créditos
-    const newBalance = profile.credits_balance - aiModel.credit_cost;
-    await supabase
-      .from("profiles")
-      .update({ credits_balance: newBalance })
-      .eq("id", user.id);
-
-    // AUDIT: débito de créditos efetuado
-    auditLog("api.generate.video", "creditos_debitados", requestId, {
-      antes: profile.credits_balance,
-      custo: aiModel.credit_cost,
-      depois: newBalance,
-    }, Date.now() - t0);
-
     // Params de roteamento do modelo (backend/task_type/output_key/dur)
     const modelParams = (aiModel.params as VideoModelParams) || {};
+
+    // BLOCO 3 (§3.2): validações LOCAIS antes do débito — rejeita cedo (400)
+    // requisições comprovadamente inválidas, sem debitar nem criar task paga.
+    const validation = await validateVideoRequest(
+      {
+        aspect_ratio,
+        duration,
+        start_image_url,
+        end_image_url,
+        reference_images,
+        reference_videos,
+        reference_audios,
+      },
+      modelParams,
+      requestId
+    );
+    if (!validation.ok) {
+      auditLog("api.generate.video", "validacao_local_falhou_400", requestId, {
+        error: validation.error,
+      }, Date.now() - t0);
+      return NextResponse.json({ error: validation.error }, { status: 400 });
+    }
+
+    // Cliente service-role para mutações de crédito (débito/estorno atômicos,
+    // ignoram RLS) — ver src/lib/credits.ts.
+    const service = createServiceClient();
     // A rota de status precisa do output_key para extrair a URL certa da PiAPI.
     const outputKey = modelParams.output_key || "output.video_url";
 
@@ -191,7 +206,7 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (!generation) {
-      await supabase.from("profiles").update({ credits_balance: profile.credits_balance }).eq("id", user.id);
+      // Nada foi debitado ainda (o débito ocorre logo abaixo, atrelado ao job).
       auditLog("api.generate.video", "insert_generation_falhou_500", requestId, {}, Date.now() - t0);
       return NextResponse.json({ error: "Erro ao registrar geração" }, { status: 500 });
     }
@@ -201,13 +216,43 @@ export async function POST(req: NextRequest) {
       status: "pending",
     }, Date.now() - t0);
 
-    // Ledger de créditos
-    await supabase.from("credit_transactions").insert({
-      user_id: user.id,
-      amount: -aiModel.credit_cost,
-      reason: "generation",
-      related_job_id: generation.id,
-    });
+    // BLOCO 2 (§3.3): DÉBITO ATÔMICO idempotente atrelado ao job. Faz CAS no
+    // saldo (nunca fica negativo, mesmo sob concorrência) e registra o ledger
+    // (reason "generation"). Ver src/lib/credits.ts.
+    const debit = await debitCredits(
+      service,
+      user.id,
+      aiModel.credit_cost,
+      generation.id,
+      requestId
+    );
+    if (!debit.ok) {
+      // Marca a geração como falha (nenhum crédito foi retirado).
+      await service
+        .from("generations")
+        .update({ status: "failed", error_message: "Falha ao debitar créditos" })
+        .eq("id", generation.id);
+      if ("insufficient" in debit) {
+        auditLog("api.generate.video", "creditos_insuficientes_402", requestId, {
+          generation_id: generation.id,
+          credit_cost: aiModel.credit_cost,
+        }, Date.now() - t0);
+        return NextResponse.json(
+          { error: "Créditos insuficientes", required: aiModel.credit_cost, available: profile.credits_balance },
+          { status: 402 }
+        );
+      }
+      auditLog("api.generate.video", "debito_falhou_500", requestId, {
+        generation_id: generation.id,
+        error: debit.error,
+      }, Date.now() - t0);
+      return NextResponse.json({ error: "Erro ao debitar créditos" }, { status: 500 });
+    }
+    const newBalance = debit.balance;
+    auditLog("api.generate.video", "creditos_debitados", requestId, {
+      custo: aiModel.credit_cost,
+      depois: newBalance,
+    }, Date.now() - t0);
 
     // Chamar PiAPI
     try {
@@ -277,19 +322,16 @@ export async function POST(req: NextRequest) {
         message: apiError instanceof Error ? apiError.message : String(apiError),
         stack: apiError instanceof Error ? apiError.stack : undefined,
       });
-      // Reverter créditos
-      await supabase.from("profiles").update({ credits_balance: profile.credits_balance }).eq("id", user.id);
-      await supabase.from("generations").update({ status: "failed", error_message: String(apiError) }).eq("id", generation.id);
-      await supabase.from("credit_transactions").insert({
-        user_id: user.id,
-        amount: aiModel.credit_cost,
-        reason: "refund",
-        related_job_id: generation.id,
-      });
-
       // Propaga o erro real da PiAPI para o frontend (ex.: "insufficient credits").
       const errMsg =
         apiError instanceof Error ? apiError.message : String(apiError);
+      // Estorno IDEMPOTENTE (§3.3): credita de volta só se ainda não houve refund
+      // para este job — evita estorno duplicado se o webhook/polling também rodar.
+      await refundCredits(service, user.id, generation.id, aiModel.credit_cost, requestId);
+      await service
+        .from("generations")
+        .update({ status: "failed", error_message: errMsg })
+        .eq("id", generation.id);
       const lower = errMsg.toLowerCase();
       const isInsufficientCredits =
         lower.includes("insufficient credits") ||
