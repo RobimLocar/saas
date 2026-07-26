@@ -12,6 +12,7 @@ import {
   ImagePlus,
   Music,
   Play,
+  Sprout,
   Star,
   Trash2,
   X,
@@ -99,6 +100,10 @@ export function MediaLightbox({
   const setReferenceTab = useStudioStore((s) => s.setReferenceTab);
 
   const [busy, setBusy] = useState(false);
+  const [seedModalOpen, setSeedModalOpen] = useState(false);
+  const [seedName, setSeedName] = useState("");
+  const [seedDescription, setSeedDescription] = useState("");
+  const [seedTags, setSeedTags] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const itemId = item?.id;
 
@@ -261,7 +266,71 @@ export function MediaLightbox({
     }
   }
 
+  function openSeedModal() {
+    setSeedName(item.prompt.slice(0, 80));
+    setSeedDescription("");
+    setSeedTags("");
+    setSeedModalOpen(true);
+  }
+
+  async function handleSaveSeed() {
+    if (!item.result_url) {
+      toast.error("Esta geração não possui mídia para salvar como seed.");
+      return;
+    }
+
+    const name = seedName.trim();
+    if (!name) {
+      toast.error("O nome do seed é obrigatório.");
+      return;
+    }
+
+    const tags = seedTags
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+
+    setBusy(true);
+    try {
+      const res = await fetch("/api/seeds", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          description: seedDescription.trim() || null,
+          tags,
+          asset_id: undefined,
+          preview_url: item.result_url,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        if (res.status === 401) {
+          toast.error("Faça login para salvar.");
+          return;
+        }
+        throw new Error(data?.error || "Erro ao salvar seed.");
+      }
+
+      setSeedModalOpen(false);
+      toast.success("Salvo em Seeds ↗", {
+        action: {
+          label: "Abrir",
+          onClick: () => {
+            window.location.href = "/seeds";
+          },
+        },
+      });
+    } catch {
+      toast.error("Erro ao salvar seed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
+    <>
     <div
       className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xl"
       onClick={onClose}
@@ -475,6 +544,15 @@ export function MediaLightbox({
             </button>
             <button
               type="button"
+              onClick={openSeedModal}
+              disabled={!item.result_url || busy}
+              className="flex h-10 w-full items-center justify-center gap-2 rounded-full border border-[#2A2A2A] bg-[#1F1F1F] text-sm text-[#F5F5F5] transition hover:bg-[#2A2A2A] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Sprout className="h-4 w-4" />
+              Salvar como Seed
+            </button>
+            <button
+              type="button"
               onClick={() => void handleCopyPrompt()}
               className="flex h-10 w-full items-center justify-center gap-2 rounded-full border border-[#2A2A2A] bg-[#1F1F1F] text-sm text-[#F5F5F5] transition hover:bg-[#2A2A2A]"
             >
@@ -485,5 +563,74 @@ export function MediaLightbox({
         </div>
       </aside>
     </div>
+
+    {seedModalOpen && (
+      <div
+        className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4"
+        onClick={() => !busy && setSeedModalOpen(false)}
+      >
+        <div
+          className="w-full max-w-md rounded-xl border border-[#2A2A2A] bg-[#131313] p-5"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <h3 className="text-lg font-semibold text-[#F5F5F5]">Salvar como Seed</h3>
+          <p className="mt-1 text-sm text-[#888888]">
+            Salve esta mídia para reutilizar como referência no Studio.
+          </p>
+
+          <div className="mt-4 space-y-3">
+            <div>
+              <label className="mb-1 block text-xs text-[#A3A3A3]">Nome *</label>
+              <input
+                value={seedName}
+                onChange={(event) => setSeedName(event.target.value)}
+                placeholder="Ex.: Personagem principal"
+                className="h-9 w-full rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-2.5 text-sm text-[#F5F5F5] outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs text-[#A3A3A3]">Descrição</label>
+              <textarea
+                value={seedDescription}
+                onChange={(event) => setSeedDescription(event.target.value)}
+                placeholder="Contexto opcional sobre esta referência"
+                className="min-h-20 w-full resize-none rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-2.5 py-2 text-sm text-[#F5F5F5] outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs text-[#A3A3A3]">Tags (vírgula)</label>
+              <input
+                value={seedTags}
+                onChange={(event) => setSeedTags(event.target.value)}
+                placeholder="ex.: rosto, close-up, campanha"
+                className="h-9 w-full rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-2.5 text-sm text-[#F5F5F5] outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="mt-5 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setSeedModalOpen(false)}
+              disabled={busy}
+              className="rounded-lg border border-[#2A2A2A] px-3 py-2 text-sm text-[#E5E5E5] disabled:opacity-40"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSaveSeed()}
+              disabled={busy}
+              className="rounded-lg bg-[#7C3AED] px-3 py-2 text-sm font-medium text-white disabled:opacity-40"
+            >
+              {busy ? "Salvando..." : "Salvar Seed"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

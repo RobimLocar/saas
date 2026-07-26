@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Copy, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useStudioStore } from "@/stores/use-studio-store";
 
 type PromptType = "image" | "video" | "audio";
 type PromptFilter = "all" | PromptType;
@@ -64,6 +66,10 @@ function emptyForm(): PromptFormState {
 }
 
 export default function MyPromptsPage() {
+  const router = useRouter();
+  const setPrompt = useStudioStore((s) => s.setPrompt);
+  const setActiveTab = useStudioStore((s) => s.setActiveTab);
+
   const [filter, setFilter] = useState<PromptFilter>("all");
   const [prompts, setPrompts] = useState<SavedPrompt[]>([]);
   const [loading, setLoading] = useState(true);
@@ -216,15 +222,31 @@ export default function MyPromptsPage() {
     }
   }
 
+  async function handleCopy(promptItem: SavedPrompt) {
+    try {
+      await navigator.clipboard.writeText(promptItem.prompt);
+      toast.success("Prompt copiado.");
+    } catch {
+      toast.error("Não foi possível copiar o prompt.");
+    }
+  }
+
   async function handleUse(promptItem: SavedPrompt) {
     setWorkingId(promptItem.id);
     try {
-      await navigator.clipboard.writeText(promptItem.prompt);
+      setPrompt(promptItem.prompt);
+      if (
+        promptItem.type === "image" ||
+        promptItem.type === "video" ||
+        promptItem.type === "audio"
+      ) {
+        setActiveTab(promptItem.type);
+      }
 
       const res = await fetch(`/api/prompts/${promptItem.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ increment_use: true }),
+        body: JSON.stringify({ action: "use" }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
@@ -234,7 +256,8 @@ export default function MyPromptsPage() {
       setPrompts((prev) =>
         prev.map((p) => (p.id === promptItem.id ? (data.prompt as SavedPrompt) : p))
       );
-      toast.success("Prompt copiado e pronto para uso.");
+      toast.success("Abrindo no Studio…");
+      router.push("/studio");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Falha ao usar prompt.");
     } finally {
@@ -336,15 +359,23 @@ export default function MyPromptsPage() {
                         <span>{formatDate(item.created_at)}</span>
                       </div>
 
-                      <div className="mt-3 grid grid-cols-3 gap-2">
+                      <div className="mt-3 grid grid-cols-4 gap-2">
                         <Button
                           variant="outline"
                           className="border-[#2A2A2A] text-[#F5F5F5]"
                           disabled={workingId === item.id}
                           onClick={() => void handleUse(item)}
                         >
+                          Usar no Studio
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="border-[#2A2A2A] text-[#F5F5F5]"
+                          disabled={workingId === item.id}
+                          onClick={() => void handleCopy(item)}
+                        >
                           <Copy className="mr-1 h-3.5 w-3.5" />
-                          Usar
+                          Copiar
                         </Button>
                         <Button
                           variant="outline"

@@ -28,6 +28,7 @@ import {
   Search,
   SlidersHorizontal,
   Sparkles,
+  Sprout,
   Upload,
   Video,
   Volume2,
@@ -72,6 +73,14 @@ interface UserAsset {
   name: string;
   category: string;
   image_url: string;
+}
+
+interface SeedItem {
+  id: string;
+  name: string | null;
+  preview_url: string | null;
+  use_count: number;
+  tags: string[] | null;
 }
 
 const TABS: { id: Modality; label: string; icon: typeof ImageIcon }[] = [
@@ -680,6 +689,8 @@ export function GenerationDock() {
   const [assetCategory, setAssetCategory] = useState("all");
   const [assets, setAssets] = useState<UserAsset[]>([]);
   const [assetsLoading, setAssetsLoading] = useState(false);
+  const [seeds, setSeeds] = useState<SeedItem[]>([]);
+  const [seedsLoading, setSeedsLoading] = useState(false);
   const [refSectionOpen, setRefSectionOpen] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
@@ -740,6 +751,20 @@ export function GenerationDock() {
       // silencioso
     } finally {
       setAssetsLoading(false);
+    }
+  }, []);
+
+  const loadSeeds = useCallback(async () => {
+    setSeedsLoading(true);
+    try {
+      const res = await fetch("/api/seeds", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) return;
+      setSeeds(Array.isArray(data?.seeds) ? data.seeds : []);
+    } catch {
+      // silencioso
+    } finally {
+      setSeedsLoading(false);
     }
   }, []);
 
@@ -975,6 +1000,18 @@ export function GenerationDock() {
   function appendToPrompt(snippet: string) {
     const cleaned = prompt.trim();
     setPrompt(cleaned ? `${cleaned}, ${snippet}` : snippet);
+  }
+
+  async function markSeedAsUsed(seedId: string) {
+    try {
+      await fetch(`/api/seeds/${seedId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "use" }),
+      });
+    } catch {
+      // silencioso
+    }
   }
 
   async function handleWiseEnhance() {
@@ -1785,10 +1822,82 @@ export function GenerationDock() {
         {!collapsed && showReferenceSections && (
           <div className="mb-4 space-y-3">
             <div>
-              <div className="mb-1.5 flex items-center justify-between">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
-                  Reference Images ({referenceImages.length}/9)
-                </p>
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
+                    Reference Images ({referenceImages.length}/9)
+                  </p>
+                  <Popover
+                    onOpenChange={(open) => {
+                      if (open) void loadSeeds();
+                    }}
+                    triggerClassName="h-7 rounded-md px-2 text-xs"
+                    panelClassName="left-auto right-0 mb-1 w-[280px] p-2"
+                    trigger={() => (
+                      <>
+                        <Sprout className="h-3 w-3 text-[#9F67FF]" />
+                        <span className="text-xs">Seeds</span>
+                      </>
+                    )}
+                  >
+                    {(close) => (
+                      <div>
+                        <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
+                          Seus Seeds
+                        </p>
+                        {seedsLoading ? (
+                          <div className="grid grid-cols-5 gap-2">
+                            {Array.from({ length: 5 }).map((_, i) => (
+                              <div
+                                key={i}
+                                className="h-12 w-12 animate-pulse rounded-md border border-[#2A2A2A] bg-[#232323]"
+                              />
+                            ))}
+                          </div>
+                        ) : seeds.length === 0 ? (
+                          <p className="py-3 text-center text-xs text-[#777777]">
+                            Nenhum seed salvo ainda.
+                          </p>
+                        ) : (
+                          <div className="grid grid-cols-5 gap-2">
+                            {seeds.map((seed) => (
+                              <button
+                                key={seed.id}
+                                type="button"
+                                onClick={() => {
+                                  if (!seed.preview_url) {
+                                    toast.error("Este seed não possui preview.");
+                                    return;
+                                  }
+                                  addReferenceImage(seed.preview_url);
+                                  void markSeedAsUsed(seed.id);
+                                  toast.success(`Seed \"${seed.name || "Sem nome"}\" adicionada.`);
+                                  close();
+                                }}
+                                className="group relative h-12 w-12 overflow-hidden rounded-md border border-[#2A2A2A] bg-[#1A1A1A]"
+                                title={seed.name || "Seed"}
+                              >
+                                {seed.preview_url ? (
+                                  <Image
+                                    src={seed.preview_url}
+                                    alt={seed.name || "Seed"}
+                                    fill
+                                    className="object-cover"
+                                    unoptimized
+                                  />
+                                ) : (
+                                  <span className="flex h-full w-full items-center justify-center text-[#666666]">
+                                    <Sprout className="h-3.5 w-3.5" />
+                                  </span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </Popover>
+                </div>
                 {activeTab === "video" && (
                   <p className="text-[10px] text-[#666666]">
                     {totalRefs}/12 total
