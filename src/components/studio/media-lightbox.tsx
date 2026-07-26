@@ -170,16 +170,25 @@ export function MediaLightbox({
     if (busy) return;
     setBusy(true);
     try {
-      await patchFlags({ prompt_favorite: !isPromptFavorite });
-      toast.success(
-        isPromptFavorite
-          ? "Prompt removido dos favoritos."
-          : "Prompt salvo em My Prompts."
-      );
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Falha ao salvar prompt."
-      );
+      const res = await fetch("/api/prompts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: item.prompt, type: item.type }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        if (res.status === 401) {
+          toast.error("Faça login para salvar prompts.");
+          return;
+        }
+        throw new Error(data?.error || "Erro ao salvar prompt.");
+      }
+
+      await patchFlags({ prompt_favorite: true });
+      toast.success("Prompt salvo em My Prompts!");
+    } catch {
+      toast.error("Erro ao salvar prompt.");
     } finally {
       setBusy(false);
     }
@@ -452,8 +461,11 @@ export function MediaLightbox({
             )}
             <button
               type="button"
-              onClick={() => toast.info("My Prompts em breve.")}
-              className="flex h-10 w-full cursor-not-allowed items-center justify-center gap-2 rounded-full border border-[#92400E]/60 bg-[#1F1F1F] text-sm text-[#F5F5F5] opacity-50 transition hover:bg-[#2A2A2A]"
+              onClick={() => void handlePromptFavorite()}
+              className={cn(
+                "flex h-10 w-full items-center justify-center gap-2 rounded-full border bg-[#1F1F1F] text-sm text-[#F5F5F5] transition hover:bg-[#2A2A2A]",
+                isPromptFavorite ? "border-[#D97706]" : "border-[#92400E]/60"
+              )}
             >
               <Star
                 className="h-4 w-4"
