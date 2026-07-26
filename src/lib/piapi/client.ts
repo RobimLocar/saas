@@ -419,7 +419,16 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
     negativePrompt,
   } = args;
   const backend = params.backend || "kling";
-  const config = { service_mode: "public" };
+  // config.service_mode = "public" (obrigatório). Quando PUBLIC_BASE_URL e
+  // PIAPI_WEBHOOK_SECRET estão definidos, registramos o webhook para que a PiAPI
+  // notifique nosso endpoint ao concluir/falhar a task (evita depender só de polling).
+  const config: Record<string, unknown> = { service_mode: "public" };
+  if (process.env.PUBLIC_BASE_URL && process.env.PIAPI_WEBHOOK_SECRET) {
+    config.webhook_config = {
+      endpoint: `${process.env.PUBLIC_BASE_URL}/api/webhooks/piapi`,
+      secret: process.env.PIAPI_WEBHOOK_SECRET,
+    };
+  }
   const aspect = aspectRatio || "16:9";
   const durMin = params.dur_min ?? 5;
   const durMax = params.dur_max ?? 10;
