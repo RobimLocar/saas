@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 const FULL_FIELDS =
-  "id, user_id, name, product_id, avatar_seed_id, avatar_label, script, segments, broll, status, created_at, updated_at";
+  "id, user_id, name, product_id, avatar_seed_id, avatar_label, avatar_image_url, script, segments, broll, status, created_at, updated_at";
 
 export async function GET(
   _req: NextRequest,
@@ -62,6 +62,7 @@ export async function PATCH(
       product_id?: string | null;
       avatar_seed_id?: string | null;
       avatar_label?: string | null;
+      avatar_image_url?: string | null;
       script?: unknown;
       status?: string | null;
       updated_at?: string;
@@ -93,6 +94,13 @@ export async function PATCH(
     if (Object.prototype.hasOwnProperty.call(body, "avatar_label")) {
       patch.avatar_label =
         typeof body.avatar_label === "string" ? body.avatar_label.trim() || null : null;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, "avatar_image_url")) {
+      patch.avatar_image_url =
+        typeof body.avatar_image_url === "string"
+          ? body.avatar_image_url.trim() || null
+          : null;
     }
 
     if (Object.prototype.hasOwnProperty.call(body, "script")) {

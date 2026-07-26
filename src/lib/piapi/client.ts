@@ -345,6 +345,7 @@ export interface BuildVideoArgs {
   aspectRatio?: string;
   imageUrl?: string;
   endImageUrl?: string;
+  dubbingAudioUrl?: string;
   /** força o task type "-less-restriction" independentemente de haver imagem
    *  (ex.: quando o modelo do catálogo tem params.less_restriction === true). */
   lessRestriction?: boolean;
@@ -433,6 +434,25 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
   const durMin = params.dur_min ?? 5;
   const durMax = params.dur_max ?? 10;
   const userDur = clampInt(args.duration ?? durMin, durMin, durMax);
+
+  // ── KLING AVATAR ─────────────────────────────────────────────────────────────
+  // task_type="avatar" → lip-sync; requer image_url (retrato) + local_dubbing_url (áudio TTS).
+  // mode: std = 720p/padrão, pro = melhor qualidade (usa quality do caller).
+  // batch_size: 2 quando há Multiple Camera Angles (referenceImages.length > 1), senão 1.
+  if (backend === "kling" && params.task_type === "avatar") {
+    return {
+      model: "kling",
+      task_type: "avatar",
+      input: {
+        image_url: imageUrl,
+        local_dubbing_url: args.dubbingAudioUrl,
+        prompt: prompt || "A person speaking naturally and warmly to camera, UGC style.",
+        mode: quality === "high" ? "pro" : "std",
+        batch_size: args.referenceImages && args.referenceImages.length > 1 ? 2 : 1,
+      },
+      config,
+    };
+  }
 
   // ── SEEDANCE ──────────────────────────────────────────────────────────────
   if (backend === "seedance") {

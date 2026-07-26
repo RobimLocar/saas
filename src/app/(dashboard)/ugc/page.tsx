@@ -39,6 +39,7 @@ interface UgcProject {
   product_id: string | null;
   avatar_seed_id: string | null;
   avatar_label: string | null;
+  avatar_image_url: string | null;
   status: string | null;
   script: ScriptShape | null;
   segments: unknown;
@@ -97,6 +98,14 @@ function statusLabel(status: string | null): string {
   return "Rascunho";
 }
 
+function avatarSegmentCost(duration: number): number {
+  return Math.ceil(14 + 3.75 * duration);
+}
+
+function effectiveCostFrontend(base: number, plan: string): number {
+  return plan === "free" ? Math.ceil(base * 2) : base;
+}
+
 function normalizeScript(raw: unknown): ScriptShape {
   const obj = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const part = (key: "hook" | "body1" | "body2" | "cta") => {
@@ -137,6 +146,27 @@ export default function UGCPage() {
   const [scriptGenerating, setScriptGenerating] = useState(false);
   const [scriptSaving, setScriptSaving] = useState(false);
   const [scriptDraft, setScriptDraft] = useState<ScriptShape>(emptyScript());
+
+  // ── Talking Avatar ──
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarModal, setAvatarModal] = useState<{
+    segmentKey: "hook" | "body1" | "body2" | "cta";
+    label: string;
+    defaultText: string;
+  } | null>(null);
+  const [avatarForm, setAvatarForm] = useState({
+    text: "",
+    accent: "Accent",
+    duration: 6 as 4 | 6 | 8,
+    resolution: "720p" as "720p" | "1080p" | "4k",
+    cameraAngles: false,
+    productImageUrl: "",
+    productImageUploading: false,
+  });
+  const [avatarGenerating, setAvatarGenerating] = useState(false);
+  const [userCredits, setUserCredits] = useState<number | null>(null);
+  const [userPlan, setUserPlan] = useState<string>("free");
+  const [pollingSegments, setPollingSegments] = useState<Record<string, string>>({});
 
   // Produtos (seção 4c-1 mantida)
   const [products, setProducts] = useState<ProductItem[]>([]);
@@ -217,10 +247,24 @@ export default function UGCPage() {
     }
   }, []);
 
+  const loadMe = useCallback(async () => {
+    try {
+      const res = await fetch("/api/me", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        setUserCredits(data?.credits ?? 0);
+        setUserPlan(data?.plan ?? "free");
+      }
+    } catch {
+      // silencioso
+    }
+  }, []);
+
   useEffect(() => {
     void loadProducts();
     void loadProjects();
-  }, [loadProducts, loadProjects]);
+    void loadMe();
+  }, [loadProducts, loadProjects, loadMe]);
 
   useEffect(() => {
     if (view !== "project" || !selectedProjectId) return;
@@ -547,6 +591,170 @@ export default function UGCPage() {
     }
   }
 
+  async function handleAvatarPortraitUpload(file: File) {
+    if (!selectedProject) return;
+    setAvatarUploading(true);
+    const toastId = toast.loading("Enviando retrato...");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.url) throw new Error(data?.error || "Erro no upload.");
+
+      const patch = await fetch(`/api/ugc/projects/${selectedProject.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatar_image_url: data.url }),
+      });
+      const pData = await patch.json().catch(() => null);
+      if (!patch.ok) throw new Error(pData?.error || "Erro ao salvar avatar.");
+
+      const updated = pData?.project as UgcProject;
+      setSelectedProject(updated);
+      setProjects((prev) => prev.map((p) => p.id === updated.id ? { ...p, ...updated } : p));
+      toast.success("Retrato do avatar salvo.", { id: toastId });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha ao enviar retrato.", { id: toastId });
+    } finally {
+      setAvatarUploading(false);
+    }
+  }
+
+  async function handleProductImageUpload(file: File) {
+    setAvatarForm(prev => ({ ...prev, productImageUploading: true }));
+    const toastId = toast.loading("Enviando imagem do produto...");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.url) throw new Error(data?.error || "Erro no upload.");
+      setAvatarForm(prev => ({ ...prev, productImageUrl: data.url }));
+      toast.success("Imagem do produto enviada.", { id: toastId });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha ao enviar imagem.", { id: toastId });
+    } finally {
+      setAvatarForm(prev => ({ ...prev, productImageUploading: false }));
+    }
+  }
+
+  async function handleGenerateSegment() {
+    if (!selectedProject || !avatarModal) return;
+    setAvatarGenerating(true);
+    const toastId = toast.loading(`Gerando ${avatarModal.label}...`);
+    try {
+      const res = await fetch(`/api/ugc/projects/${selectedProject.id}/segment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          segment_key: avatarModal.segmentKey,
+          text: avatarForm.text,
+          accent: avatarForm.accent,
+          duration: avatarForm.duration,
+          resolution: avatarForm.resolution,
+          camera_angles: avatarForm.cameraAngles,
+          product_image_url: avatarForm.productImageUrl || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Falha ao gerar segmento.");
+      }
+
+      const generationId: string = data.generation_id;
+      const key = avatarModal.segmentKey;
+
+      setPollingSegments(prev => ({ ...prev, [key]: generationId }));
+
+      setSelectedProject(prev => {
+        if (!prev) return prev;
+        const segs = (prev.segments as Record<string, unknown> | null) ?? {};
+        return {
+          ...prev,
+          segments: {
+            ...segs,
+            [key]: {
+              key,
+              generation_id: generationId,
+              status: "processing",
+              text: avatarForm.text,
+              duration: avatarForm.duration,
+              resolution: avatarForm.resolution,
+              accent: avatarForm.accent,
+            },
+          },
+        };
+      });
+
+      if (userCredits !== null) {
+        setUserCredits(prev => (prev !== null ? prev - data.cost : prev));
+      }
+
+      toast.success(`${avatarModal.label} em geração!`, { id: toastId });
+      setAvatarModal(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao gerar segmento.", { id: toastId });
+    } finally {
+      setAvatarGenerating(false);
+    }
+  }
+
+  useEffect(() => {
+    const keys = Object.keys(pollingSegments);
+    if (keys.length === 0) return;
+
+    const interval = setInterval(async () => {
+      for (const key of keys) {
+        const generationId = pollingSegments[key];
+        if (!generationId) continue;
+
+        try {
+          const res = await fetch(`/api/generate/status?id=${generationId}`);
+          const data = await res.json().catch(() => null);
+
+          if (data?.status === "completed" || data?.status === "failed") {
+            setPollingSegments(prev => {
+              const next = { ...prev };
+              delete next[key];
+              return next;
+            });
+
+            setSelectedProject(prev => {
+              if (!prev) return prev;
+              const segs = (prev.segments as Record<string, unknown> | null) ?? {};
+              const seg = (segs[key] as Record<string, unknown>) ?? {};
+              const segResultUrl =
+                typeof seg.result_url === "string" ? seg.result_url : null;
+
+              return {
+                ...prev,
+                segments: {
+                  ...segs,
+                  [key]: {
+                    ...seg,
+                    status: data.status,
+                    result_url: data.result_url ?? segResultUrl,
+                  },
+                },
+              };
+            });
+
+            if (data?.status === "completed") {
+              toast.success(`Segmento ${key} concluído!`);
+              void loadMe();
+            }
+          }
+        } catch {
+          // ignorar erros de polling
+        }
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [pollingSegments, loadMe]);
+
   const hasScript = Boolean(
     scriptDraft.hook.text ||
       scriptDraft.body1.text ||
@@ -838,13 +1046,14 @@ export default function UGCPage() {
 
                   <button
                     type="button"
-                    disabled
-                    className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-2 text-left text-[#777777]"
+                    onClick={() => setActiveTab("avatar")}
+                    className={`rounded-lg border px-3 py-2 text-left transition ${
+                      activeTab === "avatar"
+                        ? "border-[#7C3AED] bg-[#7C3AED]/10 text-[#F5F5F5]"
+                        : "border-[#2A2A2A] bg-[#1A1A1A] text-[#BDBDBD]"
+                    }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium">Talking Avatar</p>
-                      <Badge className="bg-[#2A2A2A] text-[#888888]">Próxima etapa</Badge>
-                    </div>
+                    <p className="text-sm font-medium">Talking Avatar</p>
                   </button>
 
                   <button
@@ -1003,9 +1212,369 @@ export default function UGCPage() {
                   )}
                 </div>
               )}
+
+              {activeTab === "avatar" && selectedProject && (
+                <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-5">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-base font-semibold text-[#F5F5F5]">Talking Avatar</h2>
+                    {userCredits !== null && (
+                      <span className="text-xs text-[#888888]">{userCredits} créditos disponíveis</span>
+                    )}
+                  </div>
+
+                  <div className="mt-4 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
+                    <p className="mb-2 text-xs font-medium text-[#A3A3A3]">🔒 Locked Avatar</p>
+                    {selectedProject.avatar_image_url ? (
+                      <div className="flex items-center gap-3">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={selectedProject.avatar_image_url}
+                          alt="Avatar"
+                          className="h-16 w-16 rounded-lg object-cover"
+                        />
+                        <div>
+                          <p className="text-sm text-[#F5F5F5]">Retrato configurado</p>
+                          <label className="mt-1 cursor-pointer text-xs text-[#7C3AED] hover:underline">
+                            Trocar retrato
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              disabled={avatarUploading}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) void handleAvatarPortraitUpload(file);
+                                e.currentTarget.value = "";
+                              }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-2 py-3">
+                        <p className="text-sm text-[#888888]">Nenhum retrato configurado ainda.</p>
+                        <p className="text-xs text-[#777777]">Faça upload de um retrato para começar.</p>
+                        <label className="cursor-pointer">
+                          <span className="inline-flex items-center gap-1.5 rounded-lg bg-[#7C3AED] px-3 py-1.5 text-sm text-white hover:bg-[#6D28D9]">
+                            {avatarUploading ? (
+                              <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Enviando...</>
+                            ) : (
+                              "Enviar retrato"
+                            )}
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            disabled={avatarUploading}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) void handleAvatarPortraitUpload(file);
+                              e.currentTarget.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
+                    )}
+                  </div>
+
+                  {selectedProject.avatar_image_url && (
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      {(
+                        [
+                          { key: "hook", label: "🎣 Hook", color: "border-[#7C3AED]/40 bg-[#7C3AED]/5" },
+                          { key: "body1", label: "💬 Body 1", color: "border-[#2A2A2A] bg-[#1A1A1A]" },
+                          { key: "body2", label: "💬 Body 2", color: "border-[#2A2A2A] bg-[#1A1A1A]" },
+                          { key: "cta", label: "📢 CTA", color: "border-[#16A34A]/35 bg-[#16A34A]/5" },
+                        ] as const
+                      ).map(({ key, label, color }) => {
+                        const seg = ((selectedProject.segments as Record<string, unknown> | null) ?? {})[key] as
+                          | Record<string, unknown>
+                          | undefined;
+                        const isProcessing = seg?.status === "processing";
+                        const isCompleted = seg?.status === "completed";
+                        const videoUrl = typeof seg?.result_url === "string" ? seg.result_url : null;
+                        const scriptText =
+                          scriptDraft[key as keyof typeof scriptDraft]?.text ?? "";
+
+                        return (
+                          <div key={key} className={`rounded-lg border p-3 ${color}`}>
+                            <div className="mb-2 flex items-center justify-between">
+                              <p className="text-sm font-semibold text-[#F5F5F5]">{label}</p>
+                              {isProcessing && (
+                                <div className="flex items-center gap-1 text-xs text-[#A78BFA]">
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                  Gerando...
+                                </div>
+                              )}
+                              {isCompleted && !videoUrl && (
+                                <Badge className="bg-[#16A34A]/20 text-[#4ADE80]">Concluído</Badge>
+                              )}
+                            </div>
+
+                            {isCompleted && videoUrl ? (
+                              <div className="space-y-2">
+                                <video
+                                  src={videoUrl}
+                                  controls
+                                  className="w-full rounded-lg"
+                                  style={{ maxHeight: "200px" }}
+                                />
+                                <Button
+                                  variant="outline"
+                                  className="w-full border-[#2A2A2A] text-[#F5F5F5]"
+                                  onClick={() => {
+                                    setAvatarModal({ segmentKey: key, label, defaultText: scriptText });
+                                    setAvatarForm(prev => ({
+                                      ...prev,
+                                      text: scriptText,
+                                    }));
+                                  }}
+                                >
+                                  Re-gerar
+                                </Button>
+                              </div>
+                            ) : (
+                              <>
+                                <p className="mb-2 line-clamp-2 text-xs text-[#888888]">
+                                  {scriptText || "Sem texto no roteiro"}
+                                </p>
+                                <Button
+                                  className="w-full bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
+                                  disabled={isProcessing}
+                                  onClick={() => {
+                                    setAvatarModal({ segmentKey: key, label, defaultText: scriptText });
+                                    setAvatarForm(prev => ({
+                                      ...prev,
+                                      text: scriptText,
+                                      productImageUrl: "",
+                                    }));
+                                  }}
+                                >
+                                  {isProcessing ? (
+                                    <><Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />Gerando...</>
+                                  ) : (
+                                    <><Sparkles className="mr-1 h-3.5 w-3.5" />Generate</>
+                                  )}
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div className="mt-5 flex items-center justify-between">
+                    <Button
+                      variant="outline"
+                      className="border-[#2A2A2A] text-[#F5F5F5]"
+                      onClick={() => setActiveTab("script")}
+                    >
+                      ← Voltar ao roteiro
+                    </Button>
+                    <Button
+                      variant="outline"
+                      disabled
+                      className="border-[#2A2A2A] text-[#777777]"
+                    >
+                      Next: B-Roll Studio →
+                    </Button>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </section>
+      )}
+
+      {avatarModal && selectedProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-lg rounded-xl border border-[#2A2A2A] bg-[#131313] p-5 overflow-y-auto max-h-[90vh]">
+            <h3 className="text-lg font-semibold text-[#F5F5F5]">Generate: {avatarModal.label}</h3>
+            <p className="mt-1 text-sm text-[#888888]">Configure o segmento de talking avatar.</p>
+
+            <div className="mt-4 space-y-4">
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className="text-xs text-[#A3A3A3]">Fala do avatar</label>
+                  {(() => {
+                    const words = avatarForm.text.trim() ? avatarForm.text.trim().split(/\s+/).length : 0;
+                    const rec = Math.round(avatarForm.duration * 2.75);
+                    const lo = Math.round(rec * 0.7);
+                    const hi = Math.round(rec * 1.2);
+                    const status = words === 0 ? "" : words < lo ? "Muito pouco" : words > hi ? "Muito longo" : "Bom";
+                    const color = status === "Bom" ? "text-[#4ADE80]" : status === "" ? "text-[#777777]" : "text-[#FCA5A5]";
+                    return (
+                      <span className={`text-xs ${color}`}>
+                        {words} / ~{rec} palavras{status ? ` · ${status}` : ""} · alvo {avatarForm.duration}s
+                      </span>
+                    );
+                  })()}
+                </div>
+                <Textarea
+                  value={avatarForm.text}
+                  onChange={(e) => setAvatarForm(prev => ({ ...prev, text: e.target.value }))}
+                  placeholder="Digite o que o avatar vai dizer..."
+                  className="min-h-24 border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs text-[#A3A3A3]">Accent</label>
+                <select
+                  value={avatarForm.accent}
+                  onChange={(e) => setAvatarForm(prev => ({ ...prev, accent: e.target.value }))}
+                  className="h-10 w-full rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-2.5 text-sm text-[#F5F5F5] outline-none"
+                >
+                  {["Accent", "Irish", "Scottish", "French", "German", "Spanish", "Italian"].map(a => (
+                    <option key={a} value={a}>{a}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs text-[#A3A3A3]">Duração</label>
+                <div className="flex gap-2">
+                  {([4, 6, 8] as const).map(d => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setAvatarForm(prev => ({ ...prev, duration: d }))}
+                      className={`flex-1 rounded-lg border py-1.5 text-sm transition ${
+                        avatarForm.duration === d
+                          ? "border-[#7C3AED] bg-[#7C3AED]/20 text-[#F5F5F5]"
+                          : "border-[#2A2A2A] bg-[#1A1A1A] text-[#BDBDBD]"
+                      }`}
+                    >
+                      {d}s
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs text-[#A3A3A3]">Resolução</label>
+                <div className="flex gap-2">
+                  {(["720p", "1080p", "4k"] as const).map(r => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setAvatarForm(prev => ({ ...prev, resolution: r }))}
+                      className={`flex-1 rounded-lg border py-1.5 text-sm transition ${
+                        avatarForm.resolution === r
+                          ? "border-[#7C3AED] bg-[#7C3AED]/20 text-[#F5F5F5]"
+                          : "border-[#2A2A2A] bg-[#1A1A1A] text-[#BDBDBD]"
+                      }`}
+                    >
+                      {r.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAvatarForm(prev => ({ ...prev, cameraAngles: !prev.cameraAngles }))}
+                  className={`relative h-5 w-9 rounded-full transition-colors ${
+                    avatarForm.cameraAngles ? "bg-[#7C3AED]" : "bg-[#2A2A2A]"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
+                      avatarForm.cameraAngles ? "translate-x-4" : "translate-x-0.5"
+                    }`}
+                  />
+                </button>
+                <span className="text-sm text-[#F5F5F5]">Multiple Camera Angles</span>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs text-[#A3A3A3]">
+                  Product Image{" "}
+                  <span className="text-[#777777]">(opcional — composição em breve)</span>
+                </label>
+                {avatarForm.productImageUrl ? (
+                  <div className="flex items-center gap-2">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={avatarForm.productImageUrl}
+                      alt="Produto"
+                      className="h-10 w-10 rounded object-cover"
+                    />
+                    <button
+                      type="button"
+                      className="text-xs text-[#FCA5A5] hover:underline"
+                      onClick={() => setAvatarForm(prev => ({ ...prev, productImageUrl: "" }))}
+                    >
+                      Remover
+                    </button>
+                  </div>
+                ) : (
+                  <label className="cursor-pointer">
+                    <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-1.5 text-sm text-[#BDBDBD] hover:border-[#7C3AED]/40">
+                      {avatarForm.productImageUploading ? (
+                        <><Loader2 className="h-3.5 w-3.5 animate-spin" />Enviando...</>
+                      ) : (
+                        "Enviar imagem do produto"
+                      )}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={avatarForm.productImageUploading}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void handleProductImageUpload(file);
+                        e.currentTarget.value = "";
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-5">
+              {(() => {
+                const cost = effectiveCostFrontend(avatarSegmentCost(avatarForm.duration), userPlan);
+                const balance = userCredits ?? 0;
+                const insufficient = balance < cost;
+                return (
+                  <Button
+                    className="w-full bg-[#7C3AED] text-white hover:bg-[#6D28D9] disabled:opacity-50"
+                    disabled={avatarGenerating || insufficient || !avatarForm.text.trim()}
+                    onClick={() => void handleGenerateSegment()}
+                  >
+                    {avatarGenerating ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Gerando...</>
+                    ) : insufficient ? (
+                      `Créditos insuficientes (precisa ${cost}, tem ${balance})`
+                    ) : (
+                      `Generate Talking Avatar — ~${cost} créditos (only ${balance} available)`
+                    )}
+                  </Button>
+                );
+              })()}
+            </div>
+
+            <p className="mt-2 text-center text-xs text-[#777777]">
+              Results may vary — you might need to trim or re-generate for the perfect take.
+            </p>
+
+            <div className="mt-4 flex justify-end">
+              <Button
+                variant="outline"
+                className="border-[#2A2A2A] text-[#E5E5E5]"
+                disabled={avatarGenerating}
+                onClick={() => setAvatarModal(null)}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
 
       {projectCreateOpen && (

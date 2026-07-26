@@ -127,3 +127,23 @@ export function findVoice(voiceId?: string | null): TtsVoice | undefined {
 export function voicePreviewUrl(voiceId?: string | null): string | undefined {
   return findVoice(voiceId)?.preview;
 }
+
+
+/**
+ * Mapeamento de sotaque (string do modal) para voice id ElevenLabs.
+ * "Accent" = padrão (Savannah); Sotaques dedicados usam a voz mais fiel.
+ * Sotaques sem voz dedicada em inglês usam a voz com timbre mais adequado.
+ */
+const ACCENT_TO_VOICE: Record<string, string> = {
+  Accent:   "EXAVITQu4vr4xnSDxMaL", // Savannah — padrão neutro
+  Irish:    "JBFqnCBsd6RMkjVDRZzb", // George — warmly authoritative
+  Scottish: "D38z5RcWu1voky8WS1ja", // Fin — "Sailor, Scottish"
+  French:   "9BWtsMINqrJLrRacOk9x", // Amelia — suave e continental
+  German:   "N2lVS1w4EtoT3dr4eOWO", // Callum — intenso e preciso
+  Spanish:  "oWAxZDx7w5VEj9dCyTzz", // Grace — caloroso
+  Italian:  "zcAOhNBS3c14rBihAFp1", // Giovanni — "Focused, Italian"
+};
+
+export function mapAccentToVoice(accent: string): string {
+  return ACCENT_TO_VOICE[accent] ?? DEFAULT_VOICE_ID;
+}
