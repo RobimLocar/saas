@@ -5,6 +5,7 @@ import { buildVideoPayload, submitVideoTask } from "@/lib/piapi/client";
 import type { VideoModelParams } from "@/lib/piapi/client";
 import { planAllows } from "@/lib/plans";
 import { debitCredits, refundCredits } from "@/lib/credits";
+import { HIGH_COST_THRESHOLD_CREDITS, HIGH_COST_COOLDOWN_SECONDS } from "@/lib/constants";
 import { validateVideoRequest } from "@/lib/generation-validation";
 import { auditLog, newRequestId, truncate } from "@/lib/audit-log";
 
@@ -146,6 +147,42 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Cliente service-role para mutações de crédito (débito/estorno atômicos,
+    // ignoram RLS) — ver src/lib/credits.ts.
+    const service = createServiceClient();
+
+    // Cooldown de alto custo (§4, §6 — HIGH_COST_COOLDOWN_SECONDS)
+    if (aiModel.credit_cost > HIGH_COST_THRESHOLD_CREDITS) {
+      const { data: lastGen } = await service
+        .from("generations")
+        .select("created_at")
+        .eq("user_id", user.id)
+        .gt("credits_used", HIGH_COST_THRESHOLD_CREDITS)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+      if (lastGen) {
+        const elapsed = (Date.now() - new Date(lastGen.created_at).getTime()) / 1000;
+        const retryAfter = Math.ceil(HIGH_COST_COOLDOWN_SECONDS - elapsed);
+        if (retryAfter > 0) {
+          auditLog("api.generate.video", "cooldown_bloqueado", requestId, {
+            user_id: user.id,
+            elapsed_s: Math.round(elapsed),
+            retry_after: retryAfter,
+            model: aiModel.name,
+            credit_cost: aiModel.credit_cost,
+          });
+          return NextResponse.json(
+            {
+              error: `Aguarde ${retryAfter} segundos entre gerações de alto custo`,
+              retry_after: retryAfter,
+            },
+            { status: 429 }
+          );
+        }
+      }
+    }
+
     // Params de roteamento do modelo (backend/task_type/output_key/dur)
     const modelParams = (aiModel.params as VideoModelParams) || {};
 
@@ -170,10 +207,6 @@ export async function POST(req: NextRequest) {
       }, Date.now() - t0);
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
-
-    // Cliente service-role para mutações de crédito (débito/estorno atômicos,
-    // ignoram RLS) — ver src/lib/credits.ts.
-    const service = createServiceClient();
     // A rota de status precisa do output_key para extrair a URL certa da PiAPI.
     const outputKey = modelParams.output_key || "output.video_url";
 

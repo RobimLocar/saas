@@ -6,7 +6,8 @@ import { generateSpeechAtlas, AtlasError } from "@/lib/atlas/client";
 import { resolveAtlasVoice } from "@/lib/tts-voices";
 import { planAllows } from "@/lib/plans";
 import { debitCredits, refundCredits } from "@/lib/credits";
-import { newRequestId } from "@/lib/audit-log";
+import { HIGH_COST_THRESHOLD_CREDITS, HIGH_COST_COOLDOWN_SECONDS } from "@/lib/constants";
+import { auditLog, newRequestId } from "@/lib/audit-log";
 
 // Persiste um áudio (Buffer) no Supabase Storage e retorna a URL pública.
 async function persistAudio(
@@ -119,6 +120,38 @@ export async function POST(req: NextRequest) {
         { error: `Este modelo requer o plano ${aiModel.min_plan}` },
         { status: 403 }
       );
+    }
+
+    // Cooldown de alto custo (§4, §6 — HIGH_COST_COOLDOWN_SECONDS)
+    if (aiModel.credit_cost > HIGH_COST_THRESHOLD_CREDITS) {
+      const { data: lastGen } = await service
+        .from("generations")
+        .select("created_at")
+        .eq("user_id", user.id)
+        .gt("credits_used", HIGH_COST_THRESHOLD_CREDITS)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+      if (lastGen) {
+        const elapsed = (Date.now() - new Date(lastGen.created_at).getTime()) / 1000;
+        const retryAfter = Math.ceil(HIGH_COST_COOLDOWN_SECONDS - elapsed);
+        if (retryAfter > 0) {
+          auditLog("api.generate.audio", "cooldown_bloqueado", requestId, {
+            user_id: user.id,
+            elapsed_s: Math.round(elapsed),
+            retry_after: retryAfter,
+            model: aiModel.name,
+            credit_cost: aiModel.credit_cost,
+          });
+          return NextResponse.json(
+            {
+              error: `Aguarde ${retryAfter} segundos entre gerações de alto custo`,
+              retry_after: retryAfter,
+            },
+            { status: 429 }
+          );
+        }
+      }
     }
 
     // Criar geração
