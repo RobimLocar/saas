@@ -327,6 +327,10 @@ export interface VideoModelParams {
   resolution?: string;
   dur_min?: number;
   dur_max?: number;
+  /** quando true, o backend usa a variante "-less-restriction" do Seedance. */
+  less_restriction?: boolean;
+  /** tier do Seedance definido no catálogo ("pro" | "fast" | "mini"). */
+  seedance_tier?: "pro" | "fast" | "mini";
   [k: string]: unknown;
 }
 
@@ -341,6 +345,11 @@ export interface BuildVideoArgs {
   aspectRatio?: string;
   imageUrl?: string;
   endImageUrl?: string;
+  /** força o task type "-less-restriction" independentemente de haver imagem
+   *  (ex.: quando o modelo do catálogo tem params.less_restriction === true). */
+  lessRestriction?: boolean;
+  /** tier explícito do Seedance ("pro" = padrão/seedance-2). */
+  seedanceTier?: "pro" | "fast" | "mini";
   referenceImages?: string[];
   referenceVideos?: string[];
   referenceAudios?: string[];
@@ -385,6 +394,12 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
   const payload = buildVideoPayloadInner(args);
   // AUDIT: saída do adapter (payload final que será enviado à PiAPI)
   auditLog("piapi.buildVideoPayload", "saida", rid, {
+    task_type: payload.task_type,
+    less_restriction:
+      typeof payload.task_type === "string" && payload.task_type.includes("less-restriction"),
+    auto_upload_assets: Boolean(
+      (payload as { input?: { auto_upload_assets?: unknown } }).input?.auto_upload_assets
+    ),
     payload: JSON.parse(JSON.stringify(payload, (k, v) => truncate(v, 500))),
   });
   return payload;
@@ -412,24 +427,7 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
 
   // ── SEEDANCE ──────────────────────────────────────────────────────────────
   if (backend === "seedance") {
-    const taskType = params.task_type || "seedance-2";
-    // Respeita a resolução escolhida pelo usuário; só cai no fallback por quality
-    // quando o usuário não informou nada. 1080p só no Pro (seedance-2);
-    // fast/mini limitam a 720p.
-    let resolution =
-      args.resolution || (quality === "low" ? "480p" : quality === "medium" ? "720p" : "1080p");
-    if (taskType !== "seedance-2" && resolution === "1080p") resolution = "720p";
-    const input: Record<string, unknown> = {
-      prompt,
-      duration: userDur,
-      resolution,
-      aspect_ratio: aspect,
-    };
-    // image_urls: aceita 1 ou 2 imagens.
-    // 1 imagem = first_last_frames (first frame only).
-    // 2 imagens = first_last_frames (first + last frame).
-    // Com video_urls/audio_urls = omni_reference.
-    // O modo é inferido automaticamente pela PiAPI.
+    // Coleta todas as imagens de referência (start/end frames ou omni-reference).
     const imgUrls: string[] = [];
     if (referenceImages && referenceImages.length > 0) {
       // Omni Reference: usa todas as imagens (até 9) diretamente.
@@ -439,6 +437,45 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
       if (imageUrl) imgUrls.push(imageUrl);
       if (endImageUrl) imgUrls.push(endImageUrl);
     }
+    const hasImages = imgUrls.length > 0;
+
+    // Política: qualquer geração COM imagem de referência vai para a variante
+    // "-less-restriction". A variante estrita bloqueia rostos reais e não há
+    // como saber de antemão se a imagem enviada contém uma pessoa real — então
+    // preferimos a variante menos restritiva sempre que há imagem. Também pode
+    // ser forçada explicitamente (args.lessRestriction, vindo do catálogo).
+    const useLR = args.lessRestriction === true || hasImages;
+
+    // Tier: catálogo (seedanceTier) tem prioridade; senão infere do task_type.
+    const base =
+      args.seedanceTier === "fast"
+        ? "seedance-2-fast"
+        : args.seedanceTier === "mini"
+        ? "seedance-2-mini"
+        : args.seedanceTier === "pro"
+        ? "seedance-2"
+        : // sem tier explícito: usa o task_type do catálogo como base, removendo
+          // um eventual sufixo "-less-restriction" para reconstruir de forma limpa.
+          (params.task_type || "seedance-2").replace(/-less-restriction$/, "");
+    const taskType = useLR ? `${base}-less-restriction` : base;
+
+    // Resolução SEMPRE explícita (o default da PiAPI mudou para 480p).
+    // args.resolution tem prioridade; fallback por quality. fast/mini não
+    // suportam 1080p → rebaixa para 720p.
+    let resolution =
+      args.resolution || (quality === "low" ? "480p" : quality === "medium" ? "720p" : "1080p");
+    if ((base.includes("fast") || base.includes("mini")) && resolution === "1080p") {
+      resolution = "720p";
+    }
+
+    const input: Record<string, unknown> = {
+      prompt,
+      duration: userDur,
+      resolution,
+      aspect_ratio: aspect,
+    };
+    // image_urls: 1 imagem = first frame; 2 imagens = first+last frame;
+    // com video_urls/audio_urls = omni_reference. O modo é inferido pela PiAPI.
     if (imgUrls.length > 0) input.image_urls = imgUrls;
     if (referenceVideos && referenceVideos.length > 0) {
       input.video_urls = referenceVideos;
@@ -452,18 +489,19 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
       input.audio_urls = referenceAudios;
     }
     if (negativePrompt) input.negative_prompt = negativePrompt;
+    // auto_upload_assets: só na variante less-restriction COM imagens. Esse flag
+    // pede que a PiAPI hospede internamente os assets de referência (necessário
+    // para o pipeline less-restriction). asset_retention_hours limita a retenção.
+    if (useLR && hasImages) {
+      input.auto_upload_assets = true;
+      input.asset_retention_hours = 3;
+    }
     const seedancePayload: Record<string, unknown> = {
       model: "seedance",
       task_type: taskType,
       input,
       config,
     };
-    // OBS.: NÃO enviamos `auto_upload_assets: true`. Esse flag havia sido
-    // adicionado como tentativa de contornar a restrição de conteúdo ("real
-    // person") da PiAPI, mas (a) não é um parâmetro oficial/documentado do
-    // Seedance e (b) comprovadamente NÃO contorna o bloqueio (auditoria da
-    // Etapa 1: tasks continuaram falhando com o mesmo erro mesmo com o flag).
-    // A decisão de aceitar ou rejeitar a imagem é 100% do provedor.
     return seedancePayload;
   }
 

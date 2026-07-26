@@ -862,6 +862,24 @@ export function GenerationDock() {
   const totalRefs =
     referenceImages.length + referenceVideos.length + referenceAudios.length;
 
+  // Modelo "Rosto Real" (variante less-restriction do Seedance).
+  const isRealFaceModel = useMemo(() => {
+    if (!selectedModel) return false;
+    const tt = (selectedModel.task_type || "").toLowerCase();
+    return tt.includes("less-restriction") || selectedModel.badge === "REAL";
+  }, [selectedModel]);
+
+  // Há alguma imagem anexada (start frame, referência única ou omni).
+  const hasAnyImageRef = Boolean(
+    startImageUrl || referenceImageUrl || referenceImages.length > 0
+  );
+
+  // Seedance com imagem: sugerir menção "@image1" no prompt.
+  const isSeedanceWithImage =
+    activeTab === "video" &&
+    (selectedModel?.backend || "").toLowerCase() === "seedance" &&
+    hasAnyImageRef;
+
   // Multi-Shot suportado apenas em Kling 3.0 (não Omni, não Turbo).
   const supportsMultiShot = useMemo(() => {
     if (!selectedModel || activeTab !== "video") return false;
@@ -1497,7 +1515,21 @@ export function GenerationDock() {
           </div>
         )}
 
+        {/* Aviso de responsabilidade — modelo "Rosto Real" com imagem anexada */}
+        {!collapsed && activeTab === "video" && isRealFaceModel && hasAnyImageRef && (
+          <p className="mb-3 text-[11px] leading-relaxed text-[#888888]">
+            Use apenas imagens com consentimento do titular. A responsabilidade
+            pelo uso é do usuário.
+          </p>
+        )}
 
+        {/* Dica de prompt — Seedance com imagem de referência */}
+        {!collapsed && isSeedanceWithImage && (
+          <p className="mb-3 text-[11px] leading-relaxed text-[#666666]">
+            Dica: mencione a imagem no prompt, por ex. “@image1 é a pessoa de
+            referência”.
+          </p>
+        )}
 
         {/* Multi-Shot (storyboard) — só Kling 3.0 */}
         {!collapsed && activeTab === "video" && supportsMultiShot && (

@@ -228,6 +228,16 @@ export async function POST(req: NextRequest) {
         shots: Array.isArray(shots) ? shots : undefined,
         withAudio: typeof with_audio === "boolean" ? with_audio : undefined,
         negativePrompt: negative_prompt,
+        // less-restriction: o catálogo do modelo (params.less_restriction) força
+        // a variante; o body do usuário também pode solicitá-la explicitamente.
+        lessRestriction:
+          modelParams.less_restriction === true || body?.less_restriction === true,
+        // tier do Seedance: catálogo tem prioridade; senão respeita o body.
+        seedanceTier:
+          modelParams.seedance_tier ||
+          (typeof body?.seedance_tier === "string"
+            ? (body.seedance_tier as "pro" | "fast" | "mini")
+            : undefined),
         requestId,
       });
 
