@@ -98,12 +98,16 @@ function statusLabel(status: string | null): string {
   return "Rascunho";
 }
 
-function avatarSegmentCost(duration: number): number {
-  return Math.ceil(14 + 3.75 * duration);
+function avatarSegmentCost(
+  duration: number,
+  resolution: "720p" | "1080p" | "4k"
+): number {
+  const isPro = resolution === "1080p" || resolution === "4k";
+  return Math.ceil((14 + 3.75 * duration) * (isPro ? 2 : 1));
 }
 
-function effectiveCostFrontend(base: number, plan: string): number {
-  return plan === "free" ? Math.ceil(base * 2) : base;
+function effectiveCostFrontend(base: number): number {
+  return base;
 }
 
 function normalizeScript(raw: unknown): ScriptShape {
@@ -165,7 +169,6 @@ export default function UGCPage() {
   });
   const [avatarGenerating, setAvatarGenerating] = useState(false);
   const [userCredits, setUserCredits] = useState<number | null>(null);
-  const [userPlan, setUserPlan] = useState<string>("free");
   const [pollingSegments, setPollingSegments] = useState<Record<string, string>>({});
 
   // Produtos (seção 4c-1 mantida)
@@ -237,7 +240,71 @@ export default function UGCPage() {
         throw new Error(data?.error || "Falha ao carregar projeto.");
       }
 
-      const project = data?.project as UgcProject;
+      let project = data?.project as UgcProject;
+
+      // Reconciliação automática: se havia segmento "processing" no DB, consultar
+      // status real da geração e persistir completed/failed no próprio projeto.
+      const rawSegments =
+        ((project?.segments as Record<string, unknown> | null) ?? {}) as Record<
+          string,
+          Record<string, unknown>
+        >;
+      const mergedSegments: Record<string, unknown> = { ...rawSegments };
+      let changed = false;
+      const nextPolling: Record<string, string> = {};
+
+      for (const [segKey, seg] of Object.entries(rawSegments)) {
+        const status = typeof seg?.status === "string" ? seg.status : "";
+        const generationId =
+          typeof seg?.generation_id === "string" ? seg.generation_id : "";
+
+        if (status !== "processing" || !generationId) continue;
+
+        try {
+          const stRes = await fetch(`/api/generate/status?id=${generationId}`, {
+            cache: "no-store",
+          });
+          const stData = await stRes.json().catch(() => null);
+
+          if (!stRes.ok) {
+            nextPolling[segKey] = generationId;
+            continue;
+          }
+
+          if (stData?.status === "completed" || stData?.status === "failed") {
+            const updatedSeg: Record<string, unknown> = {
+              ...seg,
+              status: stData.status,
+              generation_id: generationId,
+            };
+            if (stData?.status === "completed" && stData?.result_url) {
+              updatedSeg.result_url = stData.result_url;
+            }
+            mergedSegments[segKey] = updatedSeg;
+            changed = true;
+          } else {
+            nextPolling[segKey] = generationId;
+          }
+        } catch {
+          nextPolling[segKey] = generationId;
+        }
+      }
+
+      if (changed) {
+        const patchRes = await fetch(`/api/ugc/projects/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ segments: mergedSegments }),
+        });
+        const patchData = await patchRes.json().catch(() => null);
+        if (patchRes.ok && patchData?.project) {
+          project = patchData.project as UgcProject;
+        } else {
+          project = { ...project, segments: mergedSegments };
+        }
+      }
+
+      setPollingSegments(nextPolling);
       setSelectedProject(project);
       setScriptDraft(normalizeScript(project?.script));
       setScriptProductId(project?.product_id || "");
@@ -253,7 +320,6 @@ export default function UGCPage() {
       const data = await res.json().catch(() => null);
       if (res.ok) {
         setUserCredits(data?.credits ?? 0);
-        setUserPlan(data?.plan ?? "free");
       }
     } catch {
       // silencioso
@@ -715,34 +781,55 @@ export default function UGCPage() {
           const data = await res.json().catch(() => null);
 
           if (data?.status === "completed" || data?.status === "failed") {
-            setPollingSegments(prev => {
+            setPollingSegments((prev) => {
               const next = { ...prev };
               delete next[key];
               return next;
             });
 
-            setSelectedProject(prev => {
-              if (!prev) return prev;
-              const segs = (prev.segments as Record<string, unknown> | null) ?? {};
-              const seg = (segs[key] as Record<string, unknown>) ?? {};
-              const segResultUrl =
-                typeof seg.result_url === "string" ? seg.result_url : null;
+            const currentProject = selectedProject;
+            const segs = (currentProject?.segments as Record<string, unknown> | null) ?? {};
+            const seg = (segs[key] as Record<string, unknown>) ?? {};
+            const segResultUrl = typeof seg.result_url === "string" ? seg.result_url : null;
 
-              return {
-                ...prev,
-                segments: {
-                  ...segs,
-                  [key]: {
-                    ...seg,
-                    status: data.status,
-                    result_url: data.result_url ?? segResultUrl,
-                  },
-                },
-              };
-            });
+            const segmentsForPatch: Record<string, unknown> = {
+              ...segs,
+              [key]: {
+                ...seg,
+                generation_id:
+                  typeof seg.generation_id === "string" ? seg.generation_id : generationId,
+                status: data.status,
+                ...(data?.status === "completed"
+                  ? { result_url: data.result_url ?? segResultUrl }
+                  : {}),
+              },
+            };
+
+            setSelectedProject((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    segments: segmentsForPatch,
+                  }
+                : prev
+            );
+
+            // Persistir no DB: evita card preso em "Gerando..." após refresh.
+            if (currentProject?.id) {
+              void fetch(`/api/ugc/projects/${currentProject.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ segments: segmentsForPatch }),
+              });
+            }
 
             if (data?.status === "completed") {
               toast.success(`Segmento ${key} concluído!`);
+              void loadMe();
+            }
+
+            if (data?.status === "failed") {
+              toast.error(`Segmento ${key} falhou. Tente de novo.`);
               void loadMe();
             }
           }
@@ -753,7 +840,7 @@ export default function UGCPage() {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [pollingSegments, loadMe]);
+  }, [pollingSegments, loadMe, selectedProject]);
 
   const hasScript = Boolean(
     scriptDraft.hook.text ||
@@ -1293,6 +1380,7 @@ export default function UGCPage() {
                           | undefined;
                         const isProcessing = seg?.status === "processing";
                         const isCompleted = seg?.status === "completed";
+                        const isFailed = seg?.status === "failed";
                         const videoUrl = typeof seg?.result_url === "string" ? seg.result_url : null;
                         const scriptText =
                           scriptDraft[key as keyof typeof scriptDraft]?.text ?? "";
@@ -1353,6 +1441,8 @@ export default function UGCPage() {
                                 >
                                   {isProcessing ? (
                                     <><Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />Gerando...</>
+                                  ) : isFailed ? (
+                                    <><Sparkles className="mr-1 h-3.5 w-3.5" />Tentar de novo</>
                                   ) : (
                                     <><Sparkles className="mr-1 h-3.5 w-3.5" />Generate</>
                                   )}
@@ -1538,7 +1628,9 @@ export default function UGCPage() {
 
             <div className="mt-5">
               {(() => {
-                const cost = effectiveCostFrontend(avatarSegmentCost(avatarForm.duration), userPlan);
+                const cost = effectiveCostFrontend(
+                  avatarSegmentCost(avatarForm.duration, avatarForm.resolution)
+                );
                 const balance = userCredits ?? 0;
                 const insufficient = balance < cost;
                 return (

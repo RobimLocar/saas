@@ -64,6 +64,7 @@ export async function PATCH(
       avatar_label?: string | null;
       avatar_image_url?: string | null;
       script?: unknown;
+      segments?: unknown;
       status?: string | null;
       updated_at?: string;
     } = {};
@@ -105,6 +106,10 @@ export async function PATCH(
 
     if (Object.prototype.hasOwnProperty.call(body, "script")) {
       patch.script = body.script;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body, "segments")) {
+      patch.segments = body.segments;
     }
 
     if (Object.prototype.hasOwnProperty.call(body, "status")) {

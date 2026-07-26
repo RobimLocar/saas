@@ -7,16 +7,18 @@ import {
   submitVideoTask,
 } from "@/lib/piapi/client";
 import type { VideoModelParams } from "@/lib/piapi/client";
-import { debitCredits, effectiveCost, refundCredits } from "@/lib/credits";
+import { debitCredits, refundCredits } from "@/lib/credits";
 import { mapAccentToVoice } from "@/lib/tts-voices";
 import { isSafeMediaUrl } from "@/lib/validate-generation";
 import { auditLog, newRequestId } from "@/lib/audit-log";
 import { randomUUID } from "node:crypto";
 
-/** Custo base por duração (seg): Math.ceil(14 + 3.75 * d)
- *  4s → 29   6s → 37   8s → 44 */
-function avatarSegmentCost(duration: number): number {
-  return Math.ceil(14 + 3.75 * duration);
+/** Custo base por duração (seg): Math.ceil((14 + 3.75*d) * factor)
+ * factor=1 (std: 720p), factor=2 (pro: 1080p/4k)
+ * 8s/720p=44 | 8s/4k=88 */
+function avatarSegmentCost(duration: number, resolution: "720p" | "1080p" | "4k"): number {
+  const isPro = resolution === "1080p" || resolution === "4k";
+  return Math.ceil((14 + 3.75 * duration) * (isPro ? 2 : 1));
 }
 
 const VALID_SEGMENT_KEYS = ["hook", "body1", "body2", "cta"] as const;
@@ -160,13 +162,11 @@ export async function POST(
     // ── Calcular custo ────────────────────────────────────────────────────────
     const { data: profile } = await service
       .from("profiles")
-      .select("credits_balance, plan")
+      .select("credits_balance")
       .eq("id", user.id)
       .single();
 
-    const baseCost = avatarSegmentCost(dur);
-    const userPlan = profile?.plan ?? "free";
-    const cost = effectiveCost(baseCost, userPlan);
+    const cost = avatarSegmentCost(dur, resLower as "720p" | "1080p" | "4k");
     const balance = profile?.credits_balance ?? 0;
 
     if (balance < cost) {
