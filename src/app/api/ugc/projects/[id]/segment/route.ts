@@ -26,6 +26,7 @@ type SegmentKey = (typeof VALID_SEGMENT_KEYS)[number];
 
 const VALID_DURATIONS = [4, 6, 8] as const;
 const VALID_RESOLUTIONS = ["720p", "1080p", "4k"] as const;
+const VALID_FORMATS = ["9:16", "1:1", "16:9"] as const;
 
 /** Bucket "uploads" (retrato/TTS) é público — URL retornada pelo upload é a pública */
 async function rehostAudioIfNeeded(
@@ -91,6 +92,8 @@ export async function POST(
       accent = "Accent",
       duration = 6,
       resolution = "720p",
+      format = "9:16",
+      avatar_image_url,
       camera_angles = false,
       product_image_url,
     } = body;
@@ -119,10 +122,21 @@ export async function POST(
       return NextResponse.json({ error: "Resolução inválida. Use 720p, 1080p ou 4k" }, { status: 400 });
     }
 
+    const formatValue =
+      typeof format === "string" && VALID_FORMATS.includes(format as "9:16" | "1:1" | "16:9")
+        ? (format as "9:16" | "1:1" | "16:9")
+        : "9:16";
+
     // product_image_url: aceitar e validar URL, mas NÃO usar na geração (v1)
     if (product_image_url && typeof product_image_url === "string") {
       if (!isSafeMediaUrl(product_image_url)) {
         return NextResponse.json({ error: "product_image_url inválida ou insegura" }, { status: 400 });
+      }
+    }
+
+    if (avatar_image_url && typeof avatar_image_url === "string") {
+      if (!isSafeMediaUrl(avatar_image_url)) {
+        return NextResponse.json({ error: "avatar_image_url inválida ou insegura" }, { status: 400 });
       }
     }
 
@@ -133,6 +147,7 @@ export async function POST(
       text_len: speechText.length,
       duration: dur,
       resolution: resLower,
+      format: formatValue,
       camera_angles,
     });
 
@@ -148,9 +163,13 @@ export async function POST(
       return NextResponse.json({ error: "Projeto não encontrado" }, { status: 404 });
     }
 
-    const avatarImageUrl = typeof project.avatar_image_url === "string"
-      ? project.avatar_image_url.trim()
-      : "";
+    const avatarImageDefault =
+      typeof project.avatar_image_url === "string" ? project.avatar_image_url.trim() : "";
+
+    const avatarImageUrl =
+      typeof avatar_image_url === "string" && avatar_image_url.trim()
+        ? avatar_image_url.trim()
+        : avatarImageDefault;
 
     if (!avatarImageUrl || !isSafeMediaUrl(avatarImageUrl)) {
       return NextResponse.json(
@@ -239,6 +258,7 @@ export async function POST(
       segment_key: segKey,
       duration: dur,
       resolution: resLower,
+      format: formatValue,
       accent,
       voice_id: voiceId,
       camera_angles,
@@ -329,6 +349,7 @@ export async function POST(
         text: speechText,
         duration: dur,
         resolution: resLower,
+        format: formatValue,
         accent,
         camera_angles,
         // v1: product_image_url é guardado mas não usado na composição

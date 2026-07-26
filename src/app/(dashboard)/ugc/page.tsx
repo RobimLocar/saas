@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Package, Pencil, Plus, Trash2, ChevronRight, Sparkles, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Package, Pencil, Plus, Trash2, ChevronRight, Sparkles, Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,6 +54,90 @@ interface ProductCardEditState {
   tags: string;
 }
 
+type AvatarFormat = "9:16" | "1:1" | "16:9";
+
+const FORMAT_PRESETS: Record<AvatarFormat, { width: number; height: number }> = {
+  "9:16": { width: 576, height: 1024 },
+  "1:1": { width: 768, height: 768 },
+  "16:9": { width: 1024, height: 576 },
+};
+
+function isAvatarFormat(value: unknown): value is AvatarFormat {
+  return value === "9:16" || value === "1:1" || value === "16:9";
+}
+
+function parseDuration(value: unknown): 4 | 6 | 8 {
+  return value === 4 || value === 6 || value === 8 ? value : 6;
+}
+
+function parseResolution(value: unknown): "720p" | "1080p" | "4k" {
+  return value === "1080p" || value === "4k" ? value : "720p";
+}
+
+function parseFormat(value: unknown): AvatarFormat {
+  return isAvatarFormat(value) ? value : "9:16";
+}
+
+function ImageDropzone({
+  id,
+  title,
+  subtitle,
+  disabled,
+  onFileSelect,
+  cta,
+}: {
+  id: string;
+  title: string;
+  subtitle?: string;
+  disabled?: boolean;
+  onFileSelect: (file: File) => void;
+  cta?: string;
+}) {
+  const [dragging, setDragging] = useState(false);
+
+  return (
+    <label
+      htmlFor={id}
+      className={`block rounded-lg border-2 border-dashed p-4 text-center transition ${
+        dragging
+          ? "border-[#7C3AED] bg-[#7C3AED]/10"
+          : "border-[#2A2A2A] bg-[#1A1A1A] hover:border-[#7C3AED]/60"
+      } ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+      onDragOver={(event) => {
+        event.preventDefault();
+        if (!disabled) setDragging(true);
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(event) => {
+        event.preventDefault();
+        setDragging(false);
+        if (disabled) return;
+        const file = event.dataTransfer.files?.[0];
+        if (file) onFileSelect(file);
+      }}
+    >
+      <input
+        id={id}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        disabled={disabled}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) onFileSelect(file);
+          event.currentTarget.value = "";
+        }}
+      />
+      <div className="flex flex-col items-center gap-2">
+        <Upload className="h-5 w-5 text-[#A78BFA]" />
+        <p className="text-sm font-medium text-[#E5E5E5]">{title}</p>
+        <p className="text-xs text-[#888888]">{subtitle || "Arraste e solte ou clique para selecionar"}</p>
+        {cta && <span className="text-xs text-[#A78BFA]">{cta}</span>}
+      </div>
+    </label>
+  );
+}
+
 function emptyForm(): ProductFormState {
   return {
     title: "",
@@ -100,7 +184,8 @@ function statusLabel(status: string | null): string {
 
 function avatarSegmentCost(
   duration: number,
-  resolution: "720p" | "1080p" | "4k"
+  resolution: "720p" | "1080p" | "4k",
+  _format: AvatarFormat
 ): number {
   const isPro = resolution === "1080p" || resolution === "4k";
   return Math.ceil((14 + 3.75 * duration) * (isPro ? 2 : 1));
@@ -163,6 +248,7 @@ export default function UGCPage() {
     accent: "Accent",
     duration: 6 as 4 | 6 | 8,
     resolution: "720p" as "720p" | "1080p" | "4k",
+    format: "9:16" as AvatarFormat,
     cameraAngles: false,
     productImageUrl: "",
     productImageUploading: false,
@@ -184,6 +270,95 @@ export default function UGCPage() {
   const [form, setForm] = useState<ProductFormState>(emptyForm());
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  const avatarFormatCacheRef = useRef<Map<string, string>>(new Map());
+
+  const getProcessedAvatarForFormat = useCallback(
+    async (avatarUrl: string, format: AvatarFormat): Promise<string> => {
+      const cacheKey = `${avatarUrl}::${format}`;
+      const cached = avatarFormatCacheRef.current.get(cacheKey);
+      if (cached) return cached;
+
+      const sourceRes = await fetch(avatarUrl);
+      if (!sourceRes.ok) {
+        throw new Error("Falha ao baixar retrato para aplicar formato.");
+      }
+
+      const sourceBlob = await sourceRes.blob();
+      const objectUrl = URL.createObjectURL(sourceBlob);
+
+      try {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+
+        const loaded = await new Promise<HTMLImageElement>((resolve, reject) => {
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error("Falha ao carregar retrato para recorte."));
+          img.src = objectUrl;
+        });
+
+        const { width: targetW, height: targetH } = FORMAT_PRESETS[format];
+        const canvas = document.createElement("canvas");
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("Canvas indisponível para recorte.");
+
+        const srcW = loaded.naturalWidth;
+        const srcH = loaded.naturalHeight;
+        const targetAspect = targetW / targetH;
+        const srcAspect = srcW / srcH;
+
+        let sx = 0;
+        let sy = 0;
+        let sw = srcW;
+        let sh = srcH;
+
+        if (srcAspect > targetAspect) {
+          sw = srcH * targetAspect;
+          sx = (srcW - sw) / 2;
+        } else if (srcAspect < targetAspect) {
+          sh = srcW / targetAspect;
+          sy = (srcH - sh) / 2;
+        }
+
+        ctx.drawImage(loaded, sx, sy, sw, sh, 0, 0, targetW, targetH);
+
+        const outputBlob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                reject(new Error("Falha ao exportar retrato recortado."));
+                return;
+              }
+              resolve(blob);
+            },
+            "image/jpeg",
+            0.92
+          );
+        });
+
+        const fd = new FormData();
+        fd.append("file", new File([outputBlob], `avatar-${format}.jpg`, { type: "image/jpeg" }));
+
+        const uploadRes = await fetch("/api/upload", {
+          method: "POST",
+          body: fd,
+        });
+        const uploadData = await uploadRes.json().catch(() => null);
+
+        if (!uploadRes.ok || !uploadData?.url) {
+          throw new Error(uploadData?.error || "Falha ao enviar retrato no formato selecionado.");
+        }
+
+        avatarFormatCacheRef.current.set(cacheKey, uploadData.url);
+        return uploadData.url as string;
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
+    },
+    []
+  );
 
   const loadProducts = useCallback(async () => {
     setLoading(true);
@@ -688,7 +863,7 @@ export default function UGCPage() {
   }
 
   async function handleProductImageUpload(file: File) {
-    setAvatarForm(prev => ({ ...prev, productImageUploading: true }));
+    setAvatarForm((prev) => ({ ...prev, productImageUploading: true }));
     const toastId = toast.loading("Enviando imagem do produto...");
     try {
       const formData = new FormData();
@@ -696,13 +871,52 @@ export default function UGCPage() {
       const res = await fetch("/api/upload", { method: "POST", body: formData });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.url) throw new Error(data?.error || "Erro no upload.");
-      setAvatarForm(prev => ({ ...prev, productImageUrl: data.url }));
+      setAvatarForm((prev) => ({ ...prev, productImageUrl: data.url }));
       toast.success("Imagem do produto enviada.", { id: toastId });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Falha ao enviar imagem.", { id: toastId });
     } finally {
-      setAvatarForm(prev => ({ ...prev, productImageUploading: false }));
+      setAvatarForm((prev) => ({ ...prev, productImageUploading: false }));
     }
+  }
+
+  function openAvatarSegmentModal(
+    segmentKey: "hook" | "body1" | "body2" | "cta",
+    label: string,
+    fallbackText: string
+  ) {
+    if (!selectedProject) return;
+
+    const segments =
+      ((selectedProject.segments as Record<string, unknown> | null) ?? {}) as Record<
+        string,
+        Record<string, unknown>
+      >;
+    const seg = segments[segmentKey] || {};
+
+    const nextText =
+      typeof seg.text === "string" && seg.text.trim()
+        ? seg.text
+        : fallbackText;
+
+    setAvatarForm((prev) => ({
+      ...prev,
+      text: nextText,
+      accent: typeof seg.accent === "string" ? seg.accent : "Accent",
+      duration: parseDuration(seg.duration),
+      resolution: parseResolution(seg.resolution),
+      format: parseFormat(seg.format),
+      cameraAngles: Boolean(seg.camera_angles),
+      productImageUrl:
+        typeof seg.product_image_url === "string" ? seg.product_image_url : "",
+      productImageUploading: false,
+    }));
+
+    setAvatarModal({
+      segmentKey,
+      label,
+      defaultText: fallbackText,
+    });
   }
 
   async function handleGenerateSegment() {
@@ -710,6 +924,16 @@ export default function UGCPage() {
     setAvatarGenerating(true);
     const toastId = toast.loading(`Gerando ${avatarModal.label}...`);
     try {
+      const avatarSource = selectedProject.avatar_image_url;
+      if (!avatarSource) {
+        throw new Error("Envie um retrato antes de gerar o segmento.");
+      }
+
+      const formattedAvatarUrl = await getProcessedAvatarForFormat(
+        avatarSource,
+        avatarForm.format
+      );
+
       const res = await fetch(`/api/ugc/projects/${selectedProject.id}/segment`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -719,6 +943,8 @@ export default function UGCPage() {
           accent: avatarForm.accent,
           duration: avatarForm.duration,
           resolution: avatarForm.resolution,
+          format: avatarForm.format,
+          avatar_image_url: formattedAvatarUrl,
           camera_angles: avatarForm.cameraAngles,
           product_image_url: avatarForm.productImageUrl || undefined,
         }),
@@ -748,7 +974,12 @@ export default function UGCPage() {
               text: avatarForm.text,
               duration: avatarForm.duration,
               resolution: avatarForm.resolution,
+              format: avatarForm.format,
               accent: avatarForm.accent,
+              camera_angles: avatarForm.cameraAngles,
+              ...(avatarForm.productImageUrl
+                ? { product_image_url: avatarForm.productImageUrl }
+                : {}),
             },
           },
         };
@@ -1311,58 +1542,27 @@ export default function UGCPage() {
 
                   <div className="mt-4 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
                     <p className="mb-2 text-xs font-medium text-[#A3A3A3]">🔒 Locked Avatar</p>
-                    {selectedProject.avatar_image_url ? (
-                      <div className="flex items-center gap-3">
+                    {selectedProject.avatar_image_url && (
+                      <div className="mb-3 overflow-hidden rounded-lg border border-[#2A2A2A] bg-[#111111]">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={selectedProject.avatar_image_url}
                           alt="Avatar"
-                          className="h-16 w-16 rounded-lg object-cover"
+                          className="h-28 w-full object-cover"
                         />
-                        <div>
-                          <p className="text-sm text-[#F5F5F5]">Retrato configurado</p>
-                          <label className="mt-1 cursor-pointer text-xs text-[#7C3AED] hover:underline">
-                            Trocar retrato
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="hidden"
-                              disabled={avatarUploading}
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) void handleAvatarPortraitUpload(file);
-                                e.currentTarget.value = "";
-                              }}
-                            />
-                          </label>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center gap-2 py-3">
-                        <p className="text-sm text-[#888888]">Nenhum retrato configurado ainda.</p>
-                        <p className="text-xs text-[#777777]">Faça upload de um retrato para começar.</p>
-                        <label className="cursor-pointer">
-                          <span className="inline-flex items-center gap-1.5 rounded-lg bg-[#7C3AED] px-3 py-1.5 text-sm text-white hover:bg-[#6D28D9]">
-                            {avatarUploading ? (
-                              <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Enviando...</>
-                            ) : (
-                              "Enviar retrato"
-                            )}
-                          </span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            disabled={avatarUploading}
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) void handleAvatarPortraitUpload(file);
-                              e.currentTarget.value = "";
-                            }}
-                          />
-                        </label>
                       </div>
                     )}
+
+                    <ImageDropzone
+                      id="ugc-avatar-portrait-drop"
+                      disabled={avatarUploading}
+                      title={avatarUploading ? "Enviando retrato..." : "Retrato do avatar"}
+                      subtitle="Arraste e solte ou clique para selecionar"
+                      cta={selectedProject.avatar_image_url ? "Trocar retrato" : "Enviar retrato"}
+                      onFileSelect={(file) => {
+                        void handleAvatarPortraitUpload(file);
+                      }}
+                    />
                   </div>
 
                   {selectedProject.avatar_image_url && (
@@ -1412,11 +1612,7 @@ export default function UGCPage() {
                                   variant="outline"
                                   className="w-full border-[#2A2A2A] text-[#F5F5F5]"
                                   onClick={() => {
-                                    setAvatarModal({ segmentKey: key, label, defaultText: scriptText });
-                                    setAvatarForm(prev => ({
-                                      ...prev,
-                                      text: scriptText,
-                                    }));
+                                    openAvatarSegmentModal(key, label, scriptText);
                                   }}
                                 >
                                   Re-gerar
@@ -1424,19 +1620,17 @@ export default function UGCPage() {
                               </div>
                             ) : (
                               <>
-                                <p className="mb-2 line-clamp-2 text-xs text-[#888888]">
+                                <p className="mb-1 line-clamp-2 text-xs text-[#888888]">
                                   {scriptText || "Sem texto no roteiro"}
+                                </p>
+                                <p className="mb-2 text-[11px] text-[#777777]">
+                                  Formato: {parseFormat(seg?.format || "9:16")}
                                 </p>
                                 <Button
                                   className="w-full bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
                                   disabled={isProcessing}
                                   onClick={() => {
-                                    setAvatarModal({ segmentKey: key, label, defaultText: scriptText });
-                                    setAvatarForm(prev => ({
-                                      ...prev,
-                                      text: scriptText,
-                                      productImageUrl: "",
-                                    }));
+                                    openAvatarSegmentModal(key, label, scriptText);
                                   }}
                                 >
                                   {isProcessing ? (
@@ -1526,11 +1720,11 @@ export default function UGCPage() {
               <div>
                 <label className="mb-2 block text-xs text-[#A3A3A3]">Duração</label>
                 <div className="flex gap-2">
-                  {([4, 6, 8] as const).map(d => (
+                  {([4, 6, 8] as const).map((d) => (
                     <button
                       key={d}
                       type="button"
-                      onClick={() => setAvatarForm(prev => ({ ...prev, duration: d }))}
+                      onClick={() => setAvatarForm((prev) => ({ ...prev, duration: d }))}
                       className={`flex-1 rounded-lg border py-1.5 text-sm transition ${
                         avatarForm.duration === d
                           ? "border-[#7C3AED] bg-[#7C3AED]/20 text-[#F5F5F5]"
@@ -1541,23 +1735,58 @@ export default function UGCPage() {
                     </button>
                   ))}
                 </div>
+                <p className="mt-1 text-xs text-[#777777]">⚠ a duração final segue a fala do áudio</p>
               </div>
 
               <div>
-                <label className="mb-2 block text-xs text-[#A3A3A3]">Resolução</label>
+                <label className="mb-2 block text-xs text-[#A3A3A3]">Qualidade</label>
                 <div className="flex gap-2">
-                  {(["720p", "1080p", "4k"] as const).map(r => (
+                  {([
+                    { key: "720p", label: "720p · std quality" },
+                    { key: "1080p", label: "1080p · pro quality" },
+                    { key: "4k", label: "4K · pro quality" },
+                  ] as const).map((item) => (
                     <button
-                      key={r}
+                      key={item.key}
                       type="button"
-                      onClick={() => setAvatarForm(prev => ({ ...prev, resolution: r }))}
-                      className={`flex-1 rounded-lg border py-1.5 text-sm transition ${
-                        avatarForm.resolution === r
+                      onClick={() =>
+                        setAvatarForm((prev) => ({
+                          ...prev,
+                          resolution: item.key,
+                        }))
+                      }
+                      className={`flex-1 rounded-lg border py-1.5 text-[11px] transition ${
+                        avatarForm.resolution === item.key
                           ? "border-[#7C3AED] bg-[#7C3AED]/20 text-[#F5F5F5]"
                           : "border-[#2A2A2A] bg-[#1A1A1A] text-[#BDBDBD]"
                       }`}
                     >
-                      {r.toUpperCase()}
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs text-[#A3A3A3]">Formato</label>
+                <div className="flex gap-2">
+                  {(["9:16", "1:1", "16:9"] as AvatarFormat[]).map((format) => (
+                    <button
+                      key={format}
+                      type="button"
+                      onClick={() =>
+                        setAvatarForm((prev) => ({
+                          ...prev,
+                          format,
+                        }))
+                      }
+                      className={`flex-1 rounded-lg border py-1.5 text-sm transition ${
+                        avatarForm.format === format
+                          ? "border-[#7C3AED] bg-[#7C3AED]/20 text-[#F5F5F5]"
+                          : "border-[#2A2A2A] bg-[#1A1A1A] text-[#BDBDBD]"
+                      }`}
+                    >
+                      {format}
                     </button>
                   ))}
                 </div>
@@ -1585,51 +1814,52 @@ export default function UGCPage() {
                   Product Image{" "}
                   <span className="text-[#777777]">(opcional — composição em breve)</span>
                 </label>
-                {avatarForm.productImageUrl ? (
-                  <div className="flex items-center gap-2">
+                {avatarForm.productImageUrl && (
+                  <div className="mb-2 overflow-hidden rounded-lg border border-[#2A2A2A] bg-[#111111]">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={avatarForm.productImageUrl}
                       alt="Produto"
-                      className="h-10 w-10 rounded object-cover"
+                      className="h-24 w-full object-cover"
                     />
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <ImageDropzone
+                    id="ugc-avatar-product-image-drop"
+                    disabled={avatarForm.productImageUploading}
+                    title={
+                      avatarForm.productImageUploading
+                        ? "Enviando imagem do produto..."
+                        : "Imagem do produto"
+                    }
+                    subtitle="Arraste e solte ou clique para selecionar"
+                    cta={avatarForm.productImageUrl ? "Trocar imagem" : "Enviar imagem"}
+                    onFileSelect={(file) => {
+                      void handleProductImageUpload(file);
+                    }}
+                  />
+                  {avatarForm.productImageUrl && (
                     <button
                       type="button"
                       className="text-xs text-[#FCA5A5] hover:underline"
-                      onClick={() => setAvatarForm(prev => ({ ...prev, productImageUrl: "" }))}
+                      onClick={() => setAvatarForm((prev) => ({ ...prev, productImageUrl: "" }))}
                     >
-                      Remover
+                      Remover imagem
                     </button>
-                  </div>
-                ) : (
-                  <label className="cursor-pointer">
-                    <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-1.5 text-sm text-[#BDBDBD] hover:border-[#7C3AED]/40">
-                      {avatarForm.productImageUploading ? (
-                        <><Loader2 className="h-3.5 w-3.5 animate-spin" />Enviando...</>
-                      ) : (
-                        "Enviar imagem do produto"
-                      )}
-                    </span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      disabled={avatarForm.productImageUploading}
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) void handleProductImageUpload(file);
-                        e.currentTarget.value = "";
-                      }}
-                    />
-                  </label>
-                )}
+                  )}
+                </div>
               </div>
             </div>
 
             <div className="mt-5">
               {(() => {
                 const cost = effectiveCostFrontend(
-                  avatarSegmentCost(avatarForm.duration, avatarForm.resolution)
+                  avatarSegmentCost(
+                    avatarForm.duration,
+                    avatarForm.resolution,
+                    avatarForm.format
+                  )
                 );
                 const balance = userCredits ?? 0;
                 const insufficient = balance < cost;
@@ -1759,20 +1989,8 @@ export default function UGCPage() {
             <div className="mt-4 space-y-3">
               <div>
                 <label className="mb-1 block text-xs text-[#A3A3A3]">Imagem do produto *</label>
-                <Input
-                  type="file"
-                  accept="image/*"
-                  disabled={uploading || saving}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (!file) return;
-                    void handleUploadImage(file);
-                    event.currentTarget.value = "";
-                  }}
-                  className="border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
-                />
                 {form.imageUrl && (
-                  <div className="mt-2 overflow-hidden rounded-lg border border-[#2A2A2A] bg-[#1A1A1A]">
+                  <div className="mb-2 overflow-hidden rounded-lg border border-[#2A2A2A] bg-[#1A1A1A]">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={form.imageUrl}
@@ -1781,6 +1999,16 @@ export default function UGCPage() {
                     />
                   </div>
                 )}
+                <ImageDropzone
+                  id="ugc-product-drop"
+                  disabled={uploading || saving}
+                  title={uploading ? "Enviando imagem..." : "Imagem do produto"}
+                  subtitle="Arraste e solte ou clique para selecionar"
+                  cta={form.imageUrl ? "Trocar imagem" : "Enviar imagem"}
+                  onFileSelect={(file) => {
+                    void handleUploadImage(file);
+                  }}
+                />
               </div>
 
               <div>
