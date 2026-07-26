@@ -1,20 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-type PromptType = "image" | "video" | "audio";
+type PromptType = "image" | "video" | "audio" | "any";
+const VALID_TYPES: PromptType[] = ["image", "video", "audio", "any"];
 
 function normalizeType(value: unknown): PromptType | null {
-  if (value === "image" || value === "video" || value === "audio") return value;
-  return null;
+  if (typeof value !== "string") return null;
+  const v = value as PromptType;
+  return VALID_TYPES.includes(v) ? v : null;
 }
 
-function normalizeTags(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const tags = value
+function normalizeTags(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
     .map((tag) => (typeof tag === "string" ? tag.trim() : ""))
     .filter(Boolean);
-  return tags.length > 0 ? tags : [];
 }
+
+const SELECT_FIELDS =
+  "id, title, prompt, negative_prompt, type, tags, default_model_id, use_count, last_used_at, created_at";
 
 export async function PATCH(
   req: NextRequest,
@@ -46,52 +50,63 @@ export async function PATCH(
 
     const body = await req.json();
 
-    const patch: {
-      title?: string | null;
-      prompt?: string;
-      type?: PromptType;
-      tags?: string[];
-      use_count?: number;
-    } = {};
+    // action:"use" → incrementa use_count + seta last_used_at (atalho para o botão Usar)
+    const isUseAction = body?.action === "use";
 
-    if (Object.prototype.hasOwnProperty.call(body, "title")) {
-      const title = typeof body.title === "string" ? body.title.trim() : "";
-      patch.title = title || null;
-    }
+    const patch: Record<string, unknown> = {};
 
-    if (Object.prototype.hasOwnProperty.call(body, "prompt")) {
-      const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
-      if (!prompt) {
-        return NextResponse.json(
-          { error: "O campo prompt não pode ficar vazio." },
-          { status: 400 }
-        );
+    if (isUseAction) {
+      patch.use_count = (existing.use_count ?? 0) + 1;
+      patch.last_used_at = new Date().toISOString();
+    } else {
+      if (Object.prototype.hasOwnProperty.call(body, "title")) {
+        const title = typeof body.title === "string" ? body.title.trim() : "";
+        patch.title = title || null;
       }
-      patch.prompt = prompt;
-    }
-
-    if (Object.prototype.hasOwnProperty.call(body, "type")) {
-      if (body.type == null || body.type === "") {
-        patch.type = undefined;
-      } else {
-        const type = normalizeType(body.type);
-        if (!type) {
+      if (Object.prototype.hasOwnProperty.call(body, "prompt")) {
+        const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+        if (!prompt) {
           return NextResponse.json(
-            { error: "Tipo inválido. Use image, video ou audio." },
+            { error: "O campo prompt não pode ficar vazio." },
             { status: 400 }
           );
         }
-        patch.type = type;
+        patch.prompt = prompt;
       }
-    }
-
-    if (Object.prototype.hasOwnProperty.call(body, "tags")) {
-      const tags = normalizeTags(body.tags);
-      patch.tags = tags ?? [];
-    }
-
-    if (body?.increment_use === true) {
-      patch.use_count = (existing.use_count || 0) + 1;
+      if (Object.prototype.hasOwnProperty.call(body, "negative_prompt")) {
+        patch.negative_prompt =
+          typeof body.negative_prompt === "string"
+            ? body.negative_prompt.trim() || null
+            : null;
+      }
+      if (Object.prototype.hasOwnProperty.call(body, "type")) {
+        if (body.type == null || body.type === "") {
+          patch.type = null;
+        } else {
+          const type = normalizeType(body.type);
+          if (!type) {
+            return NextResponse.json(
+              { error: "Tipo inválido. Use image, video, audio ou any." },
+              { status: 400 }
+            );
+          }
+          patch.type = type;
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(body, "tags")) {
+        patch.tags = normalizeTags(body.tags);
+      }
+      if (Object.prototype.hasOwnProperty.call(body, "default_model_id")) {
+        patch.default_model_id =
+          typeof body.default_model_id === "string"
+            ? body.default_model_id.trim() || null
+            : null;
+      }
+      // suporte ao campo legado
+      if (body?.increment_use === true) {
+        patch.use_count = (existing.use_count ?? 0) + 1;
+        patch.last_used_at = new Date().toISOString();
+      }
     }
 
     if (Object.keys(patch).length === 0) {
@@ -105,7 +120,7 @@ export async function PATCH(
       .from("saved_prompts")
       .update(patch)
       .eq("id", id)
-      .select("id, title, prompt, type, tags, use_count, created_at")
+      .select(SELECT_FIELDS)
       .maybeSingle();
 
     if (error) {

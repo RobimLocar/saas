@@ -1,21 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-type PromptType = "image" | "video" | "audio";
+type PromptType = "image" | "video" | "audio" | "any";
 
-function normalizeType(value: string | null): PromptType | null {
-  if (!value) return null;
-  if (value === "image" || value === "video" || value === "audio") return value;
-  return null;
+const VALID_TYPES: PromptType[] = ["image", "video", "audio", "any"];
+
+function normalizeType(value: unknown): PromptType | null {
+  if (typeof value !== "string") return null;
+  const v = value as PromptType;
+  return VALID_TYPES.includes(v) ? v : null;
 }
 
-function normalizeTags(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const tags = value
+function normalizeTags(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
     .map((tag) => (typeof tag === "string" ? tag.trim() : ""))
     .filter(Boolean);
-  return tags.length > 0 ? tags : [];
 }
+
+const SELECT_FIELDS =
+  "id, title, prompt, negative_prompt, type, tags, default_model_id, use_count, last_used_at, created_at";
 
 export async function GET(req: NextRequest) {
   try {
@@ -29,21 +33,24 @@ export async function GET(req: NextRequest) {
     }
 
     const typeParam = req.nextUrl.searchParams.get("type");
-    const type = typeParam === "any" ? null : normalizeType(typeParam);
-    if (typeParam && typeParam !== "any" && !type) {
-      return NextResponse.json(
-        { error: "Tipo inválido. Use image, video, audio ou any." },
-        { status: 400 }
-      );
+
+    if (typeParam && typeParam !== "any") {
+      const type = normalizeType(typeParam);
+      if (!type) {
+        return NextResponse.json(
+          { error: "Tipo inválido. Use image, video, audio ou any." },
+          { status: 400 }
+        );
+      }
     }
 
     let query = supabase
       .from("saved_prompts")
-      .select("id, title, prompt, type, tags, use_count, created_at")
+      .select(SELECT_FIELDS)
       .order("created_at", { ascending: false });
 
-    if (type) {
-      query = query.eq("type", type);
+    if (typeParam && typeParam !== "any") {
+      query = query.eq("type", typeParam);
     }
 
     const { data, error } = await query;
@@ -52,7 +59,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ prompts: data || [] });
+    return NextResponse.json({ prompts: data ?? [] });
   } catch (err) {
     console.error("[api/prompts][GET] Error:", err);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
@@ -72,9 +79,6 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
-    const title = typeof body?.title === "string" ? body.title.trim() : null;
-    const type = normalizeType(typeof body?.type === "string" ? body.type : null);
-    const tags = normalizeTags(body?.tags);
 
     if (!prompt) {
       return NextResponse.json(
@@ -83,23 +87,33 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const payload: {
-      prompt: string;
-      title?: string | null;
-      type?: PromptType;
-      tags?: string[];
-    } = {
+    const title =
+      typeof body?.title === "string" ? body.title.trim() || null : null;
+    const negative_prompt =
+      typeof body?.negative_prompt === "string"
+        ? body.negative_prompt.trim() || null
+        : null;
+    const type = normalizeType(body?.type);
+    const tags = normalizeTags(body?.tags);
+    const default_model_id =
+      typeof body?.default_model_id === "string"
+        ? body.default_model_id.trim() || null
+        : null;
+
+    const payload: Record<string, unknown> = {
+      user_id: user.id, // obrigatório para satisfazer RLS WITH CHECK
       prompt,
     };
-
-    if (title) payload.title = title;
+    if (title !== null) payload.title = title;
+    if (negative_prompt !== null) payload.negative_prompt = negative_prompt;
     if (type) payload.type = type;
-    if (tags !== undefined) payload.tags = tags;
+    if (tags.length > 0) payload.tags = tags;
+    if (default_model_id) payload.default_model_id = default_model_id;
 
     const { data, error } = await supabase
       .from("saved_prompts")
       .insert(payload)
-      .select("id, title, prompt, type, tags, use_count, created_at")
+      .select(SELECT_FIELDS)
       .single();
 
     if (error) {
