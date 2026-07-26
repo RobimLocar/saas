@@ -625,12 +625,14 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
 
   // Kling Omni 3.0 — task_type diferente + resolution + enable_audio
   if (taskType === "omni_video_generation") {
+    // omni_video_generation exige version 3.0; nunca usar o fallback genérico "1.6"
+    const omniVersion = version === "1.6" ? "3.0" : version;
     // Respeita a resolução do usuário; Kling Omni aceita 720p/1080p → 480p→720p.
     let resolution = args.resolution || (quality === "high" ? "1080p" : "720p");
     if (resolution === "480p") resolution = "720p";
     const input: Record<string, unknown> = {
       prompt,
-      version,
+      version: omniVersion,
       duration: clampInt(userDur, 3, 15),
       resolution,
       aspect_ratio: aspect,
@@ -680,14 +682,24 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
       input.enable_audio = args.withAudio ?? false;
     }
     // Multi-Shot (storyboard) — campo correto é multi_shots + prefer_multi_shots.
-    if (args.shots && args.shots.length > 0) {
-      input.prefer_multi_shots = true;
-      input.multi_shots = args.shots.slice(0, 6).map((s) => ({
+    if (version === "3.0" && args.shots && args.shots.length > 0) {
+      // Construir shots candidatos (já limitados a 6)
+      let shots = args.shots.slice(0, 6).map((s) => ({
         prompt: s.prompt,
         duration: clampInt(s.duration, 3, 15),
       }));
+
+      // Validar soma ≤ 15s: aparar shots excedentes
+      let totalDuration = shots.reduce((acc, s) => acc + s.duration, 0);
+      while (totalDuration > 15 && shots.length > 1) {
+        shots = shots.slice(0, shots.length - 1);
+        totalDuration = shots.reduce((acc, s) => acc + s.duration, 0);
+      }
+
+      input.prefer_multi_shots = true;
+      input.multi_shots = shots;
     } else {
-      input.prefer_multi_shots = false;
+      input.prefer_multi_shots = false; // 3.0-turbo: nunca multi_shots
     }
     if (negativePrompt) input.negative_prompt = negativePrompt;
     return { model: "kling", task_type: "video_generation", input, config };
