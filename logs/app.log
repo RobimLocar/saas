@@ -1,0 +1,91 @@
+
+> saas@0.1.0 start
+> next start
+
+▲ Next.js 16.2.11
+- Local:         http://localhost:3000
+- Network:       http://10.51.28.186:3000
+✓ Ready in 272ms
+[video/generate] REQUEST {"prompt":"A calm ocean wave","model_uuid":"b1736b24-1af5-45c9-b434-a7828f10cb31","aspect_ratio":"16:9","duration":5,"has_start_img":false,"has_end_img":false,"reference_images_count":0,"reference_videos_count":0,"with_audio":false,"quality":"high"}
+[video/generate] MODEL {"name":"Wan 2.1","backend":"Wan","task_type":"wan26-txt2video","output_key":"output.video_url","credit_cost":10}
+[video/generate] PAYLOAD {"model":"Wan","task_type":"wan26-txt2video","input":{"prompt":"A calm ocean wave","duration":5,"resolution":"1080P","watermark":false,"aspect_ratio":"16:9","audio":false},"config":{"service_mode":"public"}}
+[video/generate] PIAPI_RESPONSE {"task_id":"cc76287b-3d76-4a7d-9004-102a45f00be8","status":"pending"}
+[video/generate] REQUEST {"prompt":"A calm ocean scene with waves","model_uuid":"acdfa29d-558f-4e7b-bf18-2029cb2f1a77","aspect_ratio":"16:9","duration":5,"has_start_img":false,"has_end_img":false,"reference_images_count":0,"reference_videos_count":0,"with_audio":false,"quality":"high"}
+[video/generate] MODEL {"name":"Hailuo MiniMax","backend":"hailuo","task_type":"video_generation","output_key":"output.video","credit_cost":14}
+[video/generate] PAYLOAD {"model":"hailuo","task_type":"video_generation","input":{"model":"v2.3","prompt":"A calm ocean scene with waves","duration":6,"resolution":1080},"config":{"service_mode":"public"}}
+[video/generate] PIAPI_RESPONSE {"task_id":"0cc8775d-2280-4028-b60b-5673093ff537","status":"pending"}
+[video/generate] REQUEST {"prompt":"A calm ocean scene with waves","model_uuid":"ac9eadbf-75fb-4287-93f7-d5e05f16ad8c","aspect_ratio":"16:9","duration":5,"has_start_img":false,"has_end_img":false,"reference_images_count":0,"reference_videos_count":0,"with_audio":false,"quality":"high"}
+[video/generate] MODEL {"name":"Hailuo Live","backend":"hailuo","task_type":"video_generation","output_key":"output.video","credit_cost":16}
+[video/generate] PAYLOAD {"model":"hailuo","task_type":"video_generation","input":{"model":"T2V-01-Director","prompt":"A calm ocean scene with waves","duration":6,"resolution":1080},"config":{"service_mode":"public"}}
+[video/generate] PIAPI_RESPONSE {"task_id":"5809c3f9-a024-4672-88e2-7ff0c2c92624","status":"pending"}
+[video/generate] REQUEST {"prompt":"A calm ocean scene with waves","model_uuid":"f9318793-5c11-4fdb-b7db-118bdd62264d","aspect_ratio":"16:9","duration":5,"has_start_img":false,"has_end_img":false,"reference_images_count":0,"reference_videos_count":0,"with_audio":false,"quality":"high"}
+[video/generate] MODEL {"name":"Kling 2.5 Turbo","backend":"kling-turbo","task_type":"video_generation","output_key":"output.video","credit_cost":25}
+[video/generate] PAYLOAD {"model":"kling","task_type":"video_generation","input":{"prompt":"A calm ocean scene with waves","version":"2.5","mode":"turbo","duration":10,"aspect_ratio":"16:9"},"config":{"service_mode":"public"}}
+[video/generate] PIAPI_RESPONSE {"task_id":"47936fbb-7d86-4079-927a-db232933c58e","status":"pending"}
+[video/generate] REQUEST {"prompt":"A calm ocean scene with waves","model_uuid":"f4d2a19e-cb6b-453d-a677-3f44b5ba9fee","aspect_ratio":"16:9","duration":5,"has_start_img":false,"has_end_img":false,"reference_images_count":0,"reference_videos_count":0,"with_audio":false,"quality":"high"}
+[video/generate] MODEL {"name":"Veo 3 Fast","backend":"veo3","task_type":"veo3-video-fast","output_key":"output.video","credit_cost":25}
+[video/generate] PAYLOAD {"model":"veo3","task_type":"veo3-video-fast","input":{"prompt":"A calm ocean scene with waves","duration":"4s","resolution":"1080p","aspect_ratio":"16:9","generate_audio":false},"config":{"service_mode":"public"}}
+[video/generate] PIAPI_RESPONSE {"task_id":"009c155e-63e1-405d-9a2c-60e39cea7110","status":"pending"}
+[video/generate] REQUEST {"prompt":"A calm ocean scene with waves","model_uuid":"385d9b10-868e-4fa0-9b93-f78237632799","aspect_ratio":"16:9","duration":5,"has_start_img":false,"has_end_img":false,"reference_images_count":0,"reference_videos_count":0,"with_audio":false,"quality":"high"}
+[video/generate] MODEL {"name":"Seedance 2.0 Fast","backend":"seedance","task_type":"seedance-2-fast","output_key":"output.video","credit_cost":30}
+[video/generate] PAYLOAD {"model":"seedance","task_type":"seedance-2-fast","input":{"prompt":"A calm ocean scene with waves","duration":5,"resolution":"720p","aspect_ratio":"16:9"},"config":{"service_mode":"public"}}
+[video/generate] PIAPI_RESPONSE {"task_id":"5aee91d4-4fe2-4cc5-812d-f1d2dc93992b","status":"pending"}
+[video/generate] REQUEST {"prompt":"A calm ocean scene with waves","model_uuid":"c3ec0929-a36e-44e4-99a6-62adf1b80cc9","aspect_ratio":"16:9","duration":5,"has_start_img":false,"has_end_img":false,"reference_images_count":0,"reference_videos_count":0,"with_audio":false,"quality":"high"}
+[video/generate] MODEL {"name":"Kling 3.0 Motion Control","backend":"kling","task_type":"video_generation","output_key":"output.video","credit_cost":30}
+[video/generate] PAYLOAD {"model":"kling","task_type":"video_generation","input":{"prompt":"A calm ocean scene with waves","version":"3.0","mode":"pro","duration":5,"aspect_ratio":"16:9","enable_audio":false,"prefer_multi_shots":false},"config":{"service_mode":"public"}}
+[video/generate] PIAPI_RESPONSE {"task_id":"c54124eb-31d4-4682-b93f-f616b1074bdd","status":"pending"}
+[video/generate] REQUEST {"prompt":"A calm ocean scene with waves","model_uuid":"5a1d0c40-025e-4c81-a8e9-5472200a2764","aspect_ratio":"16:9","duration":5,"has_start_img":false,"has_end_img":false,"reference_images_count":0,"reference_videos_count":0,"with_audio":false,"quality":"high"}
+[video/generate] MODEL {"name":"Kling 3.0","backend":"kling","task_type":"video_generation","output_key":"output.video","credit_cost":35}
+[video/generate] PAYLOAD {"model":"kling","task_type":"video_generation","input":{"prompt":"A calm ocean scene with waves","version":"3.0","mode":"pro","duration":5,"aspect_ratio":"16:9","enable_audio":false,"prefer_multi_shots":false},"config":{"service_mode":"public"}}
+[video/generate] PIAPI_RESPONSE {"task_id":"19ea70da-1e7e-4e34-9519-3ff10c51319e","status":"pending"}
+[video/generate] REQUEST {"prompt":"A calm ocean scene with waves","model_uuid":"226b1fb1-bd87-4207-a022-22503af4ab09","aspect_ratio":"16:9","duration":5,"has_start_img":false,"has_end_img":false,"reference_images_count":0,"reference_videos_count":0,"with_audio":false,"quality":"high"}
+[video/generate] MODEL {"name":"Kling Omni","backend":"kling","task_type":"omni_video_generation","output_key":"output.video","credit_cost":40}
+[video/generate] PAYLOAD {"model":"kling","task_type":"omni_video_generation","input":{"prompt":"A calm ocean scene with waves","version":"3.0","duration":5,"resolution":"1080p","aspect_ratio":"16:9","enable_audio":false},"config":{"service_mode":"public"}}
+[video/generate] PIAPI_RESPONSE {"task_id":"db0d129c-0fab-4011-ad54-d72f75794f34","status":"pending"}
+[video/generate] REQUEST {"prompt":"A calm ocean scene with waves","model_uuid":"93d40d5f-e9c5-41a8-8331-099e00263dd0","aspect_ratio":"16:9","duration":5,"has_start_img":false,"has_end_img":false,"reference_images_count":0,"reference_videos_count":0,"with_audio":false,"quality":"high"}
+[video/generate] MODEL {"name":"Veo 3","backend":"veo3","task_type":"veo3-video","output_key":"output.video","credit_cost":40}
+[video/generate] PAYLOAD {"model":"veo3","task_type":"veo3-video","input":{"prompt":"A calm ocean scene with waves","duration":"4s","resolution":"1080p","aspect_ratio":"16:9","generate_audio":false},"config":{"service_mode":"public"}}
+[video/generate] PIAPI_RESPONSE {"task_id":"523cc470-6451-4948-8994-c5ab6df3f23d","status":"pending"}
+[video/generate] REQUEST {"prompt":"A calm ocean scene with waves","model_uuid":"84614992-e4a3-4a77-aedc-9570198e423b","aspect_ratio":"16:9","duration":5,"has_start_img":false,"has_end_img":false,"reference_images_count":0,"reference_videos_count":0,"with_audio":false,"quality":"high"}
+[video/generate] MODEL {"name":"Veo 3.1 Fast","backend":"veo3.1","task_type":"veo3.1-video-fast","output_key":"output.video","credit_cost":40}
+[video/generate] PAYLOAD {"model":"veo3.1","task_type":"veo3.1-video-fast","input":{"prompt":"A calm ocean scene with waves","duration":"4s","resolution":"1080p","aspect_ratio":"16:9","generate_audio":false},"config":{"service_mode":"public"}}
+[video/generate] PIAPI_RESPONSE {"task_id":"5f0ea490-355d-48a2-a51f-5e724650db49","status":"pending"}
+[video/generate] REQUEST {"prompt":"A calm ocean scene with waves","model_uuid":"9d08262e-4bb0-4dce-b830-cf2b73be2520","aspect_ratio":"16:9","duration":5,"has_start_img":false,"has_end_img":false,"reference_images_count":0,"reference_videos_count":0,"with_audio":false,"quality":"high"}
+[video/generate] MODEL {"name":"Seedance 1.5 Pro","backend":"seedance","task_type":"seedance-2-mini","output_key":"output.video","credit_cost":45}
+[video/generate] PAYLOAD {"model":"seedance","task_type":"seedance-2-mini","input":{"prompt":"A calm ocean scene with waves","duration":5,"resolution":"720p","aspect_ratio":"16:9"},"config":{"service_mode":"public"}}
+[video/generate] PIAPI_RESPONSE {"task_id":"686c1537-e2c2-4e30-9cf8-2fe6da97e696","status":"pending"}
+[video/generate] REQUEST {"prompt":"A calm ocean scene with waves","model_uuid":"8d9bbe2c-3575-4b53-9c5f-0f5f991395eb","aspect_ratio":"16:9","duration":5,"has_start_img":false,"has_end_img":false,"reference_images_count":0,"reference_videos_count":0,"with_audio":false,"quality":"high"}
+[video/generate] MODEL {"name":"Veo 3.1 Quality","backend":"veo3.1","task_type":"veo3.1-video","output_key":"output.video","credit_cost":60}
+[video/generate] PAYLOAD {"model":"veo3.1","task_type":"veo3.1-video","input":{"prompt":"A calm ocean scene with waves","duration":"4s","resolution":"1080p","aspect_ratio":"16:9","generate_audio":false},"config":{"service_mode":"public"}}
+[video/generate] PIAPI_RESPONSE {"task_id":"8746e1e8-0a6c-46da-ac5c-14d940a9556a","status":"pending"}
+[video/generate] REQUEST {"prompt":"A calm ocean scene with waves","model_uuid":"93c9f7db-d47d-4824-9214-aea12b7edcb1","aspect_ratio":"16:9","duration":5,"has_start_img":false,"has_end_img":false,"reference_images_count":0,"reference_videos_count":0,"with_audio":false,"quality":"high"}
+[video/generate] MODEL {"name":"Seedance 2.0","backend":"seedance","task_type":"seedance-2","output_key":"output.video","credit_cost":68}
+[video/generate] PAYLOAD {"model":"seedance","task_type":"seedance-2","input":{"prompt":"A calm ocean scene with waves","duration":5,"resolution":"1080p","aspect_ratio":"16:9"},"config":{"service_mode":"public"}}
+[video/generate] PIAPI_ERROR {
+  message: 'active task count 2 has reached the plan limit',
+  stack: 'PiAPIError: active task count 2 has reached the plan limit\n' +
+    '    at a (/home/ubuntu/github_repos/saas/.next/server/chunks/[root-of-the-server]__1dmlce4._.js:1:1672)\n' +
+    '    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n' +
+    '    at async R (/home/ubuntu/github_repos/saas/.next/server/chunks/[root-of-the-server]__0ax29-f._.js:1:11256)\n' +
+    '    at async rQ.do (/home/ubuntu/github_repos/saas/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.prod.js:5:21003)\n' +
+    '    at async rQ.handle (/home/ubuntu/github_repos/saas/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.prod.js:5:25858)\n' +
+    '    at async d (/home/ubuntu/github_repos/saas/.next/server/chunks/[root-of-the-server]__0ax29-f._.js:1:15665)\n' +
+    '    at async rQ.handleResponse (/home/ubuntu/github_repos/saas/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.prod.js:1:120216)\n' +
+    '    at async s (/home/ubuntu/github_repos/saas/.next/server/chunks/[root-of-the-server]__0ax29-f._.js:1:16706)\n' +
+    '    at async Module.N [as handler] (/home/ubuntu/github_repos/saas/.next/server/chunks/[root-of-the-server]__0ax29-f._.js:1:17813)\n' +
+    '    at async NextNodeServer.renderToResponseWithComponentsImpl (/home/ubuntu/github_repos/saas/node_modules/next/dist/server/base-server.js:1462:9)'
+}
+
+> saas@0.1.0 start
+> next start
+
+▲ Next.js 16.2.11
+- Local:         http://localhost:3000
+- Network:       http://10.51.28.186:3000
+✓ Ready in 321ms
+[video/generate] REQUEST {"prompt":"A person presenting a product","model_uuid":"93c9f7db-d47d-4824-9214-aea12b7edcb1","aspect_ratio":"9:16","duration":5,"has_start_img":false,"has_end_img":false,"reference_images_count":1,"reference_videos_count":0,"with_audio":false,"quality":"high"}
+[video/generate] MODEL {"name":"Seedance 2.0","backend":"seedance","task_type":"seedance-2","output_key":"output.video","credit_cost":68}
+[video/generate] PAYLOAD {"model":"seedance","task_type":"seedance-2","input":{"prompt":"A person presenting a product","duration":5,"resolution":"1080p","aspect_ratio":"9:16","image_urls":["https://pckfdyrhksdkwakptyuk.supabase.co/storage/v1/object/public/uploads/f7262383-9233-46b6-ae2e-5f8403208a52/references/image/12c93e58-134c-4fdc-871e-b0066cc33c45.png"]},"config":{"service_mode":"public"},"auto_upload_assets":true}
+[video/generate] PIAPI_RESPONSE {"task_id":"c6c8e10f-6f98-44f3-b628-6d5454f7bee5","status":"pending"}
+[status] task_id= c6c8e10f-6f98-44f3-b628-6d5454f7bee5 state= failed output_keys= []
+[status] FAILED task_id= c6c8e10f-6f98-44f3-b628-6d5454f7bee5 provider_msg= Internal error. Please try again later. logs= ["mode auto-detected: first_last_frames (images=1, videos=0, audios=0)","audio: enabled=true","The request was rejected because the input image may contain a real person. For -less-restriction task types, you can set `auto_upload_assets: true` in your request to have the image uploaded as a virtual asset before generation. You may also manually upload and manage virtual assets via the asset API (GET/POST/DELETE /api/v1/asset/...) to control asset creation. Otherwise please use a different image.","Attempt 1 failed (content restriction), retrying.","Internal error. Please try again later.","restored frozen points","Internal error. Please try again later."]

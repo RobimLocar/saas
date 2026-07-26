@@ -52,6 +52,9 @@ export interface PiAPIStatusResponse {
       image_base64?: string;
     };
     meta?: Record<string, unknown>;
+    // PiAPI inclui um array de logs detalhando o processamento e a causa real
+    // de falhas (ex.: "real person", "content restriction", "plan limit").
+    logs?: string[];
     error?: { code: number; message: string };
   };
 }
@@ -341,7 +344,18 @@ export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown>
       input.audio_urls = referenceAudios;
     }
     if (negativePrompt) input.negative_prompt = negativePrompt;
-    return { model: "seedance", task_type: taskType, input, config };
+    const seedancePayload: Record<string, unknown> = {
+      model: "seedance",
+      task_type: taskType,
+      input,
+      config,
+    };
+    // Quando há imagens de referência, a PiAPI pode rejeitar fotos com rosto de
+    // pessoa real ("content restriction"). Definir auto_upload_assets:true faz a
+    // PiAPI hospedar/reprocessar a imagem internamente, contornando a restrição
+    // (conforme instrução retornada nos logs da própria PiAPI).
+    if (imgUrls.length > 0) seedancePayload.auto_upload_assets = true;
+    return seedancePayload;
   }
 
   // ── WAN 2.6 ────────────────────────────────────────────────────────────────

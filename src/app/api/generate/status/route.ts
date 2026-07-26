@@ -144,10 +144,45 @@ export async function GET(req: NextRequest) {
           | { message?: string; raw_message?: string; code?: number }
           | string
           | undefined;
-        const errMsg =
+        const providerMsg =
           typeof rawErr === "string"
             ? rawErr
             : rawErr?.message || rawErr?.raw_message || JSON.stringify(rawErr) || "Erro no provedor";
+
+        // A PiAPI retorna a causa REAL da falha no array logs[] (o error.message
+        // costuma ser genérico: "Internal error. Please try again later.").
+        // Analisamos os logs para dar ao usuário uma mensagem PT-BR clara.
+        const logs = taskStatus.data?.logs || [];
+        console.log(
+          "[status] FAILED task_id=",
+          generation.provider_task_id,
+          "provider_msg=",
+          providerMsg,
+          "logs=",
+          JSON.stringify(logs)
+        );
+
+        const logsText = logs.join(" \n ").toLowerCase();
+        let errMsg = providerMsg;
+        if (
+          logsText.includes("real person") ||
+          logsText.includes("content restriction")
+        ) {
+          errMsg =
+            "Imagem rejeitada: a foto contém rosto de pessoa real. O Seedance não aceita imagens com pessoas reais por restrições de deepfake. Use uma imagem sem rostos visíveis.";
+        } else if (
+          logsText.includes("plan limit") ||
+          logsText.includes("active task count")
+        ) {
+          errMsg =
+            "Limite de tarefas simultâneas atingido. Aguarde a conclusão das gerações em andamento e tente novamente.";
+        } else if (
+          logsText.includes("nsfw") ||
+          logsText.includes("content policy")
+        ) {
+          errMsg =
+            "Conteúdo rejeitado pela política do provedor. Revise o prompt ou a imagem de referência.";
+        }
 
         await service
           .from("generations")
