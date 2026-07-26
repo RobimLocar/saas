@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getTaskStatus, extractResultUrl, extractVideoUrl } from "@/lib/piapi/client";
+import { refundCredits } from "@/lib/credits";
 import { auditLog, newRequestId, truncate } from "@/lib/audit-log";
 
 /**
@@ -69,6 +70,28 @@ export async function GET(req: NextRequest) {
 
     // Cliente com service role para Storage + escrita (ignora RLS)
     const service = createServiceClient();
+
+    // BLOCO 4 (§3.4): timeout de gerações presas. Se a geração está há mais de
+    // GENERATION_TIMEOUT_MINUTES (default 30) sem concluir, marca como failed e
+    // estorna (idempotente). Evita créditos travados quando o provider não responde.
+    const timeoutMin = Number(process.env.GENERATION_TIMEOUT_MINUTES) || 30;
+    const ageMs = Date.now() - new Date(generation.created_at).getTime();
+    const isStale = Number.isFinite(ageMs) && ageMs > timeoutMin * 60_000;
+    const timeoutIfStale = async (): Promise<NextResponse | null> => {
+      if (!isStale) return null;
+      const errMsg = `Geração expirou após ${timeoutMin} min sem conclusão do provider.`;
+      await service
+        .from("generations")
+        .update({ status: "failed", error_message: errMsg, updated_at: new Date().toISOString() })
+        .eq("id", generation.id);
+      await refundCredits(service, user.id, generation.id, generation.credits_used, requestId);
+      auditLog("api.generate.status", "timeout_estorno", requestId, {
+        generation_id: generation.id,
+        idade_min: Math.round(ageMs / 60000),
+        limite_min: timeoutMin,
+      }, Date.now() - t0);
+      return NextResponse.json({ status: "failed", error_message: errMsg });
+    };
 
     try {
       const taskStatus = await getTaskStatus(generation.provider_task_id, requestId);
@@ -249,26 +272,9 @@ export async function GET(req: NextRequest) {
           })
           .eq("id", generation.id);
 
-        // Reembolsar créditos automaticamente
-        const { data: profile } = await service
-          .from("profiles")
-          .select("credits_balance")
-          .eq("id", user.id)
-          .single();
-
-        if (profile) {
-          await service
-            .from("profiles")
-            .update({ credits_balance: profile.credits_balance + generation.credits_used })
-            .eq("id", user.id);
-
-          await service.from("credit_transactions").insert({
-            user_id: user.id,
-            amount: generation.credits_used,
-            reason: "refund",
-            related_job_id: generation.id,
-          });
-        }
+        // Reembolsar créditos automaticamente — IDEMPOTENTE (§3.3): não estorna
+        // duas vezes se o webhook também tratar a mesma falha.
+        await refundCredits(service, user.id, generation.id, generation.credits_used, requestId);
 
         // AUDIT: falha persistida + créditos estornados
         auditLog("api.generate.status", "falha_persistida_estorno", requestId, {
@@ -279,6 +285,10 @@ export async function GET(req: NextRequest) {
 
         return NextResponse.json({ status: "failed", error_message: String(errMsg) });
       }
+
+      // Ainda processando na PiAPI: se estourou o tempo, encerra e estorna.
+      const timedOut = await timeoutIfStale();
+      if (timedOut) return timedOut;
 
       auditLog("api.generate.status", "ainda_processando", requestId, {
         generation_id: generation.id,
@@ -291,6 +301,9 @@ export async function GET(req: NextRequest) {
         generation_id: generation.id,
         error: err instanceof Error ? err.message : String(err),
       }, Date.now() - t0);
+      // Mesmo com erro de consulta, aplica o timeout se a geração já está presa.
+      const timedOut = await timeoutIfStale();
+      if (timedOut) return timedOut;
       return NextResponse.json({ status: "processing" });
     }
   } catch (err) {
