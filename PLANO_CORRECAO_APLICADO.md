@@ -4,18 +4,89 @@ Documento de fechamento das correções P0→P2 do plano de 26/07, implementadas
 repositório `saas` (Next.js 16 / TypeScript, branch `feat/f3-piapi-landing-pricing`,
 deploy `https://5be3213ef.abacusai.cloud`, systemd `fluxyra.service` na porta 3000).
 
-- **Build:** `npx tsc --noEmit` → OK · `npm run build` → OK
+- **Build:** `npx tsc --noEmit` → OK (rc=0) · `npm run build` → OK (rc=0)
 - **Serviço:** `systemctl is-active fluxyra.service` → `active`
 - **Smoke test:** `GET /` → 200 · `GET /api/models` → 200 · `POST /api/webhooks/piapi` sem assinatura → 401
+- **Verificação final (`GET /api/models?type=video`):** 15/15 modelos retornam o campo
+  `less_restriction`; apenas **"Seedance 2.0 — Rosto Real"** vem com `less_restriction: true`.
 - **Nenhuma task paga foi criada na PiAPI durante a implementação.**
 
 | Item | Escopo | Status |
 |------|--------|--------|
+| §2 | Seedance "Rosto Real" (less-restriction para imagens de referência) | **IMPLEMENTADO** |
 | §3.1 | Webhook PiAPI + unificação do path de storage | **IMPLEMENTADO** |
-| §3.3 | Débito/estorno de créditos atômico e idempotente | **PARCIAL** (garantias ativas em código; RPC SQL criada mas não aplicada) |
 | §3.2 | Validações locais antes do débito | **IMPLEMENTADO** |
+| §3.3 | Débito/estorno de créditos atômico e idempotente | **PARCIAL** (garantias ativas em código; RPC SQL criada mas não aplicada) |
 | §3.4 | Timeout de gerações presas (30 min) | **IMPLEMENTADO** |
 | §3.5 | Higiene: dead code + documentação de divergências | **IMPLEMENTADO** |
+| Integridade | Exposição de `less_restriction` na `/api/models` + verificação end-to-end | **IMPLEMENTADO** |
+
+---
+
+## §2 — Seedance "Rosto Real" (variante less-restriction) — IMPLEMENTADO
+
+### O que foi feito
+1. **`task_type` dinâmico** — `src/lib/piapi/client.ts` (`buildVideoPayloadInner`, bloco Seedance ~l.437-511).
+   O tipo de task passa a ser montado em tempo de execução:
+   ```ts
+   const useLR = args.lessRestriction === true || hasImages;
+   const base =
+     args.seedanceTier === "fast"  ? "seedance-2-fast"
+     : args.seedanceTier === "mini" ? "seedance-2-mini"
+     : args.seedanceTier === "pro"  ? "seedance-2"
+     : (params.task_type || "seedance-2").replace(/-less-restriction$/, "");
+   const taskType = useLR ? `${base}-less-restriction` : base;
+   ```
+   - `useLR` é verdadeiro quando o catálogo força (`params.less_restriction === true`)
+     **ou** quando há qualquer imagem de referência anexada (`hasImages`).
+   - O tier vem do catálogo (`seedance_tier`) ou é inferido do `task_type`.
+
+2. **`auto_upload_assets` + `asset_retention_hours`** — só entram no `input` na variante
+   less-restriction **com** imagens (l.501-507):
+   ```ts
+   if (useLR && hasImages) {
+     input.auto_upload_assets = true;
+     input.asset_retention_hours = 3;
+   }
+   ```
+   Isso pede à PiAPI que hospede internamente os assets de referência (necessário
+   para o pipeline less-restriction). Fora desse caso, o flag **não** é enviado.
+
+3. **Campos no tipo** — `src/lib/piapi/client.ts`:
+   - `BuildVideoArgs`: `lessRestriction?: boolean` (l.350) e `seedanceTier?: "pro"|"fast"|"mini"` (l.352).
+   - `VideoModelParams`: `less_restriction?: boolean` (l.331) e `seedance_tier?: "pro"|"fast"|"mini"` (l.333).
+
+4. **Repasse na rota** — `src/app/api/generate/video/route.ts` (chamada `buildVideoPayload`, l.276-285):
+   ```ts
+   lessRestriction: modelParams.less_restriction === true || body?.less_restriction === true,
+   seedanceTier: modelParams.seedance_tier || (body?.seedance_tier as "pro"|"fast"|"mini") || undefined,
+   ```
+
+5. **Catálogo** — novo modelo **"Seedance 2.0 — Rosto Real"** criado via
+   `scripts/add-seedance-real.mjs` com `params.less_restriction=true`,
+   `params.task_type="seedance-2-less-restriction"`, `params.seedance_tier="pro"`,
+   `credit_cost=75`.
+
+6. **UI** — `src/components/studio/generation-dock.tsx`:
+   - `isRealFaceModel` detecta o modelo por `less_restriction === true` **ou**
+     `task_type` contendo `less-restriction` **ou** badge `REAL`.
+   - Aviso de responsabilidade (consentimento) exibido quando `isRealFaceModel && hasAnyImageRef`.
+   - Dica de prompt `@image1` para Seedance com imagem.
+
+### Antes vs depois
+- **Antes:** toda geração Seedance usava a variante estrita, que bloqueia rostos reais;
+  imagens de pessoas reais eram rejeitadas pelo provider.
+- **Depois:** com imagem de referência (ou modelo "Rosto Real"), o payload usa a variante
+  `-less-restriction` com `auto_upload_assets`, permitindo referências com pessoas reais
+  (a responsabilidade de uso é do usuário, com aviso na UI).
+
+### Como testar
+- Sem task paga: ver a seção **"Como testar o Seedance Rosto Real"** no fim deste documento
+  (a confirmação completa exige uma geração real).
+
+### Limitações
+- A decisão final sobre o que pode ser gerado continua sendo **exclusivamente do provider**
+  (PiAPI). Não há filtro de conteúdo próprio no app.
 
 ---
 
@@ -253,12 +324,99 @@ string Postgres disponível para rodar a migration). Portanto:
 - `src/hooks/use-generation.ts`
 - `src/components/studio/media-gallery.tsx`
 
+## Verificação de integridade final — IMPLEMENTADO
+
+### O que foi feito
+1. **Exposição de `less_restriction` na `/api/models`** — `src/app/api/models/route.ts`
+   (map de modelos, l.71):
+   ```ts
+   less_restriction: p.less_restriction === true,
+   ```
+   Antes, a `/api/models` expunha `task_type` mas **não** o `less_restriction`; o
+   frontend só conseguia detectar o modelo "Rosto Real" pelo `task_type`/badge. Agora
+   o campo é explícito, tornando a detecção robusta.
+
+2. **UI mais robusta** — `src/components/studio/generation-dock.tsx`:
+   - Interface `AiModel` recebeu `less_restriction?: boolean` (l.67).
+   - `isRealFaceModel` agora considera `selectedModel.less_restriction === true` como
+     primeira condição (além de `task_type`/badge).
+
+3. **Verificação end-to-end do pipeline** (leitura de código, sem task paga):
+   - `VideoModelParams` inclui `less_restriction?` e `seedance_tier?` → TypeScript OK.
+   - Webhook `src/app/api/webhooks/piapi/route.ts`: HMAC via `PIAPI_WEBHOOK_SECRET`;
+     `completed` baixa mídia → upload no bucket `assets` → `status=completed`+`result_url`;
+     `failed` → `refundCredits` idempotente + `status=failed`.
+   - **Path de storage unificado** entre webhook e `status/route.ts`: ambos usam bucket
+     `assets` e path `${user_id}/${type}/${generation_id}.${ext}`, mesmo campo
+     `credits_used` e mesma função `refundCredits`.
+
+### Evidência (verificação executada)
+```
+GET /api/models?type=video → 200
+total video models: 15
+com campo less_restriction: 15
+less_restriction==true: ['Seedance 2.0 — Rosto Real']
+```
+
+---
+
+## Como testar o Seedance Rosto Real (passo a passo para o usuário)
+
+> Este teste **cria uma task paga** na PiAPI (modelo "Rosto Real" = 75 créditos). Faça
+> apenas quando quiser validar de ponta a ponta.
+
+**Passos:**
+1. No Studio, abra a aba **Vídeo** e selecione o modelo **"Seedance 2.0 — Rosto Real"**.
+2. Anexe uma **imagem de referência** com uma pessoa (start frame, referência única ou
+   omni). → Deve aparecer o aviso: *"Use apenas imagens com consentimento do titular. A
+   responsabilidade pelo uso é do usuário."*
+3. Escreva um prompt mencionando a imagem, ex.: *"@image1 é a pessoa de referência,
+   caminhando numa praia ao pôr do sol"*.
+4. Clique em **Gerar**.
+
+**O que confirmar (nos logs `logs/app.log` — filtre pelo `requestId` da geração):**
+
+1. **`task_type` correto** — no evento `piapi.buildVideoPayload`/`saida`, o campo
+   `task_type` deve ser **`seedance-2-less-restriction`** (não `seedance-2`).
+   ```
+   grep '"stage":"piapi.buildVideoPayload"' logs/app.log | grep '"event":"saida"' | tail -1
+   ```
+   Deve mostrar `"task_type":"seedance-2-less-restriction"` e `"less_restriction":true`.
+
+2. **`auto_upload_assets=true` no payload** — no mesmo evento `saida`, o campo
+   `auto_upload_assets` deve ser `true` (e o `input` deve conter `asset_retention_hours: 3`).
+
+3. **Sem "O provider rejeitou a solicitação"** — a geração NÃO deve falhar com essa
+   mensagem por causa de rosto real. (Se falhar por outro motivo do provider, a mensagem
+   original dele é preservada — o app não substitui por texto próprio.)
+   ```
+   grep '<requestId>' logs/app.log | grep -i "rejeitou\|piapi_erro_estorno"
+   ```
+   → não deve haver estorno por rejeição de conteúdo.
+
+4. **Vídeo entregue e salvo** — ao concluir (via webhook ou polling de status), a
+   generation fica `status=completed` com `result_url` apontando para o bucket `assets`
+   (`.../assets/<user_id>/video/<generation_id>.mp4`). No feed do Studio o vídeo aparece
+   normalmente.
+
+**Se algo falhar:**
+- `task_type` sem `-less-restriction` → conferir `params.less_restriction`/`seedance_tier`
+  do modelo no banco e o repasse em `video/route.ts` (l.276-285).
+- Ausência de `auto_upload_assets` → confirmar que há imagem anexada (`hasImages`) e que
+  `useLR` ficou verdadeiro.
+- Falha por rejeição de conteúdo → é decisão do **provider** (PiAPI), não do app.
+
+---
+
 ## Commits (um por bloco)
-1. `feat: webhook piapi + unified storage path (§3.1)`
-2. `feat: atomic credits debit/refund RPC (§3.3)`
-3. `feat: local validation before debit (§3.2)`
-4. `fix: generation timeout 30min (§3.4)`
-5. `chore: remove dead code, document schema divergences (§3.5)`
+1. `feat: seedance less-restriction for reference images (§2 plano 26/07)` — `066ddc5`
+2. `feat: webhook piapi + unified storage path (§3.1)` — `2c8a839`
+3. `feat: atomic credits debit/refund RPC (§3.3)` — `e06fc37`
+4. `feat: local validation before debit (§3.2)` — `b987c21`
+5. `fix: generation timeout 30min (§3.4)` — `639854b`
+6. `chore: remove dead code, document schema divergences (§3.5)` — `02dc59d`
+7. `fix: handle non-JSON PiAPI responses (502), respect user resolution selection, remove content filters` — `e798aba`
+8. `fix: expose less_restriction in /api/models, final integrity check` — `01179e7`
 
 > Observação sobre a granularidade dos commits: os arquivos
 > `video/route.ts` e `status/route.ts` concentram mudanças de mais de um bloco
