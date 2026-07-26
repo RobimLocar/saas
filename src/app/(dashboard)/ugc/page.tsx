@@ -1,13 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Package, Pencil, Plus, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Package, Pencil, Plus, Trash2, ChevronRight, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+
+type ViewMode = "list" | "project";
+type UgcTab = "script" | "avatar" | "broll";
 
 interface ProductItem {
   id: string;
@@ -23,11 +26,55 @@ interface ProductFormState {
   imageUrl: string;
 }
 
+interface ScriptShape {
+  hook: { text: string };
+  body1: { text: string };
+  body2: { text: string };
+  cta: { text: string };
+}
+
+interface UgcProject {
+  id: string;
+  name: string;
+  product_id: string | null;
+  avatar_seed_id: string | null;
+  avatar_label: string | null;
+  status: string | null;
+  script: ScriptShape | null;
+  segments: unknown;
+  broll: unknown;
+  created_at: string;
+  updated_at: string | null;
+}
+
+interface ProductCardEditState {
+  name: string;
+  description: string;
+  tags: string;
+}
+
 function emptyForm(): ProductFormState {
   return {
     title: "",
     description: "",
     imageUrl: "",
+  };
+}
+
+function emptyProjectForm(): ProductCardEditState {
+  return {
+    name: "",
+    description: "",
+    tags: "",
+  };
+}
+
+function emptyScript(): ScriptShape {
+  return {
+    hook: { text: "" },
+    body1: { text: "" },
+    body2: { text: "" },
+    cta: { text: "" },
   };
 }
 
@@ -41,7 +88,57 @@ function formatDate(iso: string): string {
   }).format(new Date(iso));
 }
 
+function statusLabel(status: string | null): string {
+  const s = (status || "draft").toLowerCase();
+  if (s === "ready") return "Pronto";
+  if (s === "processing") return "Processando";
+  if (s === "published") return "Publicado";
+  if (s === "failed") return "Falhou";
+  return "Rascunho";
+}
+
+function normalizeScript(raw: unknown): ScriptShape {
+  const obj = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const part = (key: "hook" | "body1" | "body2" | "cta") => {
+    const entry = obj[key] as Record<string, unknown> | undefined;
+    const text = typeof entry?.text === "string" ? entry.text : "";
+    return { text };
+  };
+
+  return {
+    hook: part("hook"),
+    body1: part("body1"),
+    body2: part("body2"),
+    cta: part("cta"),
+  };
+}
+
 export default function UGCPage() {
+  const [view, setView] = useState<ViewMode>("list");
+  const [activeTab, setActiveTab] = useState<UgcTab>("script");
+
+  // Projetos UGC
+  const [projects, setProjects] = useState<UgcProject[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedProject, setSelectedProject] = useState<UgcProject | null>(null);
+
+  const [projectCreateOpen, setProjectCreateOpen] = useState(false);
+  const [projectSaving, setProjectSaving] = useState(false);
+  const [projectForm, setProjectForm] = useState<ProductCardEditState>(emptyProjectForm());
+  const [projectProductId, setProjectProductId] = useState<string>("");
+
+  const [nameEditing, setNameEditing] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [projectDeleting, setProjectDeleting] = useState(false);
+
+  const [scriptDescription, setScriptDescription] = useState("");
+  const [scriptProductId, setScriptProductId] = useState<string>("");
+  const [scriptGenerating, setScriptGenerating] = useState(false);
+  const [scriptSaving, setScriptSaving] = useState(false);
+  const [scriptDraft, setScriptDraft] = useState<ScriptShape>(emptyScript());
+
+  // Produtos (seção 4c-1 mantida)
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [workingId, setWorkingId] = useState<string | null>(null);
@@ -78,9 +175,67 @@ export default function UGCPage() {
     }
   }, []);
 
+  const loadProjects = useCallback(async () => {
+    setProjectsLoading(true);
+    try {
+      const res = await fetch("/api/ugc/projects", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        if (res.status === 401) {
+          setProjects([]);
+          return;
+        }
+        throw new Error(data?.error || "Falha ao carregar projetos UGC.");
+      }
+
+      const list = Array.isArray(data?.projects) ? data.projects : [];
+      setProjects(list);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao carregar projetos UGC.");
+    } finally {
+      setProjectsLoading(false);
+    }
+  }, []);
+
+  const loadProject = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`/api/ugc/projects/${id}`, { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Falha ao carregar projeto.");
+      }
+
+      const project = data?.project as UgcProject;
+      setSelectedProject(project);
+      setScriptDraft(normalizeScript(project?.script));
+      setScriptProductId(project?.product_id || "");
+      setNameDraft(project?.name || "");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao carregar projeto.");
+    }
+  }, []);
+
   useEffect(() => {
     void loadProducts();
-  }, [loadProducts]);
+    void loadProjects();
+  }, [loadProducts, loadProjects]);
+
+  useEffect(() => {
+    if (view !== "project" || !selectedProjectId) return;
+    void loadProject(selectedProjectId);
+  }, [view, selectedProjectId, loadProject]);
+
+  const projectCount = projects.length;
+
+  const sortedProjects = useMemo(() => {
+    return [...projects].sort((a, b) => {
+      const aRef = a.updated_at || a.created_at;
+      const bRef = b.updated_at || b.created_at;
+      return new Date(bRef).getTime() - new Date(aRef).getTime();
+    });
+  }, [projects]);
 
   function openCreateDialog() {
     setEditing(null);
@@ -225,119 +380,710 @@ export default function UGCPage() {
     }
   }
 
+  async function handleCreateProject() {
+    const name = projectForm.name.trim();
+    if (!name) {
+      toast.error("O nome do projeto é obrigatório.");
+      return;
+    }
+
+    setProjectSaving(true);
+    try {
+      const res = await fetch("/api/ugc/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          product_id: projectProductId || null,
+          avatar_label: projectForm.description.trim() || null,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Erro ao criar projeto UGC.");
+      }
+
+      const created = data.project as UgcProject;
+      setProjects((prev) => [created, ...prev]);
+      setProjectCreateOpen(false);
+      setProjectForm(emptyProjectForm());
+      setProjectProductId("");
+      setSelectedProjectId(created.id);
+      setView("project");
+      toast.success("Projeto criado.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha ao criar projeto.");
+    } finally {
+      setProjectSaving(false);
+    }
+  }
+
+  async function handleInlineRename() {
+    if (!selectedProject) return;
+    const name = nameDraft.trim();
+    if (!name) {
+      toast.error("O nome do projeto não pode ficar vazio.");
+      return;
+    }
+
+    const res = await fetch(`/api/ugc/projects/${selectedProject.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      toast.error(data?.error || "Falha ao atualizar nome do projeto.");
+      return;
+    }
+
+    const updated = data?.project as UgcProject;
+    setSelectedProject(updated);
+    setProjects((prev) => prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
+    setNameEditing(false);
+    toast.success("Nome do projeto atualizado.");
+  }
+
+  async function handleDeleteProject() {
+    if (!selectedProject) return;
+
+    const confirmed = window.confirm(
+      `Tem certeza que deseja excluir o projeto "${selectedProject.name}"?`
+    );
+    if (!confirmed) return;
+
+    setProjectDeleting(true);
+    try {
+      const res = await fetch(`/api/ugc/projects/${selectedProject.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Erro ao excluir projeto.");
+      }
+
+      setProjects((prev) => prev.filter((p) => p.id !== selectedProject.id));
+      setSelectedProjectId(null);
+      setSelectedProject(null);
+      setView("list");
+      toast.success("Projeto excluído.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha ao excluir projeto.");
+    } finally {
+      setProjectDeleting(false);
+    }
+  }
+
+  async function handleGenerateScript() {
+    if (!selectedProject) return;
+
+    const description = scriptDescription.trim();
+    if (!description) {
+      toast.error("Descreva seu produto ou serviço antes de gerar o roteiro.");
+      return;
+    }
+
+    setScriptGenerating(true);
+    try {
+      const res = await fetch(`/api/ugc/projects/${selectedProject.id}/script`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description,
+          product_id: scriptProductId || null,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Falha ao gerar roteiro com IA.");
+      }
+
+      const script = normalizeScript(data?.script);
+      setScriptDraft(script);
+      setSelectedProject((prev) => (prev ? { ...prev, script } : prev));
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === selectedProject.id
+            ? { ...p, script, updated_at: new Date().toISOString() }
+            : p
+        )
+      );
+      toast.success("Roteiro gerado com sucesso.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao gerar roteiro.");
+    } finally {
+      setScriptGenerating(false);
+    }
+  }
+
+  async function handleSaveScript() {
+    if (!selectedProject) return;
+
+    setScriptSaving(true);
+    try {
+      const res = await fetch(`/api/ugc/projects/${selectedProject.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ script: scriptDraft }),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Falha ao salvar roteiro.");
+      }
+
+      const updated = data?.project as UgcProject;
+      setSelectedProject(updated);
+      setProjects((prev) => prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
+      toast.success("Roteiro salvo ✓");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar roteiro.");
+    } finally {
+      setScriptSaving(false);
+    }
+  }
+
+  const hasScript = Boolean(
+    scriptDraft.hook.text ||
+      scriptDraft.body1.text ||
+      scriptDraft.body2.text ||
+      scriptDraft.cta.text
+  );
+
   return (
     <div className="space-y-6">
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-[#F5F5F5]">UGC Factory</h1>
-            <p className="mt-1 text-sm text-[#888888]">
-              Organize seus produtos e prepare a base para geração em escala.
-            </p>
-          </div>
-
-          <Button
-            onClick={openCreateDialog}
-            className="rounded-full bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
-          >
-            <Plus className="mr-1 h-4 w-4" />
-            Adicionar produto
-          </Button>
-        </div>
-
-        {loading ? (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, idx) => (
-              <div
-                key={idx}
-                className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-3"
-              >
-                <Skeleton className="mb-3 h-36 w-full bg-[#232323]" />
-                <Skeleton className="mb-2 h-5 w-2/3 bg-[#232323]" />
-                <Skeleton className="mb-2 h-4 w-full bg-[#232323]" />
-                <Skeleton className="h-8 w-full bg-[#232323]" />
+      {view === "list" ? (
+        <>
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-semibold text-[#F5F5F5]">UGC Factory</h1>
+                <Badge className="bg-[#2A2A2A] text-[#BDBDBD]">{projectCount} projetos</Badge>
               </div>
-            ))}
-          </div>
-        ) : products.length === 0 ? (
-          <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-10 text-center">
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-[#2A2A2A] bg-[#1A1A1A]">
-              <Package className="h-5 w-5 text-[#8B5CF6]" />
-            </div>
-            <p className="text-base text-[#F5F5F5]">
-              Cadastre seu primeiro produto para começar
-            </p>
-            <p className="mt-1 text-sm text-[#888888]">
-              Você poderá usar este catálogo no gerador automático de UGC.
-            </p>
-            <Button
-              onClick={openCreateDialog}
-              className="mt-4 rounded-full bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
-            >
-              <Plus className="mr-1 h-4 w-4" />
-              Adicionar produto
-            </Button>
-          </div>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {products.map((item) => (
-              <article
-                key={item.id}
-                className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-3"
+
+              <Button
+                onClick={() => setProjectCreateOpen(true)}
+                className="rounded-full bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
               >
-                <div className="overflow-hidden rounded-lg border border-[#2A2A2A] bg-[#1A1A1A]">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={item.image_url}
-                    alt={item.title}
-                    className="h-36 w-full object-cover"
-                  />
-                </div>
+                <Plus className="mr-1 h-4 w-4" />
+                New UGC Project
+              </Button>
+            </div>
 
-                <h3 className="mt-3 line-clamp-1 text-sm font-semibold text-[#F5F5F5]">
-                  {item.title}
-                </h3>
-                <p className="mt-1 line-clamp-3 min-h-[58px] text-sm text-[#A3A3A3]">
-                  {item.description || "Sem descrição"}
+            <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-5">
+              <h2 className="text-base font-semibold text-[#F5F5F5]">Projetos Recentes</h2>
+
+              {projectsLoading ? (
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
+                      <Skeleton className="mb-2 h-4 w-2/3 bg-[#232323]" />
+                      <Skeleton className="h-3 w-1/2 bg-[#232323]" />
+                    </div>
+                  ))}
+                </div>
+              ) : sortedProjects.length === 0 ? (
+                <div className="mt-3 rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] p-6 text-center">
+                  <p className="text-base text-[#F5F5F5]">Crie seu primeiro projeto UGC</p>
+                  <p className="mt-1 text-sm text-[#888888]">
+                    Comece gerando seu roteiro segmentado com IA.
+                  </p>
+                  <Button
+                    onClick={() => setProjectCreateOpen(true)}
+                    className="mt-4 rounded-full bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
+                  >
+                    <Plus className="mr-1 h-4 w-4" />
+                    New UGC Project
+                  </Button>
+                </div>
+              ) : (
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  {sortedProjects.map((project) => (
+                    <button
+                      key={project.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedProjectId(project.id);
+                        setView("project");
+                        setActiveTab("script");
+                      }}
+                      className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3 text-left transition hover:border-[#7C3AED]/60"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="line-clamp-1 text-sm font-semibold text-[#F5F5F5]">
+                          {project.name}
+                        </p>
+                        <ChevronRight className="h-4 w-4 text-[#777777]" />
+                      </div>
+                      <div className="mt-2 flex items-center justify-between">
+                        <Badge className="bg-[#2A2A2A] text-[#BDBDBD]">
+                          {statusLabel(project.status)}
+                        </Badge>
+                        <span className="text-xs text-[#777777]">
+                          {formatDate(project.updated_at || project.created_at)}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Seção Meus Produtos — código preservado do 4c-1 */}
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-[#F5F5F5]">Meus Produtos</h2>
+                <p className="mt-1 text-sm text-[#888888]">
+                  Organize seus produtos e prepare a base para geração em escala.
                 </p>
+              </div>
 
-                <p className="mt-2 text-xs text-[#777777]">Criado em {formatDate(item.created_at)}</p>
+              <Button
+                onClick={openCreateDialog}
+                className="rounded-full bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
+              >
+                <Plus className="mr-1 h-4 w-4" />
+                Adicionar produto
+              </Button>
+            </div>
 
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <Button
-                    variant="outline"
-                    className="border-[#2A2A2A] text-[#F5F5F5]"
-                    disabled={workingId === item.id}
-                    onClick={() => openEditDialog(item)}
+            {loading ? (
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {Array.from({ length: 3 }).map((_, idx) => (
+                  <div
+                    key={idx}
+                    className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-3"
                   >
-                    <Pencil className="mr-1 h-3.5 w-3.5" />
-                    Editar
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="border-[#3A1F1F] text-[#FCA5A5] hover:bg-[#2A1313]"
-                    disabled={workingId === item.id}
-                    onClick={() => openDeleteDialog(item)}
-                  >
-                    <Trash2 className="mr-1 h-3.5 w-3.5" />
-                    Excluir
-                  </Button>
+                    <Skeleton className="mb-3 h-36 w-full bg-[#232323]" />
+                    <Skeleton className="mb-2 h-5 w-2/3 bg-[#232323]" />
+                    <Skeleton className="mb-2 h-4 w-full bg-[#232323]" />
+                    <Skeleton className="h-8 w-full bg-[#232323]" />
+                  </div>
+                ))}
+              </div>
+            ) : products.length === 0 ? (
+              <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-10 text-center">
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-[#2A2A2A] bg-[#1A1A1A]">
+                  <Package className="h-5 w-5 text-[#8B5CF6]" />
                 </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
+                <p className="text-base text-[#F5F5F5]">
+                  Cadastre seu primeiro produto para começar
+                </p>
+                <p className="mt-1 text-sm text-[#888888]">
+                  Você poderá usar este catálogo no gerador automático de UGC.
+                </p>
+                <Button
+                  onClick={openCreateDialog}
+                  className="mt-4 rounded-full bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
+                >
+                  <Plus className="mr-1 h-4 w-4" />
+                  Adicionar produto
+                </Button>
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {products.map((item) => (
+                  <article
+                    key={item.id}
+                    className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-3"
+                  >
+                    <div className="overflow-hidden rounded-lg border border-[#2A2A2A] bg-[#1A1A1A]">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={item.image_url}
+                        alt={item.title}
+                        className="h-36 w-full object-cover"
+                      />
+                    </div>
 
-      <section className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-5 opacity-70">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold text-[#F5F5F5]">Gerador de vídeos UGC — Em breve (4c-2)</h2>
-          <Badge className="bg-[#2A2A2A] text-[#BDBDBD]">Em breve</Badge>
+                    <h3 className="mt-3 line-clamp-1 text-sm font-semibold text-[#F5F5F5]">
+                      {item.title}
+                    </h3>
+                    <p className="mt-1 line-clamp-3 min-h-[58px] text-sm text-[#A3A3A3]">
+                      {item.description || "Sem descrição"}
+                    </p>
+
+                    <p className="mt-2 text-xs text-[#777777]">Criado em {formatDate(item.created_at)}</p>
+
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <Button
+                        variant="outline"
+                        className="border-[#2A2A2A] text-[#F5F5F5]"
+                        disabled={workingId === item.id}
+                        onClick={() => openEditDialog(item)}
+                      >
+                        <Pencil className="mr-1 h-3.5 w-3.5" />
+                        Editar
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="border-[#3A1F1F] text-[#FCA5A5] hover:bg-[#2A1313]"
+                        disabled={workingId === item.id}
+                        onClick={() => openDeleteDialog(item)}
+                      >
+                        <Trash2 className="mr-1 h-3.5 w-3.5" />
+                        Excluir
+                      </Button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        </>
+      ) : (
+        <section className="space-y-4">
+          <div className="flex items-center gap-2 text-sm text-[#888888]">
+            <button
+              type="button"
+              onClick={() => {
+                setView("list");
+                setSelectedProjectId(null);
+                setSelectedProject(null);
+              }}
+              className="hover:text-[#F5F5F5]"
+            >
+              UGC Factory
+            </button>
+            <span>/</span>
+            <span className="text-[#F5F5F5]">
+              {selectedProject?.name || "Projeto"}
+            </span>
+          </div>
+
+          {!selectedProject ? (
+            <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-6">
+              <div className="flex items-center gap-2 text-[#888888]">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Carregando projeto...
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-[280px] flex-1">
+                    {!nameEditing ? (
+                      <button
+                        type="button"
+                        onClick={() => setNameEditing(true)}
+                        className="text-left"
+                      >
+                        <h1 className="text-xl font-semibold text-[#F5F5F5]">
+                          {selectedProject.name}
+                        </h1>
+                        <p className="mt-1 text-xs text-[#777777]">Clique para editar o nome</p>
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={nameDraft}
+                          onChange={(e) => setNameDraft(e.target.value)}
+                          className="h-9 max-w-md border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
+                        />
+                        <Button
+                          onClick={() => void handleInlineRename()}
+                          className="bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
+                        >
+                          Salvar
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="border-[#2A2A2A] text-[#F5F5F5]"
+                          onClick={() => {
+                            setNameEditing(false);
+                            setNameDraft(selectedProject.name);
+                          }}
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-[#2A2A2A] text-[#BDBDBD]">
+                      {statusLabel(selectedProject.status)}
+                    </Badge>
+                    <Button
+                      variant="outline"
+                      className="border-[#3A1F1F] text-[#FCA5A5] hover:bg-[#2A1313]"
+                      disabled={projectDeleting}
+                      onClick={() => void handleDeleteProject()}
+                    >
+                      <Trash2 className="mr-1 h-3.5 w-3.5" />
+                      Excluir projeto
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("script")}
+                    className={`rounded-lg border px-3 py-2 text-left transition ${
+                      activeTab === "script"
+                        ? "border-[#7C3AED] bg-[#7C3AED]/10 text-[#F5F5F5]"
+                        : "border-[#2A2A2A] bg-[#1A1A1A] text-[#BDBDBD]"
+                    }`}
+                  >
+                    <p className="text-sm font-medium">Script Writer</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled
+                    className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-2 text-left text-[#777777]"
+                  >
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">Talking Avatar</p>
+                      <Badge className="bg-[#2A2A2A] text-[#888888]">Próxima etapa</Badge>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled
+                    className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-2 text-left text-[#777777]"
+                  >
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">B-Roll</p>
+                      <Badge className="bg-[#2A2A2A] text-[#888888]">Próxima etapa</Badge>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {activeTab === "script" && (
+                <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-5">
+                  <h2 className="text-base font-semibold text-[#F5F5F5]">Script Writer</h2>
+
+                  <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_280px_auto]">
+                    <div>
+                      <label className="mb-1 block text-xs text-[#A3A3A3]">
+                        Descreva seu produto ou serviço
+                      </label>
+                      <Textarea
+                        value={scriptDescription}
+                        onChange={(e) => setScriptDescription(e.target.value)}
+                        placeholder="Ex.: Creme hidratante com vitamina C para pele oleosa, foco em brilho natural e absorção rápida"
+                        className="min-h-28 border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-xs text-[#A3A3A3]">Produto relacionado (opcional)</label>
+                      <select
+                        value={scriptProductId}
+                        onChange={(e) => setScriptProductId(e.target.value)}
+                        className="h-10 w-full rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-2.5 text-sm text-[#F5F5F5] outline-none"
+                      >
+                        <option value="">Nenhum</option>
+                        {products.map((product) => (
+                          <option key={product.id} value={product.id}>
+                            {product.title}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="flex items-end">
+                      <Button
+                        onClick={() => void handleGenerateScript()}
+                        disabled={scriptGenerating}
+                        className="h-10 w-full bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
+                      >
+                        {scriptGenerating ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Gerando...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="mr-2 h-4 w-4" />
+                            Gerar roteiro com IA ✨
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {!hasScript ? (
+                    <div className="mt-5 rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] p-5 text-sm text-[#888888]">
+                      Descreva seu produto acima e clique em Gerar roteiro para começar.
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mt-5 grid gap-3 md:grid-cols-2">
+                        <div className="rounded-lg border border-[#7C3AED]/40 bg-[#7C3AED]/10 p-3">
+                          <div className="mb-2 flex items-center justify-between">
+                            <p className="text-sm font-semibold text-[#F5F5F5]">🎣 Hook</p>
+                            <Badge className="bg-[#7C3AED]/25 text-[#E9D5FF]">Gancho</Badge>
+                          </div>
+                          <Textarea
+                            value={scriptDraft.hook.text}
+                            onChange={(e) =>
+                              setScriptDraft((prev) => ({
+                                ...prev,
+                                hook: { text: e.target.value },
+                              }))
+                            }
+                            className="min-h-24 border-[#7C3AED]/40 bg-[#141414] text-[#F5F5F5]"
+                          />
+                        </div>
+
+                        <div className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
+                          <div className="mb-2 flex items-center justify-between">
+                            <p className="text-sm font-semibold text-[#F5F5F5]">💬 Body 1</p>
+                            <Badge className="bg-[#2A2A2A] text-[#BDBDBD]">Benefício 1</Badge>
+                          </div>
+                          <Textarea
+                            value={scriptDraft.body1.text}
+                            onChange={(e) =>
+                              setScriptDraft((prev) => ({
+                                ...prev,
+                                body1: { text: e.target.value },
+                              }))
+                            }
+                            className="min-h-24 border-[#2A2A2A] bg-[#141414] text-[#F5F5F5]"
+                          />
+                        </div>
+
+                        <div className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
+                          <div className="mb-2 flex items-center justify-between">
+                            <p className="text-sm font-semibold text-[#F5F5F5]">💬 Body 2</p>
+                            <Badge className="bg-[#2A2A2A] text-[#BDBDBD]">Benefício 2</Badge>
+                          </div>
+                          <Textarea
+                            value={scriptDraft.body2.text}
+                            onChange={(e) =>
+                              setScriptDraft((prev) => ({
+                                ...prev,
+                                body2: { text: e.target.value },
+                              }))
+                            }
+                            className="min-h-24 border-[#2A2A2A] bg-[#141414] text-[#F5F5F5]"
+                          />
+                        </div>
+
+                        <div className="rounded-lg border border-[#16A34A]/35 bg-[#16A34A]/10 p-3">
+                          <div className="mb-2 flex items-center justify-between">
+                            <p className="text-sm font-semibold text-[#F5F5F5]">📢 CTA</p>
+                            <Badge className="bg-[#16A34A]/25 text-[#DCFCE7]">Ação</Badge>
+                          </div>
+                          <Textarea
+                            value={scriptDraft.cta.text}
+                            onChange={(e) =>
+                              setScriptDraft((prev) => ({
+                                ...prev,
+                                cta: { text: e.target.value },
+                              }))
+                            }
+                            className="min-h-24 border-[#16A34A]/40 bg-[#141414] text-[#F5F5F5]"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex justify-end">
+                        <Button
+                          onClick={() => void handleSaveScript()}
+                          disabled={scriptSaving}
+                          className="bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
+                        >
+                          {scriptSaving ? "Salvando..." : "Salvar roteiro"}
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </section>
+      )}
+
+      {projectCreateOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-lg rounded-xl border border-[#2A2A2A] bg-[#131313] p-5">
+            <h3 className="text-lg font-semibold text-[#F5F5F5]">New UGC Project</h3>
+            <p className="mt-1 text-sm text-[#888888]">
+              Crie um projeto para organizar roteiro, avatar e b-roll.
+            </p>
+
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="mb-1 block text-xs text-[#A3A3A3]">Nome do projeto *</label>
+                <Input
+                  value={projectForm.name}
+                  onChange={(e) =>
+                    setProjectForm((prev) => ({ ...prev, name: e.target.value }))
+                  }
+                  placeholder="Ex.: UGC Hidratante Vitamina C"
+                  className="border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs text-[#A3A3A3]">Produto relacionado</label>
+                <select
+                  value={projectProductId}
+                  onChange={(e) => setProjectProductId(e.target.value)}
+                  className="h-10 w-full rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-2.5 text-sm text-[#F5F5F5] outline-none"
+                >
+                  <option value="">Nenhum</option>
+                  {products.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs text-[#A3A3A3]">Avatar label (opcional)</label>
+                <Input
+                  value={projectForm.description}
+                  onChange={(e) =>
+                    setProjectForm((prev) => ({ ...prev, description: e.target.value }))
+                  }
+                  placeholder="Ex.: Criadora 27 anos, tom amigável"
+                  className="border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
+                />
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                className="border-[#2A2A2A] text-[#E5E5E5]"
+                onClick={() => {
+                  if (!projectSaving) {
+                    setProjectCreateOpen(false);
+                    setProjectForm(emptyProjectForm());
+                    setProjectProductId("");
+                  }
+                }}
+                disabled={projectSaving}
+              >
+                Cancelar
+              </Button>
+              <Button
+                className="bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
+                onClick={() => void handleCreateProject()}
+                disabled={projectSaving}
+              >
+                {projectSaving ? "Criando..." : "Criar projeto"}
+              </Button>
+            </div>
+          </div>
         </div>
-        <p className="mt-2 text-sm text-[#888888]">
-          Selecione um produto, escolha um modelo de UGC e gere dezenas de vídeos automaticamente.
-        </p>
-      </section>
+      )}
 
       {editorOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
