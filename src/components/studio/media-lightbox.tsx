@@ -452,11 +452,8 @@ export function MediaLightbox({
             )}
             <button
               type="button"
-              onClick={() => void handlePromptFavorite()}
-              className={cn(
-                "flex h-10 w-full items-center justify-center gap-2 rounded-full border bg-[#1F1F1F] text-sm text-[#F5F5F5] transition hover:bg-[#2A2A2A]",
-                isPromptFavorite ? "border-[#D97706]" : "border-[#92400E]/60"
-              )}
+              onClick={() => toast.info("My Prompts em breve.")}
+              className="flex h-10 w-full cursor-not-allowed items-center justify-center gap-2 rounded-full border border-[#92400E]/60 bg-[#1F1F1F] text-sm text-[#F5F5F5] opacity-50 transition hover:bg-[#2A2A2A]"
             >
               <Star
                 className="h-4 w-4"
