@@ -1507,33 +1507,41 @@ export default function UGCPage() {
                 </div>
               ) : (
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                  {sortedProjects.map((project) => (
-                    <button
-                      key={project.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedProjectId(project.id);
-                        setView("project");
-                        setActiveTab("script");
-                      }}
-                      className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3 text-left transition hover:border-[#7C3AED]/60"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="line-clamp-1 text-sm font-semibold text-[#F5F5F5]">
-                          {project.name}
-                        </p>
-                        <ChevronRight className="h-4 w-4 text-[#777777]" />
-                      </div>
-                      <div className="mt-2 flex items-center justify-between">
-                        <Badge className="bg-[#2A2A2A] text-[#BDBDBD]">
-                          {statusLabel(project.status)}
-                        </Badge>
-                        <span className="text-xs text-[#777777]">
-                          {formatDate(project.updated_at || project.created_at)}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
+                  {sortedProjects.map((project) => {
+                    const rawStatus = (project.status || "draft").toLowerCase();
+                    const statusClass =
+                      rawStatus === "ready" || rawStatus === "published"
+                        ? "bg-green-500/10 text-green-400"
+                        : rawStatus === "processing"
+                          ? "bg-[#7C3AED]/10 text-[#8B5CF6]"
+                          : "bg-yellow-500/10 text-yellow-400";
+
+                    return (
+                      <button
+                        key={project.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedProjectId(project.id);
+                          setView("project");
+                          setActiveTab("script");
+                        }}
+                        className="group rounded-2xl bg-[#111111] p-3 text-left ring-1 ring-white/5 transition-all duration-200 hover:-translate-y-[2px] hover:shadow-[0_8px_30px_rgba(124,58,237,0.15)]"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="line-clamp-1 text-sm font-semibold text-[#F5F5F5]">
+                            {project.name}
+                          </p>
+                          <ChevronRight className="h-4 w-4 text-[#777777] transition-transform group-hover:translate-x-0.5" />
+                        </div>
+                        <div className="mt-2 flex items-center justify-between">
+                          <Badge className={statusClass}>{statusLabel(project.status)}</Badge>
+                          <span className="text-xs text-[#777777]">
+                            {formatDate(project.updated_at || project.created_at)}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>

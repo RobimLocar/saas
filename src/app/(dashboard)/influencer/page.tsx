@@ -867,6 +867,15 @@ export default function InfluencerPage() {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {influencers.map((inf) => {
               const active = inf.id === selectedInfluencerId;
+              const status = inf.avatar_image_url ? "active" : (inf.status || "draft");
+              const statusRaw = String(status).toLowerCase();
+              const statusClass =
+                statusRaw === "active"
+                  ? "bg-green-500/10 text-green-400"
+                  : statusRaw === "processing"
+                    ? "bg-[#7C3AED]/10 text-[#8B5CF6]"
+                    : "bg-yellow-500/10 text-yellow-400";
+
               return (
                 <button
                   key={inf.id}
@@ -879,36 +888,34 @@ export default function InfluencerPage() {
                     setSelectedInfluencerId(inf.id);
                     setActivePersonaTab("feed");
                   }}
-                  className={`rounded-xl border p-3 text-left transition ${
+                  className={`group rounded-2xl bg-[#111111] p-3 text-left ring-1 ring-white/5 transition-all duration-200 ${
                     active
-                      ? "border-[#7C3AED] bg-[#7C3AED]/10"
-                      : "border-[#2A2A2A] bg-[#141414] hover:border-[#7C3AED]/60"
+                      ? "ring-[#7C3AED] shadow-[0_8px_30px_rgba(124,58,237,0.2)]"
+                      : "hover:-translate-y-[2px] hover:shadow-[0_8px_30px_rgba(124,58,237,0.15)]"
                   }`}
                 >
-                  <div className="overflow-hidden rounded-lg border border-[#2A2A2A] bg-[#101010]">
+                  <div className="overflow-hidden rounded-xl bg-[#101010] aspect-[3/4]">
                     {inf.avatar_image_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={inf.avatar_image_url}
                         alt={inf.name}
-                        className="h-40 w-full object-cover"
+                        className="h-full w-full object-cover"
                       />
                     ) : (
-                      <div className="flex h-40 w-full items-center justify-center text-xs text-[#8B8B8B]">
+                      <div className="flex h-full w-full items-center justify-center px-4 text-center text-xs text-[#8B8B8B]">
                         DRAFT — escolha um avatar
                       </div>
                     )}
                   </div>
-                  <div className="mt-2">
+                  <div className="mt-3">
                     <p className="line-clamp-1 text-sm font-semibold text-[#F5F5F5]">{inf.name}</p>
                     <p className="line-clamp-1 text-xs text-[#8B8B8B]">{inf.handle || "@sem_handle"}</p>
                   </div>
                   <div className="mt-2 flex items-center justify-between">
-                    <Badge className="bg-[#2A2A2A] text-[#BDBDBD]">
-                      {inf.avatar_image_url ? "active" : "DRAFT"}
-                    </Badge>
+                    <Badge className={statusClass}>{status.toUpperCase()}</Badge>
                     <span
-                      className="text-xs text-[#FCA5A5] hover:underline"
+                      className="opacity-0 text-xs text-[#FCA5A5] transition-opacity group-hover:opacity-100 hover:underline"
                       onClick={(e) => {
                         e.stopPropagation();
                         void handleDeleteInfluencer(inf.id);
