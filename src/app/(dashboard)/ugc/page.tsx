@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Package, Pencil, Plus, Trash2, ChevronRight, Sparkles, Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -65,6 +66,14 @@ interface BrollClip {
   created_at?: string;
   result_url?: string;
   product_image_url?: string;
+}
+
+interface InfluencerAvatarItem {
+  id: string;
+  name: string;
+  handle: string | null;
+  status: string | null;
+  avatar_image_url: string | null;
 }
 
 type AvatarFormat = "9:16" | "1:1" | "16:9";
@@ -276,6 +285,10 @@ export default function UGCPage() {
     productImageUploading: false,
   });
   const [avatarGenerating, setAvatarGenerating] = useState(false);
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
+  const [avatarPickerLoading, setAvatarPickerLoading] = useState(false);
+  const [avatarPickerSavingId, setAvatarPickerSavingId] = useState<string | null>(null);
+  const [influencerAvatars, setInfluencerAvatars] = useState<InfluencerAvatarItem[]>([]);
   const [userCredits, setUserCredits] = useState<number | null>(null);
   const [pollingSegments, setPollingSegments] = useState<Record<string, string>>({});
 
@@ -958,6 +971,71 @@ export default function UGCPage() {
     }
   }
 
+  async function applyAvatarImageToProject(
+    avatarImageUrl: string,
+    options?: { successMessage?: string; toastId?: string | number }
+  ) {
+    if (!selectedProject) return;
+
+    const patch = await fetch(`/api/ugc/projects/${selectedProject.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ avatar_image_url: avatarImageUrl }),
+    });
+    const pData = await patch.json().catch(() => null);
+    if (!patch.ok) throw new Error(pData?.error || "Erro ao salvar avatar.");
+
+    const updated = pData?.project as UgcProject;
+    setSelectedProject(updated);
+    setProjects((prev) => prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
+
+    if (options?.successMessage) {
+      toast.success(options.successMessage, options.toastId ? { id: options.toastId } : undefined);
+    }
+  }
+
+  async function loadInfluencerAvatars() {
+    setAvatarPickerLoading(true);
+    try {
+      const res = await fetch("/api/influencers", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Falha ao carregar influencers.");
+
+      const list = Array.isArray(data?.influencers) ? (data.influencers as InfluencerAvatarItem[]) : [];
+      const activeOnly = list.filter(
+        (inf) => inf.status === "active" && typeof inf.avatar_image_url === "string" && inf.avatar_image_url
+      );
+      setInfluencerAvatars(activeOnly);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao carregar influencers.");
+      setInfluencerAvatars([]);
+    } finally {
+      setAvatarPickerLoading(false);
+    }
+  }
+
+  async function handleSelectInfluencerAvatar(influencer: InfluencerAvatarItem) {
+    if (!influencer.avatar_image_url) return;
+    setAvatarPickerSavingId(influencer.id);
+    const toastId = toast.loading("Aplicando avatar do influencer...");
+    try {
+      await applyAvatarImageToProject(influencer.avatar_image_url, {
+        successMessage: "Avatar aplicado a partir do Influencer Studio.",
+        toastId,
+      });
+      setAvatarPickerOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha ao aplicar avatar.", { id: toastId });
+    } finally {
+      setAvatarPickerSavingId(null);
+    }
+  }
+
+  async function openInfluencerAvatarPicker() {
+    setAvatarPickerOpen(true);
+    await loadInfluencerAvatars();
+  }
+
   async function handleAvatarPortraitUpload(file: File) {
     if (!selectedProject) return;
     setAvatarUploading(true);
@@ -969,18 +1047,10 @@ export default function UGCPage() {
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.url) throw new Error(data?.error || "Erro no upload.");
 
-      const patch = await fetch(`/api/ugc/projects/${selectedProject.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ avatar_image_url: data.url }),
+      await applyAvatarImageToProject(data.url, {
+        successMessage: "Retrato do avatar salvo.",
+        toastId,
       });
-      const pData = await patch.json().catch(() => null);
-      if (!patch.ok) throw new Error(pData?.error || "Erro ao salvar avatar.");
-
-      const updated = pData?.project as UgcProject;
-      setSelectedProject(updated);
-      setProjects((prev) => prev.map((p) => p.id === updated.id ? { ...p, ...updated } : p));
-      toast.success("Retrato do avatar salvo.", { id: toastId });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Falha ao enviar retrato.", { id: toastId });
     } finally {
@@ -1878,16 +1948,29 @@ export default function UGCPage() {
                       </div>
                     )}
 
-                    <ImageDropzone
-                      id="ugc-avatar-portrait-drop"
-                      disabled={avatarUploading}
-                      title={avatarUploading ? "Enviando retrato..." : "Retrato do avatar"}
-                      subtitle="Arraste e solte ou clique para selecionar"
-                      cta={selectedProject.avatar_image_url ? "Trocar retrato" : "Enviar retrato"}
-                      onFileSelect={(file) => {
-                        void handleAvatarPortraitUpload(file);
-                      }}
-                    />
+                    <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+                      <ImageDropzone
+                        id="ugc-avatar-portrait-drop"
+                        disabled={avatarUploading}
+                        title={avatarUploading ? "Enviando retrato..." : "Retrato do avatar"}
+                        subtitle="Arraste e solte ou clique para selecionar"
+                        cta={selectedProject.avatar_image_url ? "Trocar retrato" : "Enviar retrato"}
+                        onFileSelect={(file) => {
+                          void handleAvatarPortraitUpload(file);
+                        }}
+                      />
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="border-[#2A2A2A] text-[#F5F5F5]"
+                        onClick={() => {
+                          void openInfluencerAvatarPicker();
+                        }}
+                      >
+                        Escolher de Influencers
+                      </Button>
+                    </div>
                   </div>
 
                   {selectedProject.avatar_image_url && (
@@ -2227,6 +2310,77 @@ export default function UGCPage() {
             </>
           )}
         </section>
+      )}
+
+      {avatarPickerOpen && selectedProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-3xl rounded-xl border border-[#2A2A2A] bg-[#131313] p-5 max-h-[88vh] overflow-y-auto">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-[#F5F5F5]">Escolher de Influencers</h3>
+                <p className="mt-1 text-sm text-[#888888]">
+                  Selecione uma persona ativa para usar no Locked Avatar.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                className="border-[#2A2A2A] text-[#E5E5E5]"
+                onClick={() => setAvatarPickerOpen(false)}
+                disabled={Boolean(avatarPickerSavingId)}
+              >
+                Fechar
+              </Button>
+            </div>
+
+            {avatarPickerLoading ? (
+              <div className="mt-4 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-6 text-center text-[#A3A3A3]">
+                <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+                <p className="mt-2 text-sm">Carregando personas...</p>
+              </div>
+            ) : influencerAvatars.length === 0 ? (
+              <div className="mt-4 rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] p-6 text-center">
+                <p className="text-sm text-[#BDBDBD]">
+                  Nenhuma persona ativa — crie uma no Influencer Studio.
+                </p>
+                <Link
+                  href="/influencer"
+                  className="mt-2 inline-block text-sm text-[#A78BFA] hover:underline"
+                  onClick={() => setAvatarPickerOpen(false)}
+                >
+                  Ir para Influencer Studio
+                </Link>
+              </div>
+            ) : (
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {influencerAvatars.map((inf) => (
+                  <button
+                    key={inf.id}
+                    type="button"
+                    className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3 text-left transition hover:border-[#7C3AED]/60 disabled:opacity-60"
+                    disabled={avatarPickerSavingId !== null}
+                    onClick={() => {
+                      void handleSelectInfluencerAvatar(inf);
+                    }}
+                  >
+                    <div className="overflow-hidden rounded-lg border border-[#2A2A2A] bg-[#111111]">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={inf.avatar_image_url || ""}
+                        alt={inf.name}
+                        className="h-36 w-full object-cover"
+                      />
+                    </div>
+                    <p className="mt-2 line-clamp-1 text-sm font-semibold text-[#F5F5F5]">{inf.name}</p>
+                    <p className="line-clamp-1 text-xs text-[#8B8B8B]">{inf.handle || "@sem_handle"}</p>
+                    {avatarPickerSavingId === inf.id && (
+                      <p className="mt-2 text-xs text-[#A78BFA]">Aplicando...</p>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {avatarModal && selectedProject && (
