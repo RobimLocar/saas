@@ -1,12 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Loader2, Sparkles, Upload, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import {
+  CONTENT_PRESETS,
+  buildContentPrompt,
+  buildPersonaDescription,
+} from "@/lib/influencer-content-presets";
 
 type GenderOption = "Female" | "Male" | "Non-binary";
 type AgeOption =
@@ -34,6 +40,19 @@ interface InfluencerItem {
   status: "draft" | "active" | null;
   created_at: string;
   updated_at: string | null;
+}
+
+interface InfluencerContentItem {
+  id: string;
+  influencer_id: string;
+  user_id: string;
+  category: string;
+  prompt: string;
+  image_url: string | null;
+  generation_id: string | null;
+  caption: string | null;
+  format: "9:16" | "1:1" | "16:9" | string;
+  created_at: string;
 }
 
 const GENDERS: GenderOption[] = ["Female", "Male", "Non-binary"];
@@ -236,6 +255,7 @@ function Dropzone({
 }
 
 export default function InfluencerPage() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [influencers, setInfluencers] = useState<InfluencerItem[]>([]);
   const [selectedInfluencerId, setSelectedInfluencerId] = useState<string | null>(null);
@@ -265,6 +285,23 @@ export default function InfluencerPage() {
   const [userCredits, setUserCredits] = useState<number>(0);
   const [estimatedCost, setEstimatedCost] = useState<number>(0);
 
+  const [feedLoading, setFeedLoading] = useState(false);
+  const [contentItems, setContentItems] = useState<InfluencerContentItem[]>([]);
+  const [saveSeedLoadingId, setSaveSeedLoadingId] = useState<string | null>(null);
+
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [quickCount, setQuickCount] = useState(4);
+  const [quickFormat, setQuickFormat] = useState<"9:16" | "1:1" | "16:9">("9:16");
+  const [quickGenerating, setQuickGenerating] = useState(false);
+  const [quickUnitCost, setQuickUnitCost] = useState(0);
+
+  const [captionTargetId, setCaptionTargetId] = useState<string>("");
+  const [captionFreePrompt, setCaptionFreePrompt] = useState("");
+  const [captionLoading, setCaptionLoading] = useState(false);
+  const [captionOptions, setCaptionOptions] = useState<string[]>([]);
+  const [chosenCaption, setChosenCaption] = useState<string>("");
+  const [savingCaption, setSavingCaption] = useState(false);
+
   const selectedInfluencer = useMemo(
     () => influencers.find((x) => x.id === selectedInfluencerId) || null,
     [influencers, selectedInfluencerId]
@@ -277,6 +314,14 @@ export default function InfluencerPage() {
     styles.length > 0 &&
     hairColor.trim().length > 0 &&
     eyeColor.trim().length > 0;
+
+  const quickTotalCost = quickUnitCost * quickCount;
+  const quickBlockedByCredits = quickTotalCost > userCredits;
+
+  const selectedContentForCaptions = useMemo(
+    () => contentItems.find((item) => item.id === captionTargetId) || null,
+    [contentItems, captionTargetId]
+  );
 
   async function loadInfluencers() {
     setLoading(true);
@@ -313,12 +358,21 @@ export default function InfluencerPage() {
       const data = await res.json().catch(() => null);
       if (!res.ok) return;
       const models = Array.isArray(data?.models) ? data.models : [];
-      const picked =
+
+      const createModel =
         models.find((m: { model_id?: string }) => m.model_id === "gpt-image-2") ||
         models.find((m: { model_id?: string }) => m.model_id === "nano-banana-pro") ||
         models[0];
-      const unit = Number(picked?.credit_cost || 0);
-      setEstimatedCost(unit * 4);
+      const createUnit = Number(createModel?.credit_cost || 0);
+      setEstimatedCost(createUnit * 4);
+
+      const quickModel =
+        models.find((m: { model_id?: string }) => m.model_id === "nano-banana-pro") ||
+        models.find((m: { name?: string }) =>
+          typeof m.name === "string" && /nano banana pro/i.test(m.name)
+        ) ||
+        createModel;
+      setQuickUnitCost(Number(quickModel?.credit_cost || 0));
     } catch {
       // noop
     }
@@ -329,6 +383,207 @@ export default function InfluencerPage() {
     void loadMe();
     void loadEstimatedCost();
   }, []);
+
+  async function loadContentItems(influencerId: string) {
+    setFeedLoading(true);
+    try {
+      const res = await fetch(`/api/influencers/${influencerId}/content`, {
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Falha ao carregar feed.");
+      setContentItems(Array.isArray(data?.items) ? data.items : []);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao carregar feed.");
+      setContentItems([]);
+    } finally {
+      setFeedLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!selectedInfluencerId) {
+      setContentItems([]);
+      return;
+    }
+    void loadContentItems(selectedInfluencerId);
+    setCaptionTargetId("");
+    setCaptionOptions([]);
+    setChosenCaption("");
+  }, [selectedInfluencerId]);
+
+  function toggleCategory(category: string) {
+    setSelectedCategories((prev) =>
+      prev.includes(category) ? prev.filter((x) => x !== category) : [...prev, category]
+    );
+  }
+
+  async function handleQuickGenerate() {
+    if (!selectedInfluencer) return;
+    if (selectedCategories.length === 0) {
+      toast.error("Selecione ao menos 1 categoria.");
+      return;
+    }
+
+    const estimated = quickUnitCost * quickCount;
+    if (estimated > userCredits) {
+      toast.error("Créditos insuficientes para gerar este pack.");
+      return;
+    }
+
+    if (!selectedInfluencer.avatar_image_url) {
+      toast.error("Influencer draft — selecione avatar antes de gerar conteúdo.");
+      return;
+    }
+
+    setQuickGenerating(true);
+    const toastId = toast.loading("Gerando pack de conteúdo...");
+    try {
+      const res = await fetch(`/api/influencers/${selectedInfluencer.id}/content`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          categories: selectedCategories,
+          count: quickCount,
+          format: quickFormat,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Falha ao gerar conteúdo.");
+
+      const items = Array.isArray(data?.items) ? (data.items as InfluencerContentItem[]) : [];
+      setContentItems((prev) => [...items, ...prev]);
+      setActivePersonaTab("feed");
+      void loadMe();
+
+      toast.success(`${items.length} conteúdo(s) gerado(s)!`, { id: toastId });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao gerar conteúdo.", {
+        id: toastId,
+      });
+    } finally {
+      setQuickGenerating(false);
+    }
+  }
+
+  async function handleSaveAsSeed(item: InfluencerContentItem) {
+    if (!item.image_url) return;
+    setSaveSeedLoadingId(item.id);
+    try {
+      const categoryName =
+        CONTENT_PRESETS.find((x) => x.key === item.category)?.label || item.category;
+      const res = await fetch("/api/seeds", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `${selectedInfluencer?.name || "Influencer"} · ${categoryName}`,
+          description: item.prompt,
+          preview_url: item.image_url,
+          tags: ["influencer", item.category],
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Falha ao salvar seed.");
+      toast.success("Seed salva com sucesso.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar seed.");
+    } finally {
+      setSaveSeedLoadingId(null);
+    }
+  }
+
+  async function handleCopyPromptForStudio(prompt: string) {
+    try {
+      await navigator.clipboard.writeText(prompt);
+      toast.success("Prompt copiado.");
+    } catch {
+      toast.error("Não foi possível copiar o prompt.");
+    }
+  }
+
+  function handleUseSceneInStudio(scene: string) {
+    if (!selectedInfluencer) return;
+    const persona = buildPersonaDescription(selectedInfluencer);
+    const prompt = buildContentPrompt(persona, scene);
+    router.push(`/studio?prompt=${encodeURIComponent(prompt)}`);
+  }
+
+  async function handleGenerateCaptions() {
+    if (!selectedInfluencer) return;
+    if (!captionTargetId && !captionFreePrompt.trim()) {
+      toast.error("Selecione um item do feed ou informe um prompt livre.");
+      return;
+    }
+
+    setCaptionLoading(true);
+    const toastId = toast.loading("Gerando legendas...");
+
+    try {
+      const res = await fetch(`/api/influencers/${selectedInfluencer.id}/captions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content_id: captionTargetId || undefined,
+          prompt: captionTargetId ? undefined : captionFreePrompt,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Falha ao gerar legendas.");
+
+      const captions = Array.isArray(data?.captions) ? data.captions : [];
+      setCaptionOptions(captions);
+      setChosenCaption(captions[0] || "");
+      toast.success("Legendas geradas.", { id: toastId });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao gerar legendas.", { id: toastId });
+    } finally {
+      setCaptionLoading(false);
+    }
+  }
+
+  async function handleUseCaption(caption: string) {
+    setChosenCaption(caption);
+    try {
+      await navigator.clipboard.writeText(caption);
+      toast.success("Legenda copiada.");
+    } catch {
+      toast.error("Não foi possível copiar a legenda.");
+    }
+  }
+
+  async function handleSaveCaption(captionOverride?: string) {
+    const captionToSave = (captionOverride ?? chosenCaption).trim();
+    if (!selectedInfluencer || !captionTargetId || !captionToSave) {
+      toast.error("Selecione um item do feed e uma legenda para salvar.");
+      return;
+    }
+
+    setSavingCaption(true);
+    const toastId = toast.loading("Salvando legenda...");
+    try {
+      const res = await fetch(`/api/influencers/${selectedInfluencer.id}/captions`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content_id: captionTargetId,
+          caption: captionToSave,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Falha ao salvar legenda.");
+
+      setContentItems((prev) =>
+        prev.map((item) => (item.id === captionTargetId ? { ...item, caption: captionToSave } : item))
+      );
+      toast.success("Legenda salva no item.", { id: toastId });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar legenda.", { id: toastId });
+    } finally {
+      setSavingCaption(false);
+    }
+  }
 
   function resetCreateState() {
     setName("");
@@ -687,12 +942,308 @@ export default function InfluencerPage() {
             ))}
           </div>
 
-          <div className="rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] p-6 text-center">
-            <p className="text-base text-[#F5F5F5]">Próxima etapa (4d-3)</p>
-            <p className="mt-1 text-sm text-[#888888]">
-              Aqui entrarão os fluxos de {activePersonaTab === "feed" ? "Feed" : activePersonaTab === "presets" ? "Presets" : "Captions"} da persona.
-            </p>
-          </div>
+          {activePersonaTab === "feed" && (
+            <div>
+              {feedLoading ? (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {Array.from({ length: 6 }).map((_, idx) => (
+                    <div key={idx} className="h-56 animate-pulse rounded-lg border border-[#2A2A2A] bg-[#1D1D1D]" />
+                  ))}
+                </div>
+              ) : contentItems.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] p-6 text-center">
+                  <p className="text-base text-[#F5F5F5]">Nenhum conteúdo gerado ainda.</p>
+                  <p className="mt-1 text-sm text-[#888888]">
+                    Vá para Presets para criar seu primeiro pack.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {contentItems.map((item) => (
+                    <div key={item.id} className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <Badge className="bg-[#2A2A2A] text-[#BDBDBD]">{item.category}</Badge>
+                        <span className="text-[11px] text-[#777777]">{item.format || "9:16"}</span>
+                      </div>
+
+                      {item.image_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={item.image_url} alt={item.category} className="h-56 w-full rounded-lg object-cover" />
+                      ) : (
+                        <div className="flex h-56 items-center justify-center rounded-lg border border-dashed border-[#2A2A2A] text-xs text-[#888888]">
+                          Sem imagem
+                        </div>
+                      )}
+
+                      {item.caption && (
+                        <p className="mt-2 line-clamp-2 text-xs text-[#A3A3A3]">{item.caption}</p>
+                      )}
+
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <a
+                          href={item.image_url || "#"}
+                          download
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center justify-center rounded-md border border-[#2A2A2A] px-3 py-2 text-xs text-[#F5F5F5] hover:bg-[#202020]"
+                        >
+                          Download
+                        </a>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="border-[#2A2A2A] text-[#F5F5F5]"
+                          disabled={!item.image_url || saveSeedLoadingId === item.id}
+                          onClick={() => {
+                            void handleSaveAsSeed(item);
+                          }}
+                        >
+                          {saveSeedLoadingId === item.id ? "Salvando..." : "Salvar como Seed"}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {activePersonaTab === "presets" && (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-4">
+                <h3 className="text-sm font-semibold text-[#F5F5F5]">Quick Generate</h3>
+
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  {CONTENT_PRESETS.map((preset) => {
+                    const active = selectedCategories.includes(preset.key);
+                    return (
+                      <button
+                        key={preset.key}
+                        type="button"
+                        onClick={() => toggleCategory(preset.key)}
+                        className={`rounded-lg border p-3 text-left transition ${
+                          active
+                            ? "border-[#7C3AED] bg-[#7C3AED]/10"
+                            : "border-[#2A2A2A] bg-[#161616] hover:border-[#7C3AED]/50"
+                        }`}
+                      >
+                        <p className="text-sm font-medium text-[#F5F5F5]">
+                          {preset.icon} {preset.label}
+                        </p>
+                        <p className="mt-1 text-[11px] text-[#888888]">{preset.scenes.length} cenas</p>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs text-[#A3A3A3]">Quantidade: {quickCount}</label>
+                    <input
+                      type="range"
+                      min={1}
+                      max={8}
+                      step={1}
+                      value={quickCount}
+                      onChange={(e) => setQuickCount(Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs text-[#A3A3A3]">Formato</label>
+                    <div className="flex gap-2">
+                      {(["9:16", "1:1", "16:9"] as const).map((fmt) => (
+                        <button
+                          key={fmt}
+                          type="button"
+                          onClick={() => setQuickFormat(fmt)}
+                          className={`flex-1 rounded-lg border py-1.5 text-sm transition ${
+                            quickFormat === fmt
+                              ? "border-[#7C3AED] bg-[#7C3AED]/20 text-[#F5F5F5]"
+                              : "border-[#2A2A2A] bg-[#161616] text-[#BDBDBD]"
+                          }`}
+                        >
+                          {fmt}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <Button
+                    type="button"
+                    className="w-full bg-[#7C3AED] text-white hover:bg-[#6D28D9] disabled:opacity-50"
+                    disabled={
+                      quickGenerating ||
+                      selectedCategories.length === 0 ||
+                      quickBlockedByCredits ||
+                      !selectedInfluencer.avatar_image_url
+                    }
+                    onClick={() => {
+                      void handleQuickGenerate();
+                    }}
+                  >
+                    {quickGenerating
+                      ? "Gerando..."
+                      : `Generate ${quickCount} Images — ~${quickTotalCost} créditos (only ${userCredits} available)`}
+                  </Button>
+                  {quickBlockedByCredits && (
+                    <p className="mt-1 text-xs text-[#FCA5A5]">Créditos insuficientes para este pack.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-4">
+                <h3 className="text-sm font-semibold text-[#F5F5F5]">Prompt Library</h3>
+                <div className="mt-3 space-y-3">
+                  {CONTENT_PRESETS.map((preset) => (
+                    <div key={`library-${preset.key}`} className="rounded-lg border border-[#2A2A2A] bg-[#151515] p-3">
+                      <p className="text-sm font-medium text-[#F5F5F5]">
+                        {preset.icon} {preset.label}
+                      </p>
+                      <div className="mt-2 space-y-2">
+                        {preset.scenes.map((scene) => {
+                          const fullPrompt = buildContentPrompt(
+                            buildPersonaDescription(selectedInfluencer),
+                            scene
+                          );
+                          return (
+                            <div key={`${preset.key}-${scene}`} className="rounded border border-[#2A2A2A] p-2">
+                              <p className="text-xs text-[#BDBDBD]">{scene}</p>
+                              <div className="mt-2 flex gap-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="border-[#2A2A2A] text-[#F5F5F5]"
+                                  onClick={() => {
+                                    void handleCopyPromptForStudio(fullPrompt);
+                                  }}
+                                >
+                                  Copy
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="border-[#2A2A2A] text-[#F5F5F5]"
+                                  onClick={() => handleUseSceneInStudio(scene)}
+                                >
+                                  Usar no Studio
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activePersonaTab === "captions" && (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-4">
+                <h3 className="text-sm font-semibold text-[#F5F5F5]">Gerar legendas</h3>
+
+                <div className="mt-3 space-y-3">
+                  <div>
+                    <label className="mb-1 block text-xs text-[#A3A3A3]">Gerar para item do feed</label>
+                    <select
+                      value={captionTargetId}
+                      onChange={(e) => setCaptionTargetId(e.target.value)}
+                      className="h-10 w-full rounded-lg border border-[#2A2A2A] bg-[#151515] px-2 text-sm text-[#F5F5F5]"
+                    >
+                      <option value="">Nenhum (usar prompt livre)</option>
+                      {contentItems.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.category} • {new Date(item.created_at).toLocaleDateString("pt-BR")}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs text-[#A3A3A3]">Prompt livre</label>
+                    <Textarea
+                      value={captionFreePrompt}
+                      onChange={(e) => setCaptionFreePrompt(e.target.value)}
+                      placeholder="Descreva o conteúdo para gerar legendas..."
+                      className="min-h-20 border-[#2A2A2A] bg-[#151515] text-[#F5F5F5]"
+                    />
+                  </div>
+
+                  {selectedContentForCaptions?.image_url && (
+                    <div className="rounded-lg border border-[#2A2A2A] bg-[#151515] p-2">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={selectedContentForCaptions.image_url}
+                        alt="Prévia do conteúdo"
+                        className="h-40 w-full rounded object-cover"
+                      />
+                    </div>
+                  )}
+
+                  <Button
+                    type="button"
+                    className="w-full bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
+                    disabled={captionLoading}
+                    onClick={() => {
+                      void handleGenerateCaptions();
+                    }}
+                  >
+                    {captionLoading ? "Gerando legendas..." : "Gerar legendas"}
+                  </Button>
+                </div>
+              </div>
+
+              {captionOptions.length > 0 && (
+                <div className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-4">
+                  <h3 className="text-sm font-semibold text-[#F5F5F5]">Opções</h3>
+                  <div className="mt-3 space-y-3">
+                    {captionOptions.map((caption, idx) => (
+                      <div
+                        key={`caption-${idx}`}
+                        className={`rounded-lg border p-3 ${
+                          chosenCaption === caption
+                            ? "border-[#7C3AED] bg-[#7C3AED]/10"
+                            : "border-[#2A2A2A] bg-[#151515]"
+                        }`}
+                      >
+                        <p className="whitespace-pre-wrap text-sm text-[#F5F5F5]">{caption}</p>
+                        <div className="mt-2 flex gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="border-[#2A2A2A] text-[#F5F5F5]"
+                            onClick={() => {
+                              void handleUseCaption(caption);
+                            }}
+                          >
+                            Usar
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="border-[#2A2A2A] text-[#F5F5F5]"
+                            disabled={!captionTargetId || savingCaption}
+                            onClick={() => {
+                              setChosenCaption(caption);
+                              void handleSaveCaption(caption);
+                            }}
+                          >
+                            {savingCaption ? "Salvando..." : "Salvar"}
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </section>
       )}
 
