@@ -216,7 +216,7 @@ function Popover({
           });
         }}
         className={cn(
-          "flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-2 text-sm text-[#d0d0d0] transition-colors duration-150 hover:border-[#7C3AED]/40 hover:bg-white/5",
+          "flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-2.5 py-1.5 text-sm text-[#d0d0d0] transition-colors duration-150 hover:border-[#7C3AED]/40 hover:bg-white/5",
           open && "ring-1 ring-[#7C3AED]/50",
           triggerClassName
         )}
@@ -303,7 +303,7 @@ function ControlButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-2 text-sm text-[#c9c9d1] transition-colors duration-150 hover:border-[#7C3AED]/40 hover:bg-white/10",
+        "flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-2.5 py-1.5 text-sm text-[#c9c9d1] transition-colors duration-150 hover:border-[#7C3AED]/40 hover:bg-white/10",
         active && "ring-1 ring-[#7C3AED]/50",
         muted ? "text-[#8b8b93]" : "text-[#c9c9d1]"
       )}
@@ -376,7 +376,7 @@ function ModelMenu({
         />
       </div>
 
-      <div className="max-h-80 overflow-y-auto pr-1 [scrollbar-color:#7C3AED_#1A1A1A] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#7C3AED]/50 [&::-webkit-scrollbar-track]:bg-[#1A1A1A] [&::-webkit-scrollbar]:w-1.5">
+      <div className="fx-scroll max-h-80 overflow-y-auto pr-1">
         {filteredGroups.length === 0 ? (
           <p className="py-8 text-center text-xs text-[#777777]">Nenhum modelo encontrado.</p>
         ) : (
@@ -563,7 +563,7 @@ function VoiceSelector({
           </div>
 
           {/* Lista de vozes */}
-          <div className="flex-1 space-y-0.5 overflow-y-auto">
+          <div className="fx-scroll flex-1 space-y-0.5 overflow-y-auto">
             {filtered.length === 0 && (
               <p className="px-2 py-3 text-center text-xs text-[#666666]">
                 No voices found
@@ -1252,12 +1252,12 @@ export function GenerationDock() {
     (activeTab === "image" && refSectionOpen);
 
   return (
-    <section className="fixed bottom-4 left-1/2 z-30 w-[min(1180px,calc(100vw-32px))] -translate-x-1/2 rounded-2xl border border-[#242428] bg-[#141416] p-4 shadow-[0_-8px_40px_rgba(0,0,0,0.4)] backdrop-blur-sm">
+    <section className="fixed bottom-4 left-1/2 z-30 mx-auto w-full max-w-[1100px] min-w-0 -translate-x-1/2 rounded-2xl border border-[#242428] bg-[#141416] px-4 py-4 shadow-[0_-8px_40px_rgba(0,0,0,0.4)] backdrop-blur-sm">
       {/* Painel Assist — duas colunas */}
       {activeTab !== "audio" && assistOpen && (
         <div className="border-b border-[#2A2A2A]">
           <div className="grid grid-cols-[210px_1fr]">
-            <div className="max-h-[300px] overflow-y-auto border-r border-[#2A2A2A] p-3">
+            <div className="fx-scroll max-h-[300px] overflow-y-auto border-r border-[#2A2A2A] p-3">
               <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
                 Categories
               </p>
@@ -1277,7 +1277,7 @@ export function GenerationDock() {
                 </button>
               ))}
             </div>
-            <div className="max-h-[300px] overflow-y-auto p-3">
+            <div className="fx-scroll max-h-[300px] overflow-y-auto p-3">
               <div className="mb-2 flex items-center justify-between px-1">
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
                   {activeAssistCategory.label} · Click to add
@@ -1311,7 +1311,7 @@ export function GenerationDock() {
       {activeTab !== "audio" && atOpen && (
         <div className="border-b border-[#2A2A2A]">
           <div className="grid grid-cols-[210px_1fr]">
-            <div className="max-h-[300px] overflow-y-auto border-r border-[#2A2A2A] p-3">
+            <div className="fx-scroll max-h-[300px] overflow-y-auto border-r border-[#2A2A2A] p-3">
               <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
                 Categories
               </p>
@@ -1331,7 +1331,7 @@ export function GenerationDock() {
                 </button>
               ))}
             </div>
-            <div className="max-h-[300px] overflow-y-auto p-3">
+            <div className="fx-scroll max-h-[300px] overflow-y-auto p-3">
               <div className="mb-2 flex items-center justify-between px-1">
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
                   {activeAssetCategory.label} · Click to add
@@ -2048,8 +2048,8 @@ export function GenerationDock() {
         />
 
         {/* Toolbar */}
-        <div className={cn("flex flex-wrap items-center justify-between gap-y-2", collapsed && "hidden")}>
-          <div className="flex flex-wrap items-center gap-2">
+        <div className={cn("flex min-w-0 items-center gap-2", collapsed && "hidden")}>
+          <div className="fx-scroll flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-0.5">
             {/* Modelo — menu hierárquico */}
             <Popover
               panelClassName="overflow-visible"
@@ -2082,7 +2082,7 @@ export function GenerationDock() {
               <>
                 <VoiceSelector voiceId={ttsVoice} onSelect={setTtsVoice} />
 
-                <div className="flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3">
+                <div className="flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-2.5 py-1.5">
                   <span className="text-xs text-[#888888]">Stability</span>
                   <input
                     type="range"
@@ -2098,7 +2098,7 @@ export function GenerationDock() {
                   </span>
                 </div>
 
-                <div className="flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3">
+                <div className="flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-2.5 py-1.5">
                   <span className="text-xs text-[#888888]">Similarity</span>
                   <input
                     type="range"
@@ -2114,7 +2114,7 @@ export function GenerationDock() {
                   </span>
                 </div>
 
-                <div className="flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3">
+                <div className="flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-2.5 py-1.5">
                   <span className="text-xs text-[#888888]">Speed</span>
                   <input
                     type="range"
@@ -2192,7 +2192,7 @@ export function GenerationDock() {
               </div>
             )}
             {activeTab === "video" && !durationSnapValues && (
-              <div className="flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3">
+              <div className="flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-2.5 py-1.5">
                 <input
                   type="range"
                   min={durMin}
@@ -2200,7 +2200,7 @@ export function GenerationDock() {
                   step={1}
                   value={safeDuration}
                   onChange={(event) => setDuration(Number(event.target.value))}
-                  className="h-1.5 w-16 accent-[#7C3AED] [&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-[#2A2A2A]"
+                  className="h-1.5 w-24 accent-[#7C3AED] [&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-[#2A2A2A]"
                 />
                 <span className="text-xs text-[#F5F5F5]">{safeDuration}s</span>
               </div>
@@ -2411,7 +2411,7 @@ export function GenerationDock() {
           </div>
 
           {/* Generate */}
-          <div className="flex flex-col items-end">
+          <div className="flex flex-shrink-0 flex-col items-end">
             <button
               type="submit"
               disabled={loading || insufficient}
