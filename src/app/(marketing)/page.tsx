@@ -89,43 +89,42 @@ export default function LandingPage() {
   return (
     <>
       {/* ═══ HERO ═══════════════════════════════════════════════════ */}
-      <section className="relative overflow-hidden">
-        {/* Glow */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-primary/20 rounded-full blur-[120px] pointer-events-none" />
+      <section className="relative overflow-hidden bg-[#0A0A0A]">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(124,58,237,0.2),transparent_70%)]" />
+        <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] [background-size:34px_34px]" />
+        <div className="premium-hero-blob absolute left-1/2 top-[-180px] h-[600px] w-[600px] -translate-x-1/2 rounded-full bg-[#7C3AED]/20 blur-3xl" />
 
-        <div className="relative max-w-5xl mx-auto text-center px-6 pt-24 pb-20">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-primary text-sm font-medium mb-8">
-            <Zap className="w-4 h-4" />
-            Plataforma multimodal de geração com IA
+        <div className="relative mx-auto max-w-5xl px-6 pb-20 pt-24 text-center">
+          <div className="premium-badge-shimmer mb-8 inline-flex items-center gap-2 rounded-full border border-[#2A2A2A] bg-[#111111] px-4 py-1.5 text-sm font-medium text-[#F5F5F5]">
+            ✦ 20+ modelos de IA
           </div>
 
-          <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight leading-[1.1] mb-6">
-            Crie qualquer mídia{" "}
-            <span className="bg-gradient-to-r from-primary to-violet-400 bg-clip-text text-transparent">
-              com IA
-            </span>
+          <h1 className="mb-6 text-5xl font-black leading-[1.05] tracking-tight text-[#F5F5F5] md:text-6xl">
+            Transforme suas ideias em{" "}
+            <span className="bg-gradient-to-r from-[#7C3AED] to-[#A78BFA] bg-clip-text text-transparent">
+              mídia premium
+            </span>{" "}
+            com IA multimodal
           </h1>
 
-          <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-10">
-            Imagens, vídeos e áudio — os melhores modelos do mundo em uma
-            plataforma única. Mais barato e mais poderoso que qualquer
-            alternativa.
+          <p className="mx-auto mb-10 max-w-2xl text-lg text-[#888888]">
+            Imagens, vídeos e áudio em um único fluxo: geração rápida, controle avançado e consistência visual para creators e times de performance.
           </p>
 
-          <div className="flex items-center justify-center gap-4 mb-14">
+          <div className="mb-14 flex items-center justify-center gap-4">
             <Link
               href="/signup"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition text-base"
+              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#7C3AED] to-[#6D28D9] px-6 py-3 text-base font-semibold text-white shadow-[0_8px_30px_rgba(124,58,237,0.35)] transition duration-200 hover:scale-[1.02]"
             >
-              <Zap className="w-5 h-5" />
-              Começar grátis — 10 créditos
+              <Zap className="h-5 w-5" />
+              Começar grátis
             </Link>
             <Link
               href="/pricing"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-border text-foreground font-medium hover:bg-muted/50 transition text-base"
+              className="inline-flex items-center gap-2 rounded-xl border border-[#2A2A2A] bg-[#111111] px-6 py-3 text-base font-medium text-[#F5F5F5] transition hover:bg-[#1A1A1A]"
             >
               Ver planos
-              <ArrowRight className="w-4 h-4" />
+              <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
 
