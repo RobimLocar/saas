@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Upload, Users } from "lucide-react";
+import { Sparkles, Upload, User, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { GenerationCard } from "@/components/ui/generation-card";
@@ -879,16 +879,15 @@ export default function InfluencerPage() {
               const status = inf.avatar_image_url ? "active" : (inf.status || "draft");
               const statusRaw = String(status).toLowerCase();
               const statusClass =
-                statusRaw === "active"
-                  ? "bg-green-500/10 text-green-400"
+                statusRaw === "active" || statusRaw === "ready"
+                  ? "bg-[#7C3AED]/15 text-[#A78BFA]"
                   : statusRaw === "processing"
-                    ? "bg-[#7C3AED]/10 text-[#8B5CF6]"
-                    : "bg-yellow-500/10 text-yellow-400";
+                    ? "bg-blue-500/15 text-blue-300"
+                    : "bg-amber-500/15 text-amber-300";
 
               return (
-                <button
+                <div
                   key={inf.id}
-                  type="button"
                   onClick={() => {
                     if (!inf.avatar_image_url) {
                       openDraftChooser(inf);
@@ -897,13 +896,24 @@ export default function InfluencerPage() {
                     setSelectedInfluencerId(inf.id);
                     setActivePersonaTab("feed");
                   }}
-                  className={`group rounded-2xl bg-[#111111] p-3 text-left ring-1 ring-white/5 transition-all duration-200 ${
+                  className={`group relative overflow-hidden rounded-2xl bg-[#141416] p-3 text-left ring-1 ring-white/5 transition-all duration-200 ${
                     active
-                      ? "ring-[#7C3AED] shadow-[0_8px_30px_rgba(124,58,237,0.2)]"
-                      : "hover:-translate-y-[2px] hover:shadow-[0_8px_30px_rgba(124,58,237,0.15)]"
+                      ? "ring-2 ring-[#7C3AED] shadow-[0_0_20px_rgba(124,58,237,0.2)]"
+                      : "hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(124,58,237,0.15)] hover:ring-[#7C3AED]/25"
                   }`}
                 >
-                  <div className="overflow-hidden rounded-xl bg-[#101010] aspect-[3/4]">
+                  <button
+                    type="button"
+                    className="absolute right-2 top-2 z-10 rounded-lg bg-black/60 p-1.5 text-xs text-red-400 opacity-0 transition-opacity duration-200 hover:bg-black/80 hover:text-red-300 group-hover:opacity-100"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void handleDeleteInfluencer(inf.id);
+                    }}
+                  >
+                    Excluir
+                  </button>
+
+                  <div className="aspect-[3/4] overflow-hidden rounded-xl bg-[#1A1A1A]">
                     {inf.avatar_image_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -912,28 +922,32 @@ export default function InfluencerPage() {
                         className="h-full w-full object-cover"
                       />
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center px-4 text-center text-xs text-[#8B8B8B]">
-                        DRAFT — escolha um avatar
+                      <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-4 text-center">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#7C3AED]/10">
+                          <User className="h-6 w-6 text-[#7C3AED]" />
+                        </div>
+                        <p className="text-xs text-[#8b8b93]">Escolha um avatar</p>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openDraftChooser(inf);
+                          }}
+                          className="text-xs text-[#7C3AED] underline transition-colors hover:text-[#8B5CF6]"
+                        >
+                          Finalizar
+                        </button>
                       </div>
                     )}
                   </div>
-                  <div className="mt-3">
-                    <p className="line-clamp-1 text-sm font-semibold text-[#F5F5F5]">{inf.name}</p>
-                    <p className="line-clamp-1 text-xs text-[#8B8B8B]">{inf.handle || "@sem_handle"}</p>
+                  <div className="p-3">
+                    <p className="line-clamp-1 text-sm font-semibold text-white">{inf.name}</p>
+                    <p className="line-clamp-1 text-xs text-[#8b8b93]">{inf.handle || "@sem_handle"}</p>
                   </div>
-                  <div className="mt-2 flex items-center justify-between">
+                  <div className="px-3 pb-1">
                     <Badge className={statusClass}>{status.toUpperCase()}</Badge>
-                    <span
-                      className="opacity-0 text-xs text-[#FCA5A5] transition-opacity group-hover:opacity-100 hover:underline"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void handleDeleteInfluencer(inf.id);
-                      }}
-                    >
-                      Excluir
-                    </span>
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>

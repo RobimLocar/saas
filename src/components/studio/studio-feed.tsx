@@ -189,11 +189,9 @@ export function StudioFeed() {
 
   if (loading) {
     return (
-      <div className="grid grid-cols-2 gap-1.5 px-1 pb-48 pt-[76px] sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 px-1 pb-48 pt-[76px] sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
         {Array.from({ length: 12 }).map((_, idx) => (
-          <div key={idx} className="relative aspect-square overflow-hidden rounded-2xl bg-[#141414] ring-1 ring-white/5">
-            <div className="premium-shimmer absolute inset-0 opacity-70" />
-          </div>
+          <div key={idx} className="skeleton-shimmer aspect-[4/3] rounded-2xl" />
         ))}
       </div>
     );
@@ -230,7 +228,7 @@ export function StudioFeed() {
 
       <div
         className={cn(
-          "grid grid-cols-2 gap-1.5 px-1 pb-48 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6",
+          "grid grid-cols-2 gap-3 px-1 pb-48 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6",
           failedCount === 0 && optimisticCount === 0 && "pt-[76px]"
         )}
       >
@@ -312,7 +310,7 @@ function GenerationCard({
     <article
       onClick={onOpen}
       style={style}
-      className="group animate-premium-fade-in relative cursor-pointer overflow-hidden rounded-2xl bg-[#111111] ring-1 ring-white/5"
+      className="group media-card-enter relative cursor-pointer overflow-hidden rounded-2xl bg-[#141416] ring-1 ring-white/5 transition-all duration-200 hover:scale-[1.015] hover:shadow-[0_10px_40px_rgba(0,0,0,0.5)] hover:ring-[#7C3AED]/30"
     >
       {gen.type === "image" ? (
         <Image
@@ -326,7 +324,7 @@ function GenerationCard({
       ) : gen.type === "video" ? (
         <VideoTile src={gen.result_url!} />
       ) : (
-        <div className="relative flex h-full w-full items-center gap-3 rounded-2xl bg-[#141414] p-4">
+        <div className="relative flex h-full w-full items-center gap-3 rounded-2xl bg-[#141416] p-4">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#7C3AED]/15 text-[#A78BFA]">
             <Music className="h-4 w-4" />
           </div>
@@ -346,19 +344,23 @@ function GenerationCard({
 
       {(gen.type === "image" || gen.type === "video") && (
         <>
-          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-t from-black/65 via-transparent to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-            <span className="flex h-[52px] w-[52px] items-center justify-center rounded-full border border-white/20 bg-black/45 text-white backdrop-blur">
-              <Play className="ml-0.5 h-4 w-4" fill="currentColor" />
-            </span>
-          </div>
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
 
-          <div className="absolute left-2 top-2 flex gap-1.5">
-            <span className="inline-flex items-center gap-1 rounded-md bg-black/65 px-2 py-1 text-[10px] font-medium text-[#F5F5F5] backdrop-blur">
+          {gen.type === "video" && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-sm">
+                <Play className="ml-0.5 h-4 w-4" fill="currentColor" />
+              </span>
+            </div>
+          )}
+
+          <div className="absolute left-2 top-2 flex items-center gap-1">
+            <span className="flex items-center gap-1 rounded-md bg-black/50 px-2 py-0.5 text-xs text-white backdrop-blur-sm">
               {gen.type === "image" ? <ImageIcon className="h-3 w-3" /> : <Play className="h-3 w-3" />}
               {typeLabel}
             </span>
             {duration ? (
-              <span className="inline-flex items-center rounded-md bg-black/65 px-2 py-1 text-[10px] font-medium text-[#E5E5E5] backdrop-blur">
+              <span className="rounded-md bg-black/50 px-2 py-0.5 text-xs text-white backdrop-blur-sm">
                 {duration}
               </span>
             ) : null}
@@ -435,7 +437,7 @@ function FailedCard({
     : "Erro desconhecido";
 
   return (
-    <article className="col-span-1 flex h-16 items-center gap-2.5 overflow-hidden rounded-lg bg-[#1A1A1A] px-3">
+    <article className="col-span-1 flex h-16 items-center gap-2.5 overflow-hidden rounded-2xl bg-[#141416] px-3 ring-1 ring-white/5">
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-500/10 text-red-400">
         <X className="h-4 w-4" />
       </span>
@@ -506,10 +508,9 @@ function PendingCard({
   const label = type === "video" ? "Gerando vídeo..." : type === "audio" ? "Gerando áudio..." : "Gerando imagem...";
 
   return (
-    <article style={style} className="relative overflow-hidden rounded-2xl bg-[#141414] ring-1 ring-white/5">
-      <div className="premium-shimmer pointer-events-none absolute inset-0 opacity-60" />
+    <article style={style} className="relative overflow-hidden rounded-2xl bg-[#141416] ring-1 ring-white/5">
+      <div className="skeleton-shimmer pointer-events-none absolute inset-0 opacity-80" />
       <div className="relative flex h-full flex-col items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-[#A78BFA]" />
         <p className="mt-2 text-xs text-[#CFCFCF]">{label}</p>
 
         <div className="absolute inset-x-2 bottom-8 h-1 overflow-hidden rounded-full bg-[#2A2A2A]">
@@ -540,7 +541,7 @@ function ActionIcon({
     <button
       type="button"
       onClick={onClick}
-      className="flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white/90 backdrop-blur"
+      className="rounded-lg bg-black/40 p-1.5 text-white transition-colors duration-150 hover:bg-black/60"
     >
       {children}
     </button>

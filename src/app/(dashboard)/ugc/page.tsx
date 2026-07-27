@@ -1544,12 +1544,13 @@ export default function UGCPage() {
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                   {sortedProjects.map((project) => {
                     const rawStatus = (project.status || "draft").toLowerCase();
+                    const selected = selectedProjectId === project.id;
                     const statusClass =
-                      rawStatus === "ready" || rawStatus === "published"
-                        ? "bg-green-500/10 text-green-400"
-                        : rawStatus === "processing"
-                          ? "bg-[#7C3AED]/10 text-[#8B5CF6]"
-                          : "bg-yellow-500/10 text-yellow-400";
+                      rawStatus === "processing"
+                        ? "bg-blue-500/15 text-blue-300"
+                        : rawStatus === "ready" || rawStatus === "published" || rawStatus === "active"
+                          ? "bg-[#7C3AED]/15 text-[#A78BFA]"
+                          : "bg-amber-500/15 text-amber-300";
 
                     return (
                       <button
@@ -1560,7 +1561,9 @@ export default function UGCPage() {
                           setView("project");
                           setActiveTab("script");
                         }}
-                        className="group rounded-2xl bg-[#111111] p-3 text-left ring-1 ring-white/5 transition-all duration-200 hover:-translate-y-[2px] hover:shadow-[0_8px_30px_rgba(124,58,237,0.15)]"
+                        className={`group relative overflow-hidden rounded-2xl bg-[#141416] p-3 text-left ring-1 ring-white/5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(124,58,237,0.15)] hover:ring-[#7C3AED]/25 ${
+                          selected ? "ring-2 ring-[#7C3AED] shadow-[0_0_20px_rgba(124,58,237,0.2)]" : ""
+                        }`}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <p className="line-clamp-1 text-sm font-semibold text-[#F5F5F5]">
@@ -1629,45 +1632,47 @@ export default function UGCPage() {
                 {products.map((item) => (
                   <article
                     key={item.id}
-                    className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-3"
+                    className="group relative overflow-hidden rounded-2xl bg-[#141416] p-3 ring-1 ring-white/5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(124,58,237,0.15)] hover:ring-[#7C3AED]/25"
                   >
-                    <div className="overflow-hidden rounded-lg border border-[#2A2A2A] bg-[#1A1A1A]">
+                    <button
+                      type="button"
+                      className="absolute right-2 top-2 z-10 rounded-lg bg-black/60 p-1.5 text-xs text-red-400 opacity-0 transition-opacity duration-200 hover:bg-black/80 hover:text-red-300 group-hover:opacity-100"
+                      disabled={workingId === item.id}
+                      onClick={() => openDeleteDialog(item)}
+                    >
+                      Excluir
+                    </button>
+
+                    <div className="aspect-[4/3] overflow-hidden rounded-xl border border-[#2A2A2A] bg-[#1A1A1A]">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={item.image_url}
                         alt={item.title}
-                        className="h-36 w-full object-cover"
+                        className="h-full w-full object-cover"
                       />
                     </div>
 
-                    <h3 className="mt-3 line-clamp-1 text-sm font-semibold text-[#F5F5F5]">
-                      {item.title}
-                    </h3>
-                    <p className="mt-1 line-clamp-3 min-h-[58px] text-sm text-[#A3A3A3]">
-                      {item.description || "Sem descrição"}
-                    </p>
+                    <div className="p-3">
+                      <h3 className="line-clamp-1 text-sm font-semibold text-white">
+                        {item.title}
+                      </h3>
+                      <p className="mt-1 line-clamp-3 min-h-[58px] text-sm text-[#A3A3A3]">
+                        {item.description || "Sem descrição"}
+                      </p>
 
-                    <p className="mt-2 text-xs text-[#777777]">Criado em {formatDate(item.created_at)}</p>
+                      <p className="mt-2 text-xs text-[#777777]">Criado em {formatDate(item.created_at)}</p>
 
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                      <Button
-                        variant="outline"
-                        className="border-[#2A2A2A] text-[#F5F5F5]"
-                        disabled={workingId === item.id}
-                        onClick={() => openEditDialog(item)}
-                      >
-                        <Pencil className="mr-1 h-3.5 w-3.5" />
-                        Editar
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="border-[#3A1F1F] text-[#FCA5A5] hover:bg-[#2A1313]"
-                        disabled={workingId === item.id}
-                        onClick={() => openDeleteDialog(item)}
-                      >
-                        <Trash2 className="mr-1 h-3.5 w-3.5" />
-                        Excluir
-                      </Button>
+                      <div className="mt-3 grid grid-cols-1 gap-2">
+                        <Button
+                          variant="outline"
+                          className="border-[#2A2A2A] text-[#F5F5F5]"
+                          disabled={workingId === item.id}
+                          onClick={() => openEditDialog(item)}
+                        >
+                          <Pencil className="mr-1 h-3.5 w-3.5" />
+                          Editar
+                        </Button>
+                      </div>
                     </div>
                   </article>
                 ))}
