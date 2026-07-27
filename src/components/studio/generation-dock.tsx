@@ -75,6 +75,15 @@ interface UserAsset {
   image_url: string;
 }
 
+/** Persona (influencer) do usuário — usada para character tagging via @handle. */
+interface InfluencerPersona {
+  id: string;
+  name: string;
+  handle: string;
+  avatar_image_url: string | null;
+  status?: string;
+}
+
 interface SeedItem {
   id: string;
   name: string | null;
@@ -765,6 +774,9 @@ export function GenerationDock() {
   const [assetsLoading, setAssetsLoading] = useState(false);
   const [seeds, setSeeds] = useState<SeedItem[]>([]);
   const [seedsLoading, setSeedsLoading] = useState(false);
+  // Personas do usuário (para resolver @handles do prompt em referências de rosto).
+  const [personas, setPersonas] = useState<InfluencerPersona[]>([]);
+  const personasFetchedRef = useRef(false);
   const [refSectionOpen, setRefSectionOpen] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
@@ -1001,6 +1013,33 @@ export function GenerationDock() {
     return false;
   }, [selectedModel, activeTab]);
 
+  // Busca as personas do usuário na 1ª vez que um @handle aparece no prompt.
+  useEffect(() => {
+    if (taggedHandles.length === 0 || personasFetchedRef.current) return;
+    personasFetchedRef.current = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/influencers", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        setPersonas(Array.isArray(data?.influencers) ? data.influencers : []);
+      } catch {
+        // silencioso
+      }
+    })();
+  }, [taggedHandles]);
+
+  // Personas resolvidas: @handle do prompt ↔ persona com avatar disponível.
+  const resolvedTagged = useMemo(() => {
+    if (taggedHandles.length === 0 || personas.length === 0) return [];
+    return personas.filter(
+      (p) =>
+        p.avatar_image_url &&
+        p.handle &&
+        taggedHandles.includes(p.handle.toLowerCase().replace(/^@/, ""))
+    );
+  }, [taggedHandles, personas]);
+
   // Multi-Shot suportado apenas em Kling 3.0 (não Omni, não Turbo).
   const supportsMultiShot = useMemo(() => {
     if (!selectedModel || activeTab !== "video") return false;
@@ -1177,6 +1216,31 @@ export function GenerationDock() {
       if (referenceTab === "start-end") {
         if (startImageUrl) body.start_image_url = startImageUrl;
         if (endImageUrl) body.end_image_url = endImageUrl;
+      }
+      // Character tagging (@persona → referência de rosto / face lock).
+      // Só nos modelos com suporte (Seedance / Kling Omni). Nos demais, o banner
+      // avisa que as tags serão ignoradas e NÃO enviamos as referências.
+      // Não injeta no modo start-end com frames definidos, pois no Seedance a
+      // presença de reference_images sobrescreveria o uso de start/end frame.
+      if (
+        supportsCharacterTagging &&
+        resolvedTagged.length > 0 &&
+        !(referenceTab === "start-end" && (startImageUrl || endImageUrl))
+      ) {
+        const existing = Array.isArray(body.reference_images)
+          ? (body.reference_images as string[])
+          : [];
+        const avatars = resolvedTagged
+          .map((p) => p.avatar_image_url as string)
+          .filter((url) => url && !existing.includes(url));
+        if (existing.length + avatars.length > 0) {
+          body.reference_images = [...existing, ...avatars];
+        }
+        genLog("submit.character_tagging", requestId, {
+          handles: resolvedTagged.map((p) => p.handle),
+          avatars_added: avatars.length,
+          reference_images_total: (body.reference_images as string[] | undefined)?.length || 0,
+        });
       }
       // reference_videos não é suportado por hailuo/veo3/veo3.1.
       const backendSupportsRefVideos = !["hailuo", "veo3", "veo3.1"].includes(
@@ -1594,6 +1658,36 @@ export function GenerationDock() {
               {selectedModel.name} doesn&apos;t support character tagging. Tagged
               references will be ignored.
             </p>
+          )}
+
+        {/* Chips das personas taggeadas (face lock) — só quando o modelo suporta */}
+        {activeTab === "video" &&
+          supportsCharacterTagging &&
+          resolvedTagged.length > 0 && (
+            <div className="mb-3 flex flex-wrap items-center gap-1.5">
+              {resolvedTagged.map((p) => (
+                <span
+                  key={p.id}
+                  title="Used as face reference (locked)"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-[#7C3AED]/40 bg-[#7C3AED]/10 py-0.5 pl-0.5 pr-2 text-[11px] text-[#C4B5FD]"
+                >
+                  <span className="relative h-5 w-5 overflow-hidden rounded-full bg-[#2A2A2A]">
+                    {p.avatar_image_url ? (
+                      <Image
+                        src={p.avatar_image_url}
+                        alt={p.handle}
+                        fill
+                        sizes="20px"
+                        className="object-cover"
+                        unoptimized
+                      />
+                    ) : null}
+                  </span>
+                  @{p.handle.replace(/^@/, "")}
+                  <Lock className="h-3 w-3 text-[#A78BFA]" />
+                </span>
+              ))}
+            </div>
           )}
 
         {/* Negative prompt (vídeo) */}
