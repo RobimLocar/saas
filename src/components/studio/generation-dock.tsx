@@ -221,6 +221,25 @@ function renderPromptHighlights(text: string): ReactNode[] {
   return nodes;
 }
 
+/**
+ * Ref callback que limita a altura de um painel ancorado por bottom-full ao
+ * espaço disponível acima dele na viewport (nunca ultrapassa o topo da tela).
+ * O bottom do painel é fixo (ancorado no trigger), então reduzir a altura
+ * máxima mantém todo o conteúdo visível, com scroll interno.
+ */
+function clampPanelToViewport(el: HTMLDivElement | null) {
+  if (!el) return;
+  const apply = () => {
+    const rect = el.getBoundingClientRect();
+    const available = Math.max(160, rect.bottom - 12);
+    el.style.maxHeight = `${available}px`;
+    el.style.overflowY = "auto";
+  };
+  apply();
+  // Reaplica num frame seguinte (após layout de imagens/fontes).
+  requestAnimationFrame(apply);
+}
+
 function Popover({
   trigger,
   children,
@@ -283,8 +302,9 @@ function Popover({
 
       {open && (
         <div
+          ref={clampPanelToViewport}
           className={cn(
-            "absolute bottom-full left-0 z-50 mb-2 rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] p-1 shadow-2xl",
+            "fx-scroll absolute bottom-full left-0 z-50 mb-2 rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] p-1 shadow-2xl",
             panelClassName
           )}
         >
@@ -1412,7 +1432,10 @@ export function GenerationDock() {
     <section className="fixed bottom-4 left-1/2 z-30 mx-auto w-full max-w-[1100px] min-w-0 -translate-x-1/2 rounded-2xl border border-[#242428] bg-[#141416] px-4 py-4 shadow-[0_-8px_40px_rgba(0,0,0,0.4)] backdrop-blur-sm">
       {/* Painel Assist — duas colunas (CATEGORIES | {CAT} · CLICK TO ADD) */}
       {activeTab !== "audio" && assistOpen && (
-        <div className="absolute bottom-full right-4 z-50 mb-2 w-[560px] max-w-[calc(100vw-2rem)] rounded-xl border border-[#2A2A2A] bg-[#161618] shadow-2xl">
+        <div
+          ref={clampPanelToViewport}
+          className="fx-scroll absolute bottom-full right-4 z-50 mb-2 w-[560px] max-w-[calc(100vw-2rem)] rounded-xl border border-[#2A2A2A] bg-[#161618] shadow-2xl"
+        >
           <div className="grid grid-cols-[180px_1fr]">
             <div className="fx-scroll max-h-[min(50vh,420px)] overflow-y-auto border-r border-[#242428] p-2">
               <p className="mb-1.5 px-2 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
@@ -1464,7 +1487,10 @@ export function GenerationDock() {
 
       {/* Painel @ (assets/personas) — popover duas colunas com avatar + @handle */}
       {activeTab !== "audio" && atOpen && (
-        <div className="absolute bottom-full right-4 z-50 mb-2 w-[560px] max-w-[calc(100vw-2rem)] rounded-xl border border-[#2A2A2A] bg-[#161618] shadow-2xl">
+        <div
+          ref={clampPanelToViewport}
+          className="fx-scroll absolute bottom-full right-4 z-50 mb-2 w-[560px] max-w-[calc(100vw-2rem)] rounded-xl border border-[#2A2A2A] bg-[#161618] shadow-2xl"
+        >
           <div className="grid grid-cols-[180px_1fr]">
             <div className="fx-scroll max-h-[min(50vh,420px)] overflow-y-auto border-r border-[#242428] p-2">
               <p className="mb-1.5 px-2 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
@@ -2341,8 +2367,8 @@ export function GenerationDock() {
         />
 
         {/* Toolbar */}
-        <div className={cn("flex min-w-0 flex-nowrap items-center gap-2", collapsed && "hidden")}>
-          <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-hidden">
+        <div className={cn("flex min-w-0 items-center gap-2 xl:flex-nowrap", collapsed && "hidden")}>
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 xl:flex-nowrap">
             {/* Modelo — menu hierárquico */}
             <Popover
               panelClassName="overflow-visible"
