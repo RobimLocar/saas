@@ -383,7 +383,7 @@ function ModelMenu({
         />
       </div>
 
-      <div className="fx-scroll max-h-[300px] overflow-y-auto pr-1">
+      <div className="fx-scroll max-h-[min(50vh,420px)] overflow-y-auto pr-1">
         {filteredGroups.length === 0 ? (
           <p className="py-8 text-center text-xs text-[#777777]">Nenhum modelo encontrado.</p>
         ) : (
@@ -521,7 +521,7 @@ function VoiceSelector({
       )}
     >
       {(close) => (
-        <div className="flex max-h-[300px] w-full flex-col p-1.5">
+        <div className="flex max-h-[min(50vh,420px)] w-full flex-col p-1.5">
           {/* Busca */}
           <div className="mb-2 flex items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#000000] px-2.5">
             <Search className="h-3.5 w-3.5 shrink-0 text-[#666666]" />
@@ -570,7 +570,7 @@ function VoiceSelector({
           </div>
 
           {/* Lista de vozes */}
-          <div className="fx-scroll flex-1 space-y-0.5 overflow-y-auto">
+          <div className="fx-scroll max-h-[min(50vh,420px)] flex-1 space-y-0.5 overflow-y-auto">
             {filtered.length === 0 && (
               <p className="px-2 py-3 text-center text-xs text-[#666666]">
                 No voices found
@@ -1263,7 +1263,7 @@ export function GenerationDock() {
       {/* Painel Assist (contido, abre para cima) */}
       {activeTab !== "audio" && assistOpen && (
         <div className="absolute bottom-full right-4 z-50 mb-2 w-[320px] rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] shadow-2xl">
-          <div className="max-h-[45vh] overflow-y-auto p-3 fx-scroll">
+          <div className="fx-scroll max-h-[min(50vh,420px)] overflow-y-auto p-3">
             <div className="mb-2 flex items-center justify-between px-1">
               <p className="text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
                 {activeAssistCategory.label} · Click to add
@@ -1315,7 +1315,7 @@ export function GenerationDock() {
       {activeTab !== "audio" && atOpen && (
         <div className="border-b border-[#2A2A2A]">
           <div className="grid grid-cols-[210px_1fr]">
-            <div className="fx-scroll max-h-[300px] overflow-y-auto border-r border-[#2A2A2A] p-3">
+            <div className="fx-scroll max-h-[min(50vh,420px)] overflow-y-auto border-r border-[#2A2A2A] p-3">
               <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
                 Categories
               </p>
@@ -1335,7 +1335,7 @@ export function GenerationDock() {
                 </button>
               ))}
             </div>
-            <div className="fx-scroll max-h-[300px] overflow-y-auto p-3">
+            <div className="fx-scroll max-h-[min(50vh,420px)] overflow-y-auto p-3">
               <div className="mb-2 flex items-center justify-between px-1">
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
                   {activeAssetCategory.label} · Click to add
@@ -1843,7 +1843,7 @@ export function GenerationDock() {
                     )}
                   >
                     {(close) => (
-                      <div>
+                      <div className="fx-scroll max-h-[min(50vh,420px)] overflow-y-auto pr-1">
                         <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
                           Seus Seeds
                         </p>
@@ -2149,7 +2149,7 @@ export function GenerationDock() {
                 )}
               >
                 {(close) => (
-                  <div className="space-y-0.5">
+                  <div className="fx-scroll max-h-[min(50vh,420px)] space-y-0.5 overflow-y-auto">
                     {aspectOptions.map((option) => (
                       <button
                         key={option}
@@ -2223,7 +2223,7 @@ export function GenerationDock() {
                 )}
               >
                 {(close) => (
-                  <div className="space-y-0.5">
+                  <div className="fx-scroll max-h-[min(50vh,420px)] space-y-0.5 overflow-y-auto">
                     {resolutionOptions.map((option) => (
                       <button
                         key={option}
@@ -2263,7 +2263,7 @@ export function GenerationDock() {
                 )}
               >
                 {(close) => (
-                  <div className="space-y-0.5">
+                  <div className="fx-scroll max-h-[min(50vh,420px)] space-y-0.5 overflow-y-auto">
                     {QUALITY_OPTIONS.map((option) => (
                       <button
                         key={option}
