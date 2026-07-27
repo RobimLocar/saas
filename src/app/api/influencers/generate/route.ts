@@ -109,6 +109,9 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
 
+    const influencerIdRaw =
+      typeof body?.influencer_id === "string" ? body.influencer_id.trim() : "";
+
     const name = typeof body?.name === "string" ? body.name.trim() : "";
     const gender = typeof body?.gender === "string" ? body.gender.trim() : "";
     const ageRange = typeof body?.age_range === "string" ? body.age_range.trim() : "";
@@ -124,14 +127,38 @@ export async function POST(req: NextRequest) {
 
     if (!name || !gender || !ageRange || styles.length === 0 || !hairColor || !eyeColor) {
       return NextResponse.json(
-        { error: "Campos obrigatórios: name, gender, age_range, styles, hair_color, eye_color" },
+        {
+          error:
+            "Campos obrigatórios: name, gender, age_range, styles, hair_color, eye_color",
+        },
         { status: 400 }
       );
     }
 
     for (const refUrl of referenceImageUrls) {
       if (!isSafeMediaUrl(refUrl)) {
-        return NextResponse.json({ error: "reference_image_urls contém URL inválida" }, { status: 400 });
+        return NextResponse.json(
+          { error: "reference_image_urls contém URL inválida" },
+          { status: 400 }
+        );
+      }
+    }
+
+    let influencerId = influencerIdRaw;
+    if (influencerId) {
+      const { data: existingInfluencer, error: existingInfluencerErr } = await service
+        .from("influencers")
+        .select("id")
+        .eq("id", influencerId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (existingInfluencerErr) {
+        return NextResponse.json({ error: existingInfluencerErr.message }, { status: 500 });
+      }
+
+      if (!existingInfluencer) {
+        return NextResponse.json({ error: "Influencer não encontrado" }, { status: 404 });
       }
     }
 
@@ -162,13 +189,17 @@ export async function POST(req: NextRequest) {
 
     const selectedModel = pickPreferredModel(imageModels as ImageModelRow[]);
     if (!selectedModel) {
-      return NextResponse.json({ error: "Nenhum modelo de imagem disponível" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Nenhum modelo de imagem disponível" },
+        { status: 500 }
+      );
     }
 
     const unitCost = effectiveCost(selectedModel.credit_cost, profile?.plan ?? "free");
     const totalCost = unitCost * 4;
     const available = profile?.credits_balance ?? 0;
 
+    // Pré-check de teto (4x custo) ANTES de disparar em paralelo.
     if (available < totalCost) {
       return NextResponse.json(
         {
@@ -182,53 +213,64 @@ export async function POST(req: NextRequest) {
 
     auditLog("api.influencers.generate", "precheck_ok", requestId, {
       user_id: user.id,
+      influencer_id: influencerId || null,
       model_id: selectedModel.model_id,
       unit_cost: unitCost,
       total_cost: totalCost,
       available,
     });
 
-    const variationUrls: string[] = [];
-    const generationIds: string[] = [];
+    const generateOneCandidate = async (index: number): Promise<string> => {
+      const generationId = randomUUID();
 
-    try {
-      for (let i = 0; i < 4; i++) {
-        const generationId = randomUUID();
-        generationIds.push(generationId);
+      const { error: generationInsertError } = await service
+        .from("generations")
+        .insert({
+          id: generationId,
+          user_id: user.id,
+          model_id: selectedModel.id,
+          type: "image",
+          prompt: `${promptBase} variation ${index + 1}`,
+          params: {
+            mode: "influencer-variation",
+            variation_index: index + 1,
+            aspect_ratio: "1:1",
+            reference_image_url: referenceImageUrls[0] || null,
+          },
+          status: "pending",
+          credits_used: unitCost,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
 
-        const { error: generationInsertError } = await service
+      if (generationInsertError) {
+        throw new Error(
+          `Erro ao inserir generation (${index + 1}/4): ${generationInsertError.message}`
+        );
+      }
+
+      const debit = await debitCredits(service, user.id, unitCost, generationId, requestId);
+      if (!debit.ok) {
+        await service
           .from("generations")
-          .insert({
-            id: generationId,
-            user_id: user.id,
-            model_id: selectedModel.id,
-            type: "image",
-            prompt: `${promptBase} variation ${i + 1}`,
-            params: {
-              mode: "influencer-variation",
-              variation_index: i + 1,
-              aspect_ratio: "1:1",
-              reference_image_url: referenceImageUrls[0] || null,
-            },
-            status: "pending",
-            credits_used: unitCost,
-            created_at: new Date().toISOString(),
+          .update({
+            status: "failed",
+            error_message:
+              "insufficient" in debit && debit.insufficient
+                ? "Créditos insuficientes durante o débito por candidato"
+                : "Falha ao debitar créditos",
             updated_at: new Date().toISOString(),
-          });
+          })
+          .eq("id", generationId);
 
-        if (generationInsertError) {
-          throw new Error(`Erro ao inserir generation (${i + 1}/4): ${generationInsertError.message}`);
+        if ("insufficient" in debit && debit.insufficient) {
+          throw new Error("Créditos insuficientes durante o débito por candidato");
         }
+        throw new Error("Falha ao debitar créditos");
+      }
 
-        const debit = await debitCredits(service, user.id, unitCost, generationId, requestId);
-        if (!debit.ok) {
-          if ("insufficient" in debit && debit.insufficient) {
-            throw new Error("Créditos insuficientes durante o débito por candidato");
-          }
-          throw new Error("Falha ao debitar créditos");
-        }
-
-        const imagePrompt = `${promptBase} Variation ${i + 1} of 4, slight pose and expression change while keeping identity consistent.`;
+      try {
+        const imagePrompt = `${promptBase} Variation ${index + 1} of 4, slight pose and expression change while keeping identity consistent.`;
 
         const providerUrl = await generateImageGptSync({
           prompt: imagePrompt,
@@ -238,7 +280,6 @@ export async function POST(req: NextRequest) {
         });
 
         const storedUrl = await persistImage(user.id, generationId, providerUrl);
-        variationUrls.push(storedUrl);
 
         await service
           .from("generations")
@@ -248,9 +289,74 @@ export async function POST(req: NextRequest) {
             updated_at: new Date().toISOString(),
           })
           .eq("id", generationId);
-      }
 
-      const handle = normalizeHandle(name);
+        return storedUrl;
+      } catch (candidateErr) {
+        await refundCredits(service, user.id, generationId, unitCost, requestId);
+
+        await service
+          .from("generations")
+          .update({
+            status: "failed",
+            error_message:
+              candidateErr instanceof Error
+                ? candidateErr.message
+                : "Falha ao gerar variação",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", generationId);
+
+        throw candidateErr;
+      }
+    };
+
+    const settled = await Promise.allSettled(
+      [0, 1, 2, 3].map((index) => generateOneCandidate(index))
+    );
+
+    const fulfilled = settled
+      .filter(
+        (r): r is PromiseFulfilledResult<string> => r.status === "fulfilled"
+      )
+      .map((r) => r.value);
+
+    const failedCount = settled.length - fulfilled.length;
+
+    if (fulfilled.length === 0) {
+      auditLog("api.influencers.generate", "all_failed", requestId, {
+        user_id: user.id,
+        influencer_id: influencerId || null,
+      });
+      return NextResponse.json(
+        { error: "Falha ao gerar candidatos. Tente novamente." },
+        { status: 500 }
+      );
+    }
+
+    const handle = normalizeHandle(name);
+
+    if (influencerId) {
+      const { error: updateErr } = await service
+        .from("influencers")
+        .update({
+          name,
+          handle,
+          gender,
+          age_range: ageRange,
+          styles,
+          hair_color: hairColor,
+          eye_color: eyeColor,
+          additional_details: additionalDetails,
+          variations: fulfilled,
+          avatar_image_url: null,
+        })
+        .eq("id", influencerId)
+        .eq("user_id", user.id);
+
+      if (updateErr) {
+        return NextResponse.json({ error: updateErr.message }, { status: 500 });
+      }
+    } else {
       const { data: influencer, error: influencerError } = await service
         .from("influencers")
         .insert({
@@ -263,40 +369,29 @@ export async function POST(req: NextRequest) {
           hair_color: hairColor,
           eye_color: eyeColor,
           additional_details: additionalDetails,
-          variations: variationUrls,
+          variations: fulfilled,
           avatar_image_url: null,
           created_at: new Date().toISOString(),
         })
-        .select("id, variations")
+        .select("id")
         .single();
 
       if (influencerError || !influencer) {
-        throw new Error(influencerError?.message || "Erro ao criar influencer");
+        return NextResponse.json(
+          { error: influencerError?.message || "Erro ao criar influencer" },
+          { status: 500 }
+        );
       }
 
-      return NextResponse.json({
-        influencer_id: influencer.id,
-        variations: influencer.variations ?? variationUrls,
-      });
-    } catch (loopErr) {
-      for (const generationId of generationIds) {
-        await refundCredits(service, user.id, generationId, unitCost, requestId);
-
-        await service
-          .from("generations")
-          .update({
-            status: "failed",
-            error_message:
-              loopErr instanceof Error
-                ? loopErr.message
-                : "Falha ao gerar variações de influencer",
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", generationId);
-      }
-
-      throw loopErr;
+      influencerId = influencer.id;
     }
+
+    return NextResponse.json({
+      influencer_id: influencerId,
+      variations: fulfilled,
+      generated_count: fulfilled.length,
+      failed_count: failedCount,
+    });
   } catch (err) {
     console.error("[api/influencers/generate][POST] Error:", err);
     return NextResponse.json(

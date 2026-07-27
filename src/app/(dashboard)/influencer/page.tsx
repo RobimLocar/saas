@@ -244,6 +244,7 @@ export default function InfluencerPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [premadeOpen, setPremadeOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [genProgress, setGenProgress] = useState(0);
   const [confirming, setConfirming] = useState(false);
 
   const [name, setName] = useState("");
@@ -341,12 +342,34 @@ export default function InfluencerPage() {
     setDraftInfluencerId(null);
     setVariations([]);
     setSelectedVariation("");
+    setGenProgress(0);
+  }
+
+  function hydrateFormFromInfluencer(inf: InfluencerItem) {
+    setName(inf.name || "");
+    setGender((inf.gender as GenderOption | null) || "");
+    setAgeRange((inf.age_range as AgeOption | null) || "");
+    setStyles(Array.isArray(inf.styles) ? inf.styles : []);
+    setHairColor(inf.hair_color || "");
+    setEyeColor(inf.eye_color || "");
+    setAdditionalDetails(inf.additional_details || "");
+    setReferenceImageUrls(Array.isArray(inf.reference_image_urls) ? inf.reference_image_urls : []);
   }
 
   function openCreateModal() {
     setCreateOpen(true);
     setPremadeOpen(false);
     resetCreateState();
+  }
+
+  function openDraftChooser(inf: InfluencerItem) {
+    hydrateFormFromInfluencer(inf);
+    const vars = Array.isArray(inf.variations) ? inf.variations : [];
+    setDraftInfluencerId(inf.id);
+    setVariations(vars);
+    setSelectedVariation(inf.avatar_image_url || vars[0] || "");
+    setPremadeOpen(false);
+    setCreateOpen(true);
   }
 
   function applyPremade(index: number) {
@@ -405,16 +428,22 @@ export default function InfluencerPage() {
     }
   }
 
-  async function handleGenerate() {
+  async function handleGenerate(existingInfluencerId?: string) {
     if (!canGenerate || generating) return;
     setGenerating(true);
+    setGenProgress(0);
     const toastId = toast.loading("Generating your influencer...");
+
+    const timer = window.setInterval(() => {
+      setGenProgress((prev) => Math.min(prev + 1, 3));
+    }, 2000);
 
     try {
       const res = await fetch("/api/influencers/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          influencer_id: existingInfluencerId || draftInfluencerId || undefined,
           name,
           gender,
           age_range: ageRange,
@@ -432,19 +461,32 @@ export default function InfluencerPage() {
       }
 
       const vars = Array.isArray(data?.variations) ? data.variations : [];
-      if (vars.length !== 4) {
-        throw new Error("A geração não retornou os 4 candidatos esperados.");
+      if (vars.length === 0) {
+        throw new Error("Nenhum candidato foi gerado com sucesso.");
       }
 
+      setGenProgress(4);
       setDraftInfluencerId(data.influencer_id as string);
       setVariations(vars);
-      setSelectedVariation(vars[0]);
+      setSelectedVariation(vars[0] || "");
+      void loadInfluencers();
       void loadMe();
 
-      toast.success("Candidatos gerados! Escolha seu avatar.", { id: toastId });
+      const failedCount = Number(data?.failed_count || 0);
+      if (failedCount > 0) {
+        toast.success(
+          `Candidatos gerados com falha parcial (${vars.length} sucesso, ${failedCount} falha). Escolha seu avatar.`,
+          { id: toastId }
+        );
+      } else {
+        toast.success("Candidatos gerados! Escolha seu avatar.", { id: toastId });
+      }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao gerar influencer.", { id: toastId });
+      toast.error(err instanceof Error ? err.message : "Erro ao gerar influencer.", {
+        id: toastId,
+      });
     } finally {
+      window.clearInterval(timer);
       setGenerating(false);
     }
   }
@@ -465,6 +507,7 @@ export default function InfluencerPage() {
         body: JSON.stringify({
           name,
           avatar_image_url: selectedVariation,
+          status: "active",
         }),
       });
       const data = await res.json().catch(() => null);
@@ -485,10 +528,13 @@ export default function InfluencerPage() {
   }
 
   async function handleRegenerate() {
+    if (!draftInfluencerId) {
+      toast.error("Influencer draft não encontrado para regenerar.");
+      return;
+    }
     setVariations([]);
     setSelectedVariation("");
-    setDraftInfluencerId(null);
-    await handleGenerate();
+    await handleGenerate(draftInfluencerId);
   }
 
   async function handleDeleteInfluencer(id: string) {
@@ -566,6 +612,10 @@ export default function InfluencerPage() {
                   key={inf.id}
                   type="button"
                   onClick={() => {
+                    if (!inf.avatar_image_url) {
+                      openDraftChooser(inf);
+                      return;
+                    }
                     setSelectedInfluencerId(inf.id);
                     setActivePersonaTab("feed");
                   }}
@@ -576,19 +626,27 @@ export default function InfluencerPage() {
                   }`}
                 >
                   <div className="overflow-hidden rounded-lg border border-[#2A2A2A] bg-[#101010]">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={inf.avatar_image_url || inf.variations?.[0] || ""}
-                      alt={inf.name}
-                      className="h-40 w-full object-cover"
-                    />
+                    {inf.avatar_image_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={inf.avatar_image_url}
+                        alt={inf.name}
+                        className="h-40 w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-40 w-full items-center justify-center text-xs text-[#8B8B8B]">
+                        DRAFT — escolha um avatar
+                      </div>
+                    )}
                   </div>
                   <div className="mt-2">
                     <p className="line-clamp-1 text-sm font-semibold text-[#F5F5F5]">{inf.name}</p>
                     <p className="line-clamp-1 text-xs text-[#8B8B8B]">{inf.handle || "@sem_handle"}</p>
                   </div>
                   <div className="mt-2 flex items-center justify-between">
-                    <Badge className="bg-[#2A2A2A] text-[#BDBDBD]">{inf.status || "draft"}</Badge>
+                    <Badge className="bg-[#2A2A2A] text-[#BDBDBD]">
+                      {inf.avatar_image_url ? "active" : "DRAFT"}
+                    </Badge>
                     <span
                       className="text-xs text-[#FCA5A5] hover:underline"
                       onClick={(e) => {
@@ -682,9 +740,15 @@ export default function InfluencerPage() {
             {generating ? (
               <div className="mt-6 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-8 text-center">
                 <Loader2 className="mx-auto h-6 w-6 animate-spin text-[#A78BFA]" />
-                <p className="mt-3 text-[#F5F5F5]">Generating your influencer...</p>
+                <p className="mt-3 text-[#F5F5F5]">Gerando candidato {genProgress}/4...</p>
+                <div className="mx-auto mt-3 h-2 w-full max-w-sm overflow-hidden rounded-full bg-[#252525]">
+                  <div
+                    className="h-full bg-[#7C3AED] transition-all duration-500"
+                    style={{ width: `${(Math.max(0, Math.min(4, genProgress)) / 4) * 100}%` }}
+                  />
+                </div>
               </div>
-            ) : variations.length === 4 ? (
+            ) : variations.length > 0 ? (
               <div className="mt-5 space-y-4">
                 <h4 className="text-base font-semibold text-[#F5F5F5]">Choose Your Avatar</h4>
                 <div className="grid gap-3 sm:grid-cols-2">
