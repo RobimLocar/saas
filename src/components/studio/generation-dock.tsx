@@ -164,6 +164,54 @@ function RatioIcon({ ratio, className }: { ratio: string; className?: string }) 
   );
 }
 
+/** Converte um nome de asset/persona em @handle (visual). */
+function toHandle(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "") || "asset"
+  );
+}
+
+/** Regex de menções @handle no prompt (ignora @image1, @image2... do Seedance). */
+const HANDLE_REGEX = /@([a-z0-9_]+)/gi;
+
+function extractHandles(text: string): string[] {
+  const found = new Set<string>();
+  for (const match of text.matchAll(HANDLE_REGEX)) {
+    const handle = match[1].toLowerCase();
+    if (/^image\d*$/.test(handle)) continue;
+    found.add(handle);
+  }
+  return Array.from(found);
+}
+
+/** Renderiza o texto do prompt com os @handles destacados como chips (overlay). */
+function renderPromptHighlights(text: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  let last = 0;
+  let key = 0;
+  for (const match of text.matchAll(HANDLE_REGEX)) {
+    const index = match.index ?? 0;
+    if (/^image\d*$/.test(match[1].toLowerCase())) continue;
+    if (index > last) nodes.push(text.slice(last, index));
+    nodes.push(
+      <span
+        key={`h-${key++}`}
+        className="rounded-[4px] bg-[#7C3AED]/25 ring-1 ring-[#7C3AED]/40"
+      >
+        {match[0]}
+      </span>
+    );
+    last = index + match[0].length;
+  }
+  nodes.push(text.slice(last));
+  return nodes;
+}
+
 function Popover({
   trigger,
   children,
@@ -359,6 +407,16 @@ function ModelMenu({
     return { label: model.family || "Model", className: "bg-violet-500/10 text-violet-300" };
   }
 
+  /** Tags de capacidade (visual): REF = suporta referência de personagem; BATCH = multi-shot. */
+  function capabilityTags(model: ApiModel): string[] {
+    if (model.type !== "video") return [];
+    const src = `${model.name} ${model.family} ${model.backend || ""}`.toLowerCase();
+    const tags: string[] = [];
+    if (src.includes("seedance") || (src.includes("kling") && src.includes("omni"))) tags.push("REF");
+    if (src.includes("kling") && !src.includes("omni") && !src.includes("turbo")) tags.push("BATCH");
+    return tags;
+  }
+
   const normalizedQuery = query.trim().toLowerCase();
   const filteredGroups = groups
     .map((group) => ({
@@ -389,9 +447,12 @@ function ModelMenu({
         ) : (
           filteredGroups.map((group) => (
             <div key={group.family} className="mb-3">
-              <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-[#888888]">
+              <p className="px-2 pt-1 text-xs font-semibold uppercase tracking-wider text-[#888888]">
                 {group.family}
               </p>
+              {group.description ? (
+                <p className="px-2 pb-1 text-[11px] leading-snug text-[#8b8b93]">{group.description}</p>
+              ) : null}
 
               <div className="space-y-1.5">
                 {group.models.map((model) => {
@@ -425,6 +486,14 @@ function ModelMenu({
                           <span className={cn("rounded-full px-1.5 py-0.5 text-[10px]", badge.className)}>
                             {badge.label}
                           </span>
+                          {capabilityTags(model).map((tag) => (
+                            <span
+                              key={tag}
+                              className="rounded border border-[#2E2E33] bg-white/5 px-1 py-px text-[9px] font-semibold tracking-wide text-[#9a9aa3]"
+                            >
+                              {tag}
+                            </span>
+                          ))}
                           {model.has_audio ? <Volume2 className="h-3 w-3 text-[#888888]" /> : null}
                           {!available ? <Lock className="ml-auto h-3.5 w-3.5 text-[#888888]" /> : null}
                           {selected ? <Check className="ml-auto h-3.5 w-3.5 text-[#A78BFA]" /> : null}
@@ -720,6 +789,7 @@ export function GenerationDock() {
   const refVideoInputRef = useRef<HTMLInputElement>(null);
   const refAudioInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
 
   const loadModels = useCallback(async (type: Modality) => {
     try {
@@ -914,6 +984,22 @@ export function GenerationDock() {
     activeTab === "video" &&
     (selectedModel?.backend || "").toLowerCase() === "seedance" &&
     hasAnyImageRef;
+
+  // @handles mencionados no prompt (ex.: @fashion_model) — ignora @image1..N.
+  const taggedHandles = useMemo(() => extractHandles(prompt), [prompt]);
+
+  // Modelos com suporte a character tagging (@persona vira referência):
+  // Seedance (omni / less-restriction) e Kling Omni.
+  const supportsCharacterTagging = useMemo(() => {
+    if (!selectedModel || activeTab !== "video") return false;
+    const backend = (selectedModel.backend || "").toLowerCase();
+    const name = selectedModel.name.toLowerCase();
+    if (backend === "seedance") return true;
+    if ((selectedModel.family || "").toLowerCase() === "kling" && name.includes("omni")) {
+      return true;
+    }
+    return false;
+  }, [selectedModel, activeTab]);
 
   // Multi-Shot suportado apenas em Kling 3.0 (não Omni, não Turbo).
   const supportsMultiShot = useMemo(() => {
@@ -1260,48 +1346,49 @@ export function GenerationDock() {
 
   return (
     <section className="fixed bottom-4 left-1/2 z-30 mx-auto w-full max-w-[1100px] min-w-0 -translate-x-1/2 rounded-2xl border border-[#242428] bg-[#141416] px-4 py-4 shadow-[0_-8px_40px_rgba(0,0,0,0.4)] backdrop-blur-sm">
-      {/* Painel Assist (contido, abre para cima) */}
+      {/* Painel Assist — duas colunas (CATEGORIES | {CAT} · CLICK TO ADD) */}
       {activeTab !== "audio" && assistOpen && (
-        <div className="absolute bottom-full right-4 z-50 mb-2 w-[320px] rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] shadow-2xl">
-          <div className="fx-scroll max-h-[min(50vh,420px)] overflow-y-auto p-3">
-            <div className="mb-2 flex items-center justify-between px-1">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
-                {activeAssistCategory.label} · Click to add
+        <div className="absolute bottom-full right-4 z-50 mb-2 w-[560px] max-w-[calc(100vw-2rem)] rounded-xl border border-[#2A2A2A] bg-[#161618] shadow-2xl">
+          <div className="grid grid-cols-[180px_1fr]">
+            <div className="fx-scroll max-h-[min(50vh,420px)] overflow-y-auto border-r border-[#242428] p-2">
+              <p className="mb-1.5 px-2 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
+                Categories
               </p>
-              <button
-                type="button"
-                onClick={() => setAssistOpen(false)}
-                className="text-[#666666] hover:text-[#F5F5F5]"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-
-            <div className="mb-3 flex flex-wrap gap-1">
               {ASSIST_CATEGORIES.map((category) => (
                 <button
                   key={category.id}
                   type="button"
                   onClick={() => setAssistCategory(category.id)}
                   className={cn(
-                    "rounded-lg px-2 py-1 text-[10px]",
+                    "block w-full rounded-lg px-2.5 py-1.5 text-left text-[13px]",
                     category.id === assistCategory
-                      ? "bg-[#2A2A2A] text-[#F5F5F5]"
-                      : "text-[#888888] hover:bg-[#1F1F1F] hover:text-[#F5F5F5]"
+                      ? "bg-white/5 text-[#F5F5F5]"
+                      : "text-[#8b8b93] hover:bg-white/5 hover:text-[#F5F5F5]"
                   )}
                 >
                   {category.label}
                 </button>
               ))}
             </div>
-
-            <div className="flex flex-wrap gap-1.5">
+            <div className="fx-scroll max-h-[min(50vh,420px)] overflow-y-auto p-2">
+              <div className="mb-1.5 flex items-center justify-between px-2 pt-1">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
+                  {activeAssistCategory.label} · Click to add
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setAssistOpen(false)}
+                  className="text-[#666666] hover:text-[#F5F5F5]"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
               {activeAssistCategory.options.map((option) => (
                 <button
                   key={option}
                   type="button"
                   onClick={() => appendToPrompt(option)}
-                  className="rounded-lg border border-[#2A2A2A] bg-[#141416] px-2 py-1.5 text-xs text-[#F5F5F5] hover:border-[#7C3AED]"
+                  className="block w-full rounded-lg px-2.5 py-1.5 text-left text-[13px] text-[#d0d0d0] hover:bg-white/5 hover:text-[#F5F5F5]"
                 >
                   {option}
                 </button>
@@ -1311,12 +1398,12 @@ export function GenerationDock() {
         </div>
       )}
 
-      {/* Painel @ (assets) — duas colunas */}
+      {/* Painel @ (assets/personas) — popover duas colunas com avatar + @handle */}
       {activeTab !== "audio" && atOpen && (
-        <div className="border-b border-[#2A2A2A]">
-          <div className="grid grid-cols-[210px_1fr]">
-            <div className="fx-scroll max-h-[min(50vh,420px)] overflow-y-auto border-r border-[#2A2A2A] p-3">
-              <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
+        <div className="absolute bottom-full right-4 z-50 mb-2 w-[560px] max-w-[calc(100vw-2rem)] rounded-xl border border-[#2A2A2A] bg-[#161618] shadow-2xl">
+          <div className="grid grid-cols-[180px_1fr]">
+            <div className="fx-scroll max-h-[min(50vh,420px)] overflow-y-auto border-r border-[#242428] p-2">
+              <p className="mb-1.5 px-2 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
                 Categories
               </p>
               {ASSET_CATEGORIES.map((category) => (
@@ -1325,18 +1412,18 @@ export function GenerationDock() {
                   type="button"
                   onClick={() => setAssetCategory(category.id)}
                   className={cn(
-                    "block w-full rounded-lg px-2.5 py-1.5 text-left text-sm",
+                    "block w-full rounded-lg px-2.5 py-1.5 text-left text-[13px]",
                     category.id === assetCategory
-                      ? "bg-[#2A2A2A] text-[#F5F5F5]"
-                      : "text-[#888888] hover:bg-[#1F1F1F] hover:text-[#F5F5F5]"
+                      ? "bg-white/5 text-[#F5F5F5]"
+                      : "text-[#8b8b93] hover:bg-white/5 hover:text-[#F5F5F5]"
                   )}
                 >
                   {category.label}
                 </button>
               ))}
             </div>
-            <div className="fx-scroll max-h-[min(50vh,420px)] overflow-y-auto p-3">
-              <div className="mb-2 flex items-center justify-between px-1">
+            <div className="fx-scroll max-h-[min(50vh,420px)] overflow-y-auto p-2">
+              <div className="mb-1.5 flex items-center justify-between px-2 pt-1">
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
                   {activeAssetCategory.label} · Click to add
                 </p>
@@ -1357,30 +1444,51 @@ export function GenerationDock() {
                   No assets found
                 </div>
               ) : (
-                <div className="grid grid-cols-6 gap-2">
-                  {assets.map((asset) => (
-                    <button
-                      key={asset.id}
-                      type="button"
-                      onClick={() => {
-                        addReferenceImage(asset.image_url);
-                        toast.success(`"${asset.name}" adicionado às referências.`);
-                      }}
-                      className="group relative aspect-square overflow-hidden rounded-lg border border-[#2A2A2A] bg-[#1A1A1A]"
-                      title={asset.name}
-                    >
-                      <Image
-                        src={asset.image_url}
-                        alt={asset.name}
-                        fill
-                        className="object-cover"
-                        unoptimized
-                      />
-                      <span className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1 py-0.5 text-[9px] text-[#F5F5F5] opacity-0 group-hover:opacity-100">
-                        {asset.name}
-                      </span>
-                    </button>
-                  ))}
+                <div className="space-y-0.5">
+                  {assets.map((asset) => {
+                    const handle = toHandle(asset.name);
+                    return (
+                      <button
+                        key={asset.id}
+                        type="button"
+                        onClick={() => {
+                          addReferenceImage(asset.image_url);
+                          toast.success(`"${asset.name}" adicionado às referências.`);
+                        }}
+                        className="flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left hover:bg-white/5"
+                        title={asset.name}
+                      >
+                        <span className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full border border-[#2A2A2A] bg-[#1A1A1A]">
+                          <Image
+                            src={asset.image_url}
+                            alt={asset.name}
+                            fill
+                            className="object-cover"
+                            unoptimized
+                          />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-2">
+                            <span className="truncate text-[13px] font-medium text-[#A78BFA]">
+                              @{handle}
+                            </span>
+                            <span className="shrink-0 text-[9px] font-semibold uppercase tracking-widest text-[#8B5CF6]">
+                              {asset.category === "characters"
+                                ? "Character"
+                                : asset.category === "scenes"
+                                  ? "Scene"
+                                  : asset.category === "products"
+                                    ? "Product"
+                                    : "Custom"}
+                            </span>
+                          </span>
+                          <span className="block truncate text-xs text-[#8b8b93]">
+                            {asset.name}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1388,8 +1496,8 @@ export function GenerationDock() {
         </div>
       )}
 
-      {/* Tabs Image | Video | Audio */}
-      <div className="mt-1 flex items-center gap-1 rounded-xl bg-[#1A1A1A] p-1">
+      {/* Tabs Image | Video | Audio — segmented compacto, ativa em violeta */}
+      <div className="mt-1 inline-flex items-center gap-0.5 rounded-lg bg-[#1A1A1A] p-0.5">
         {TABS.map(({ id, label, icon: Icon }) => {
           const active = activeTab === id;
           return (
@@ -1398,16 +1506,16 @@ export function GenerationDock() {
               type="button"
               onClick={() => setActiveTab(id)}
               className={cn(
-                "flex items-center gap-2 rounded-lg px-4 py-2 text-sm transition-colors duration-150",
+                "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] transition-colors duration-150",
                 active
-                  ? "bg-[#7C3AED]/15 text-white ring-1 ring-[#7C3AED]/50"
+                  ? "bg-white/5 font-medium text-[#A78BFA]"
                   : "text-[#8b8b93] hover:text-white"
               )}
             >
               <Icon
                 className={cn(
-                  "h-4 w-4",
-                  active ? "text-[#8B5CF6]" : "text-[#8b8b93]"
+                  "h-3.5 w-3.5",
+                  active ? "text-[#A78BFA]" : "text-[#8b8b93]"
                 )}
               />
               {label}
@@ -1425,30 +1533,40 @@ export function GenerationDock() {
           void handleGenerate();
         }}
       >
-        {/* Prompt multiline + contador + colapsar */}
-        <div className="mb-2 flex items-start justify-between gap-3">
-          <textarea
-            ref={textareaRef}
-            value={prompt}
-            maxLength={8000}
-            rows={1}
-            onChange={(event) => {
-              setPrompt(event.target.value);
-              autoResize();
-            }}
-            onInput={autoResize}
-            placeholder={PLACEHOLDER[activeTab]}
-            className="min-h-[24px] flex-1 resize-none rounded-xl border-none bg-transparent p-4 text-[15px] leading-6 text-[#F5F5F5] outline-none placeholder:text-[#666] focus:ring-1 focus:ring-[#7C3AED]/40"
-          />
-          <div className="flex shrink-0 items-center gap-2 pt-0.5">
-            <span className="text-[11px] text-[#6a6a72]">
-              {prompt.length}/8000
-            </span>
+        {/* Prompt multiline + chips @handle + contador + colapsar */}
+        <div className="mb-2">
+          <div className="relative">
+            {/* Overlay de realce dos @handles (atrás da textarea, mesmo box) */}
+            <div
+              ref={overlayRef}
+              aria-hidden
+              className="pointer-events-none absolute inset-0 z-0 overflow-hidden whitespace-pre-wrap break-words p-4 pr-10 text-[15px] leading-6 text-transparent"
+            >
+              {renderPromptHighlights(prompt)}
+            </div>
+            <textarea
+              ref={textareaRef}
+              value={prompt}
+              maxLength={8000}
+              rows={1}
+              onChange={(event) => {
+                setPrompt(event.target.value);
+                autoResize();
+              }}
+              onInput={autoResize}
+              onScroll={(event) => {
+                if (overlayRef.current) {
+                  overlayRef.current.scrollTop = event.currentTarget.scrollTop;
+                }
+              }}
+              placeholder={PLACEHOLDER[activeTab]}
+              className="relative z-10 min-h-[24px] w-full resize-none rounded-xl border-none bg-transparent p-4 pr-10 text-[15px] leading-6 text-[#F5F5F5] outline-none placeholder:text-[#666] focus:ring-1 focus:ring-[#7C3AED]/40"
+            />
             <button
               type="button"
               onClick={() => setCollapsed((value) => !value)}
               title={collapsed ? "Expandir controles" : "Recolher controles"}
-              className="text-[#666666] hover:text-[#F5F5F5]"
+              className="absolute right-3 top-4 z-20 text-[#666666] hover:text-[#F5F5F5]"
             >
               <ChevronDown
                 className={cn(
@@ -1458,7 +1576,25 @@ export function GenerationDock() {
               />
             </button>
           </div>
+          {/* Contador — canto inferior direito do prompt */}
+          <div className="flex justify-end pr-2">
+            <span className="text-[11px] text-[#6a6a72]">
+              {prompt.length}/8000
+            </span>
+          </div>
         </div>
+
+        {/* Banner amber — modelo sem suporte a character tagging */}
+        {activeTab === "video" &&
+          taggedHandles.length > 0 &&
+          !supportsCharacterTagging &&
+          selectedModel && (
+            <p className="mb-3 flex items-center gap-1.5 text-xs text-amber-400/90">
+              <span aria-hidden>⚠️</span>
+              {selectedModel.name} doesn&apos;t support character tagging. Tagged
+              references will be ignored.
+            </p>
+          )}
 
         {/* Negative prompt (vídeo) */}
         {!collapsed && activeTab === "video" && (
@@ -1727,11 +1863,42 @@ export function GenerationDock() {
                 {multiShotMode === "custom" && (
                   <div className="space-y-2">
                     {customShots.map((shot, i) => (
-                      <div key={i} className="flex items-start gap-2">
-                        <span className="mt-2 min-w-[44px] text-[11px] text-[#555555]">
-                          Shot {i + 1}
-                        </span>
-                        <div className="flex items-center gap-1">
+                      <div
+                        key={i}
+                        className="rounded-lg border border-[#242428] bg-[#141416] p-2.5"
+                      >
+                        <div className="mb-1.5 flex items-center justify-between">
+                          <span className="text-[11px] text-[#8b8b93]">
+                            Shot {i + 1}
+                          </span>
+                          {customShots.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setCustomShots((prev) =>
+                                  prev.filter((_, j) => j !== i)
+                                )
+                              }
+                              className="text-sm leading-none text-[#444444] hover:text-red-400"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                        <textarea
+                          value={shot.prompt}
+                          onChange={(e) =>
+                            setCustomShots((prev) =>
+                              prev.map((s, j) =>
+                                j === i ? { ...s, prompt: e.target.value } : s
+                              )
+                            )
+                          }
+                          placeholder={`Shot ${i + 1} scene description...`}
+                          rows={2}
+                          className="mb-2 w-full resize-none rounded-lg border border-[#2A2A2A] bg-[#101012] px-2.5 py-1.5 text-xs leading-5 text-[#F5F5F5] outline-none placeholder:text-[#444444] focus:border-[#444444]"
+                        />
+                        <div className="flex items-center gap-2">
                           <button
                             type="button"
                             onClick={() =>
@@ -1765,36 +1932,68 @@ export function GenerationDock() {
                           >
                             +
                           </button>
-                        </div>
-                        <textarea
-                          value={shot.prompt}
-                          onChange={(e) =>
-                            setCustomShots((prev) =>
-                              prev.map((s, j) =>
-                                j === i ? { ...s, prompt: e.target.value } : s
-                              )
-                            )
-                          }
-                          placeholder={`Shot ${i + 1} scene description...`}
-                          rows={1}
-                          className="flex-1 resize-none rounded-lg border border-[#2A2A2A] bg-[#141414] px-2.5 py-1.5 text-xs text-[#F5F5F5] outline-none placeholder:text-[#444444] focus:border-[#444444]"
-                        />
-                        {customShots.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() =>
+                          <input
+                            type="range"
+                            min={3}
+                            max={15}
+                            step={1}
+                            value={shot.duration}
+                            onChange={(e) =>
                               setCustomShots((prev) =>
-                                prev.filter((_, j) => j !== i)
+                                prev.map((s, j) =>
+                                  j === i
+                                    ? { ...s, duration: Number(e.target.value) }
+                                    : s
+                                )
                               )
                             }
-                            className="mt-2 text-sm text-[#444444] hover:text-red-400"
-                          >
-                            ✕
-                          </button>
-                        )}
+                            className="flex-1 accent-[#7C3AED] [&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-[#2A2A2A]"
+                          />
+                        </div>
                       </div>
                     ))}
-                    <div className="flex items-center justify-between pt-1">
+
+                    {/* Barra de duração total (X/15s) */}
+                    {(() => {
+                      const total = customShots.reduce(
+                        (s, sh) => s + sh.duration,
+                        0
+                      );
+                      const over = total > 15;
+                      return (
+                        <div className="rounded-lg border border-[#242428] bg-[#141416] p-2.5">
+                          <div className="mb-1.5 flex items-center justify-between">
+                            <span className="text-[11px] text-[#8b8b93]">
+                              Total duration
+                            </span>
+                            <span
+                              className={cn(
+                                "text-[11px]",
+                                over ? "text-red-400" : "text-[#8b8b93]"
+                              )}
+                            >
+                              {total} / 15s
+                            </span>
+                          </div>
+                          <div className="h-1 overflow-hidden rounded-full bg-[#2A2A2A]">
+                            <div
+                              className={cn(
+                                "h-full rounded-full transition-all",
+                                over ? "bg-red-500" : "bg-[#7C3AED]"
+                              )}
+                              style={{
+                                width: `${Math.min(100, (total / 15) * 100)}%`,
+                              }}
+                            />
+                          </div>
+                          <p className="mt-1.5 text-[10px] text-[#666666]">
+                            Min 3s per shot for stable results
+                          </p>
+                        </div>
+                      );
+                    })()}
+
+                    <div className="pt-1">
                       <button
                         type="button"
                         disabled={customShots.length >= 6}
@@ -1806,12 +2005,8 @@ export function GenerationDock() {
                         }
                         className="text-xs text-[#7C3AED] hover:text-[#9F67FF] disabled:cursor-not-allowed disabled:opacity-40"
                       >
-                        + Add Shot
+                        Add Shot +
                       </button>
-                      <span className="text-[11px] text-[#555555]">
-                        Total:{" "}
-                        {customShots.reduce((s, sh) => s + sh.duration, 0)}s
-                      </span>
                     </div>
                   </div>
                 )}
@@ -1908,7 +2103,7 @@ export function GenerationDock() {
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {referenceImages.map((url, index) => (
-                  <div key={`${url.slice(0, 32)}-${index}`} className="relative">
+                  <div key={`${url.slice(0, 32)}-${index}`} className="group relative">
                     <Image
                       src={url}
                       alt={`Reference ${index + 1}`}
@@ -1920,7 +2115,7 @@ export function GenerationDock() {
                     <button
                       type="button"
                       onClick={() => removeReferenceImage(index)}
-                      className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#2A2A2A] text-[#F5F5F5] hover:bg-[#7C3AED]"
+                      className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#2A2A2A] text-[#F5F5F5] opacity-0 transition-opacity hover:bg-[#7C3AED] group-hover:opacity-100"
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -2052,8 +2247,8 @@ export function GenerationDock() {
         />
 
         {/* Toolbar */}
-        <div className={cn("flex min-w-0 items-center gap-2 xl:flex-nowrap", collapsed && "hidden")}>
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 xl:flex-nowrap">
+        <div className={cn("flex min-w-0 flex-nowrap items-center gap-2", collapsed && "hidden")}>
+          <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-hidden">
             {/* Modelo — menu hierárquico */}
             <Popover
               panelClassName="overflow-visible"
@@ -2062,7 +2257,7 @@ export function GenerationDock() {
                   <span className="flex h-5 w-5 items-center justify-center rounded bg-[#2A2A2A] text-[10px] font-semibold text-[#F5F5F5]">
                     {(selectedModel?.family || selectedModel?.name || "M").charAt(0)}
                   </span>
-                  <span className="max-w-[170px] truncate">
+                  <span className="max-w-[120px] truncate">
                     {selectedModel?.name || "Select model"}
                   </span>
                   <ChevronUp className="h-3 w-3 text-[#666666]" />
