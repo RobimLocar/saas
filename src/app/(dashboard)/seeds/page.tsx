@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useStudioStore } from "@/stores/use-studio-store";
 
 interface SeedItem {
@@ -265,14 +266,13 @@ export default function SeedsPage() {
           ))}
         </div>
       ) : orderedSeeds.length === 0 ? (
-        <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-8 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-[#2A2A2A] bg-[#1A1A1A]">
-            <Sprout className="h-5 w-5 text-[#8B5CF6]" />
-          </div>
-          <p className="text-base text-[#F5F5F5]">Você ainda não possui seeds salvos.</p>
-          <p className="mt-1 text-sm text-[#888888]">
-            Salve referências no lightbox ou crie manualmente por aqui.
-          </p>
+        <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] px-4">
+          <EmptyState
+            icon={Sprout}
+            title="Você ainda não possui seeds salvos."
+            description="Salve referências no lightbox ou crie manualmente para reutilizar no Studio."
+            action={{ label: "Novo Seed", onClick: openCreateModal }}
+          />
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">

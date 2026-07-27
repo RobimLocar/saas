@@ -6,6 +6,7 @@ import { Sparkles, Upload, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { GenerationCard } from "@/components/ui/generation-card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -854,10 +855,13 @@ export default function InfluencerPage() {
             Carregando personas...
           </div>
         ) : influencers.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-[#2A2A2A] bg-[#141414] p-8 text-center">
-            <Users className="mx-auto h-8 w-8 text-[#7C3AED]" />
-            <p className="mt-3 text-[#F5F5F5]">Nenhuma persona ainda</p>
-            <p className="mt-1 text-sm text-[#888888]">Comece com um premade ou crie do zero.</p>
+          <div className="rounded-xl border border-dashed border-[#2A2A2A] bg-[#141414] px-4">
+            <EmptyState
+              icon={Users}
+              title="Nenhuma persona ainda"
+              description="Comece com um premade ou crie do zero para ativar seu estúdio de conteúdo."
+              action={{ label: "Create Influencer", onClick: openCreateModal }}
+            />
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -952,11 +956,13 @@ export default function InfluencerPage() {
                   ))}
                 </div>
               ) : contentItems.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] p-6 text-center">
-                  <p className="text-base text-[#F5F5F5]">Nenhum conteúdo gerado ainda.</p>
-                  <p className="mt-1 text-sm text-[#888888]">
-                    Vá para Presets para criar seu primeiro pack.
-                  </p>
+                <div className="rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] px-4">
+                  <EmptyState
+                    icon={Sparkles}
+                    title="Nenhum conteúdo gerado ainda"
+                    description="Vá para Presets para criar seu primeiro pack da persona selecionada."
+                    action={{ label: "Abrir Presets", onClick: () => setActivePersonaTab("presets") }}
+                  />
                 </div>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

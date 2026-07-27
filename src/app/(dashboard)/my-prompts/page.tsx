@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Copy, Pencil, Plus, Trash2 } from "lucide-react";
+import { Copy, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useStudioStore } from "@/stores/use-studio-store";
 
 type PromptType = "image" | "video" | "audio";
@@ -309,11 +310,13 @@ export default function MyPromptsPage() {
                 ))}
               </div>
             ) : filteredPrompts.length === 0 ? (
-              <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-8 text-center">
-                <p className="text-base text-[#F5F5F5]">Nenhum prompt salvo em {FILTER_LABEL[tab]}.</p>
-                <p className="mt-1 text-sm text-[#888888]">
-                  Clique em <strong>+ Novo Prompt</strong> para criar o primeiro.
-                </p>
+              <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] px-4">
+                <EmptyState
+                  icon={Sparkles}
+                  title={`Nenhum prompt salvo em ${FILTER_LABEL[tab]}.`}
+                  description="Crie seu primeiro prompt para reutilizar no Studio em um clique."
+                  action={{ label: "Novo Prompt", onClick: openCreateModal }}
+                />
               </div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

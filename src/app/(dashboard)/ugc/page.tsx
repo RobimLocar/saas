@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { GenerationCard } from "@/components/ui/generation-card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { BROLL_PRESETS } from "@/lib/ugc-broll-presets";
 
 type ViewMode = "list" | "project";
@@ -1496,18 +1497,13 @@ export default function UGCPage() {
                   ))}
                 </div>
               ) : sortedProjects.length === 0 ? (
-                <div className="mt-3 rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] p-6 text-center">
-                  <p className="text-base text-[#F5F5F5]">Crie seu primeiro projeto UGC</p>
-                  <p className="mt-1 text-sm text-[#888888]">
-                    Comece gerando seu roteiro segmentado com IA.
-                  </p>
-                  <Button
-                    onClick={() => setProjectCreateOpen(true)}
-                    className="mt-4 rounded-full bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
-                  >
-                    <Plus className="mr-1 h-4 w-4" />
-                    New UGC Project
-                  </Button>
+                <div className="mt-3 rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] px-4">
+                  <EmptyState
+                    icon={Sparkles}
+                    title="Crie seu primeiro projeto UGC"
+                    description="Comece gerando seu roteiro segmentado com IA para escalar sua operação de vídeos."
+                    action={{ label: "New UGC Project", onClick: () => setProjectCreateOpen(true) }}
+                  />
                 </div>
               ) : (
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
@@ -1577,23 +1573,13 @@ export default function UGCPage() {
                 ))}
               </div>
             ) : products.length === 0 ? (
-              <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-10 text-center">
-                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-[#2A2A2A] bg-[#1A1A1A]">
-                  <Package className="h-5 w-5 text-[#8B5CF6]" />
-                </div>
-                <p className="text-base text-[#F5F5F5]">
-                  Cadastre seu primeiro produto para começar
-                </p>
-                <p className="mt-1 text-sm text-[#888888]">
-                  Você poderá usar este catálogo no gerador automático de UGC.
-                </p>
-                <Button
-                  onClick={openCreateDialog}
-                  className="mt-4 rounded-full bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
-                >
-                  <Plus className="mr-1 h-4 w-4" />
-                  Adicionar produto
-                </Button>
+              <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] px-4">
+                <EmptyState
+                  icon={Package}
+                  title="Cadastre seu primeiro produto para começar"
+                  description="Você poderá usar este catálogo no gerador automático de UGC."
+                  action={{ label: "Adicionar produto", onClick: openCreateDialog }}
+                />
               </div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -2207,8 +2193,12 @@ export default function UGCPage() {
                   <div>
                     <h3 className="mb-2 text-sm font-semibold text-[#F5F5F5]">Clipes B-Roll</h3>
                     {normalizeBroll(selectedProject.broll).length === 0 ? (
-                      <div className="rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] p-4 text-sm text-[#888888]">
-                        Nenhum clipe de B-Roll gerado ainda.
+                      <div className="rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] px-4">
+                        <EmptyState
+                          icon={Sparkles}
+                          title="Nenhum clipe de B-Roll gerado ainda"
+                          description="Selecione presets e gere seu primeiro lote de clipes."
+                        />
                       </div>
                     ) : (
                       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -2296,8 +2286,12 @@ export default function UGCPage() {
                   <h2 className="text-base font-semibold text-[#F5F5F5]">Project Generations</h2>
 
                   {completedProjectGenerations.length === 0 ? (
-                    <div className="mt-4 rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] p-5 text-sm text-[#888888]">
-                      No clips yet — generate your first segment or B-Roll clip.
+                    <div className="mt-4 rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] px-4">
+                      <EmptyState
+                        icon={Sparkles}
+                        title="Nenhum clipe finalizado ainda"
+                        description="Gere seu primeiro segmento de avatar ou um lote de B-Roll para preencher a galeria."
+                      />
                     </div>
                   ) : (
                     <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
