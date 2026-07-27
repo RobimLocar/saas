@@ -216,7 +216,7 @@ function Popover({
           });
         }}
         className={cn(
-          "flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-2.5 py-1.5 text-sm text-[#d0d0d0] transition-colors duration-150 hover:border-[#7C3AED]/40 hover:bg-white/5",
+          "flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-2 py-1.5 text-xs text-[#d0d0d0] transition-colors duration-150 hover:border-[#7C3AED]/40 hover:bg-white/5",
           open && "ring-1 ring-[#7C3AED]/50",
           triggerClassName
         )}
@@ -291,25 +291,32 @@ function ControlButton({
   active,
   onClick,
   muted,
+  iconOnly,
+  title,
 }: {
-  children: ReactNode;
+  children?: ReactNode;
   icon: ReactNode;
   active?: boolean;
   onClick?: () => void;
   muted?: boolean;
+  iconOnly?: boolean;
+  title?: string;
 }) {
   return (
     <button
       type="button"
+      title={title}
       onClick={onClick}
       className={cn(
-        "flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-2.5 py-1.5 text-sm text-[#c9c9d1] transition-colors duration-150 hover:border-[#7C3AED]/40 hover:bg-white/10",
+        iconOnly
+          ? "flex h-8 w-8 items-center justify-center rounded-lg border border-[#2A2A2A] bg-white/5 text-[#c9c9d1] transition-colors duration-150 hover:bg-white/10"
+          : "flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-2 py-1.5 text-xs text-[#c9c9d1] transition-colors duration-150 hover:border-[#7C3AED]/40 hover:bg-white/10",
         active && "ring-1 ring-[#7C3AED]/50",
         muted ? "text-[#8b8b93]" : "text-[#c9c9d1]"
       )}
     >
       {icon}
-      {children}
+      {!iconOnly ? children : null}
     </button>
   );
 }
@@ -376,7 +383,7 @@ function ModelMenu({
         />
       </div>
 
-      <div className="fx-scroll max-h-80 overflow-y-auto pr-1">
+      <div className="fx-scroll max-h-[300px] overflow-y-auto pr-1">
         {filteredGroups.length === 0 ? (
           <p className="py-8 text-center text-xs text-[#777777]">Nenhum modelo encontrado.</p>
         ) : (
@@ -514,7 +521,7 @@ function VoiceSelector({
       )}
     >
       {(close) => (
-        <div className="flex max-h-[360px] w-full flex-col p-1.5">
+        <div className="flex max-h-[300px] w-full flex-col p-1.5">
           {/* Busca */}
           <div className="mb-2 flex items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#000000] px-2.5">
             <Search className="h-3.5 w-3.5 shrink-0 text-[#666666]" />
@@ -1253,21 +1260,31 @@ export function GenerationDock() {
 
   return (
     <section className="fixed bottom-4 left-1/2 z-30 mx-auto w-full max-w-[1100px] min-w-0 -translate-x-1/2 rounded-2xl border border-[#242428] bg-[#141416] px-4 py-4 shadow-[0_-8px_40px_rgba(0,0,0,0.4)] backdrop-blur-sm">
-      {/* Painel Assist — duas colunas */}
+      {/* Painel Assist (contido, abre para cima) */}
       {activeTab !== "audio" && assistOpen && (
-        <div className="border-b border-[#2A2A2A]">
-          <div className="grid grid-cols-[210px_1fr]">
-            <div className="fx-scroll max-h-[300px] overflow-y-auto border-r border-[#2A2A2A] p-3">
-              <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
-                Categories
+        <div className="absolute bottom-full right-4 z-50 mb-2 w-[320px] rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] shadow-2xl">
+          <div className="max-h-[45vh] overflow-y-auto p-3 fx-scroll">
+            <div className="mb-2 flex items-center justify-between px-1">
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
+                {activeAssistCategory.label} · Click to add
               </p>
+              <button
+                type="button"
+                onClick={() => setAssistOpen(false)}
+                className="text-[#666666] hover:text-[#F5F5F5]"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            <div className="mb-3 flex flex-wrap gap-1">
               {ASSIST_CATEGORIES.map((category) => (
                 <button
                   key={category.id}
                   type="button"
                   onClick={() => setAssistCategory(category.id)}
                   className={cn(
-                    "block w-full rounded-lg px-2.5 py-1.5 text-left text-sm",
+                    "rounded-lg px-2 py-1 text-[10px]",
                     category.id === assistCategory
                       ? "bg-[#2A2A2A] text-[#F5F5F5]"
                       : "text-[#888888] hover:bg-[#1F1F1F] hover:text-[#F5F5F5]"
@@ -1277,31 +1294,18 @@ export function GenerationDock() {
                 </button>
               ))}
             </div>
-            <div className="fx-scroll max-h-[300px] overflow-y-auto p-3">
-              <div className="mb-2 flex items-center justify-between px-1">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
-                  {activeAssistCategory.label} · Click to add
-                </p>
+
+            <div className="flex flex-wrap gap-1.5">
+              {activeAssistCategory.options.map((option) => (
                 <button
+                  key={option}
                   type="button"
-                  onClick={() => setAssistOpen(false)}
-                  className="text-[#666666] hover:text-[#F5F5F5]"
+                  onClick={() => appendToPrompt(option)}
+                  className="rounded-lg border border-[#2A2A2A] bg-[#141416] px-2 py-1.5 text-xs text-[#F5F5F5] hover:border-[#7C3AED]"
                 >
-                  <X className="h-3.5 w-3.5" />
+                  {option}
                 </button>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {activeAssistCategory.options.map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => appendToPrompt(option)}
-                    className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-1.5 text-xs text-[#F5F5F5] hover:border-[#7C3AED]"
-                  >
-                    {option}
-                  </button>
-                ))}
-              </div>
+              ))}
             </div>
           </div>
         </div>
@@ -2048,8 +2052,8 @@ export function GenerationDock() {
         />
 
         {/* Toolbar */}
-        <div className={cn("flex min-w-0 items-center gap-2", collapsed && "hidden")}>
-          <div className="fx-scroll flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-0.5">
+        <div className={cn("flex min-w-0 items-center gap-2 xl:flex-nowrap", collapsed && "hidden")}>
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 xl:flex-nowrap">
             {/* Modelo — menu hierárquico */}
             <Popover
               panelClassName="overflow-visible"
@@ -2200,7 +2204,7 @@ export function GenerationDock() {
                   step={1}
                   value={safeDuration}
                   onChange={(event) => setDuration(Number(event.target.value))}
-                  className="h-1.5 w-24 accent-[#7C3AED] [&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-[#2A2A2A]"
+                  className="h-1.5 w-20 accent-[#7C3AED] [&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-[#2A2A2A]"
                 />
                 <span className="text-xs text-[#F5F5F5]">{safeDuration}s</span>
               </div>
@@ -2345,20 +2349,23 @@ export function GenerationDock() {
                 {/* @ — assets */}
                 <button
                   type="button"
+                  title="Assets"
                   onClick={() => {
                     setAtOpen((value) => !value);
                     setAssistOpen(false);
                   }}
                   className={cn(
-                    "h-9 w-9 rounded-lg border border-[#2A2A2A] bg-white/5 text-[#c9c9d1] transition-colors duration-150 hover:bg-white/10",
+                    "flex h-8 w-8 items-center justify-center rounded-lg border border-[#2A2A2A] bg-white/5 text-[#c9c9d1] transition-colors duration-150 hover:bg-white/10",
                     atOpen && "ring-1 ring-[#7C3AED]/50"
                   )}
                 >
-                  <AtSign className="mx-auto h-4 w-4" />
+                  <AtSign className="h-3.5 w-3.5" />
                 </button>
 
                 {/* Reference */}
                 <ControlButton
+                  title="Reference"
+                  iconOnly
                   active={
                     activeTab === "video"
                       ? referenceTab === "omni"
@@ -2373,39 +2380,36 @@ export function GenerationDock() {
                       setRefSectionOpen((value) => !value);
                     }
                   }}
-                  icon={<Upload className="h-4 w-4 text-[#888888]" />}
+                  icon={<Upload className="h-3.5 w-3.5 text-[#888888]" />}
                   muted
-                >
-                  Reference
-                </ControlButton>
+                />
 
                 {/* Assist */}
                 <ControlButton
+                  title="Assist"
+                  iconOnly
                   active={assistOpen}
                   onClick={() => {
                     setAssistOpen((value) => !value);
                     setAtOpen(false);
                   }}
-                  icon={<SlidersHorizontal className="h-4 w-4 text-[#888888]" />}
-                >
-                  Assist
-                  <ChevronUp className="h-3 w-3 text-[#666666]" />
-                </ControlButton>
+                  icon={<SlidersHorizontal className="h-3.5 w-3.5 text-[#888888]" />}
+                />
 
                 {/* Wise enhance */}
                 <ControlButton
+                  title="Wise enhance"
+                  iconOnly
                   icon={
                     enhancing ? (
-                      <Loader2 className="h-4 w-4 animate-spin text-[#8B5CF6]" />
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-[#8B5CF6]" />
                     ) : (
-                      <Sparkles className="h-4 w-4 text-[#888888]" />
+                      <Sparkles className="h-3.5 w-3.5 text-[#888888]" />
                     )
                   }
                   muted={!enhancing}
                   onClick={() => void handleWiseEnhance()}
-                >
-                  Wise enhance
-                </ControlButton>
+                />
               </>
             )}
           </div>
