@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import Image from "next/image";
-import { Download, Heart, Loader2, Play, Sparkles, X } from "lucide-react";
+import { Download, Heart, ImageIcon, Loader2, Music, Play, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useStudioStore } from "@/stores/use-studio-store";
@@ -30,12 +30,25 @@ const POLL_MS = 3000;
  * Áudio usa altura fixa; vídeo/imagem usam aspect_ratio do params ou padrão.
  */
 function aspectStyle(gen: Generation): React.CSSProperties {
-  if (gen.type === "audio") return { height: "80px" };
+  if (gen.type === "audio") return { height: "110px" };
   const ar = gen.params?.aspect_ratio;
   if (!ar) return { aspectRatio: gen.type === "video" ? "16/9" : "1/1" };
   const [w, h] = ar.split(":").map(Number);
   if (!w || !h) return { aspectRatio: "1/1" };
   return { aspectRatio: `${w}/${h}` };
+}
+
+function generationTypeLabel(type: Generation["type"]): string {
+  if (type === "video") return "Vídeo";
+  if (type === "audio") return "Áudio";
+  return "Imagem";
+}
+
+function durationLabel(gen: Generation): string | null {
+  const raw = (gen.params as { duration?: unknown } | undefined)?.duration;
+  if (typeof raw === "number" && Number.isFinite(raw)) return `${raw}s`;
+  if (typeof raw === "string" && raw.trim()) return raw;
+  return null;
 }
 
 export function StudioFeed() {
@@ -176,8 +189,12 @@ export function StudioFeed() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center pt-[76px]">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="grid grid-cols-2 gap-1.5 px-1 pb-48 pt-[76px] sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+        {Array.from({ length: 12 }).map((_, idx) => (
+          <div key={idx} className="relative aspect-square overflow-hidden rounded-2xl bg-[#141414] ring-1 ring-white/5">
+            <div className="premium-shimmer absolute inset-0 opacity-70" />
+          </div>
+        ))}
       </div>
     );
   }
@@ -275,6 +292,8 @@ function GenerationCard({
   const modelText = gen.model_label || gen.model_slug || "modelo";
   const aspect = gen.params?.aspect_ratio || (gen.type === "video" ? "16:9" : "1:1");
   const style = aspectStyle(gen);
+  const typeLabel = generationTypeLabel(gen.type);
+  const duration = durationLabel(gen);
 
   if (isPending) {
     return <PendingCard type={gen.type} modelText={modelText} aspect={aspect} style={style} />;
@@ -292,8 +311,8 @@ function GenerationCard({
   return (
     <article
       onClick={onOpen}
-      style={gen.type === "audio" ? undefined : style}
-      className="group relative cursor-pointer overflow-hidden rounded-lg"
+      style={style}
+      className="group animate-premium-fade-in relative cursor-pointer overflow-hidden rounded-2xl bg-[#111111] ring-1 ring-white/5"
     >
       {gen.type === "image" ? (
         <Image
@@ -307,23 +326,45 @@ function GenerationCard({
       ) : gen.type === "video" ? (
         <VideoTile src={gen.result_url!} />
       ) : (
-        <audio
-          src={gen.result_url!}
-          controls
-          onClick={(event) => event.stopPropagation()}
-          className="w-full rounded-lg bg-[#141414] p-3"
-        />
+        <div className="relative flex h-full w-full items-center gap-3 rounded-2xl bg-[#141414] p-4">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#7C3AED]/15 text-[#A78BFA]">
+            <Music className="h-4 w-4" />
+          </div>
+          <div className="flex-1">
+            <div className="mb-2 h-1.5 w-full overflow-hidden rounded-full bg-[#2A2A2A]">
+              <div className="premium-progress-indeterminate h-full w-2/5 rounded-full bg-gradient-to-r from-[#7C3AED] to-[#A78BFA]" />
+            </div>
+            <audio
+              src={gen.result_url!}
+              controls
+              onClick={(event) => event.stopPropagation()}
+              className="w-full"
+            />
+          </div>
+        </div>
       )}
 
       {(gen.type === "image" || gen.type === "video") && (
         <>
-          <div className="absolute inset-0 flex items-center justify-center transition group-hover:bg-black/40">
-            <span className="flex h-[52px] w-[52px] items-center justify-center rounded-full border border-white/20 bg-black/40 text-white backdrop-blur">
+          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-t from-black/65 via-transparent to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+            <span className="flex h-[52px] w-[52px] items-center justify-center rounded-full border border-white/20 bg-black/45 text-white backdrop-blur">
               <Play className="ml-0.5 h-4 w-4" fill="currentColor" />
             </span>
           </div>
 
-          <div className="absolute right-2 top-2 flex gap-1.5 opacity-0 transition group-hover:opacity-100">
+          <div className="absolute left-2 top-2 flex gap-1.5">
+            <span className="inline-flex items-center gap-1 rounded-md bg-black/65 px-2 py-1 text-[10px] font-medium text-[#F5F5F5] backdrop-blur">
+              {gen.type === "image" ? <ImageIcon className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+              {typeLabel}
+            </span>
+            {duration ? (
+              <span className="inline-flex items-center rounded-md bg-black/65 px-2 py-1 text-[10px] font-medium text-[#E5E5E5] backdrop-blur">
+                {duration}
+              </span>
+            ) : null}
+          </div>
+
+          <div className="absolute right-2 top-2 flex gap-1.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
             <ActionIcon
               onClick={(event) => {
                 event.stopPropagation();
@@ -348,7 +389,7 @@ function GenerationCard({
             </ActionIcon>
           </div>
 
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-2.5 opacity-0 transition group-hover:opacity-100">
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
             <button
               type="button"
               onClick={(event) => {
@@ -462,35 +503,27 @@ function PendingCard({
   aspect: string;
   style: React.CSSProperties;
 }) {
-  const [progress, setProgress] = useState(6);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setProgress((current) => {
-        if (current >= 95) return 95;
-        return Math.min(95, current + (current < 60 ? 4 : 2));
-      });
-    }, 550);
-
-    return () => clearInterval(timer);
-  }, []);
-
   const label = type === "video" ? "Gerando vídeo..." : type === "audio" ? "Gerando áudio..." : "Gerando imagem...";
 
   return (
-    <article style={style} className="relative overflow-hidden rounded-lg">
-      <div className="relative flex h-full flex-col items-center justify-center bg-[#141414]">
-        <Loader2 className="h-6 w-6 animate-spin text-[#F5F5F5]" />
-        <p className="mt-2 text-xs text-[#888888]">{label}</p>
+    <article style={style} className="relative overflow-hidden rounded-2xl bg-[#141414] ring-1 ring-white/5">
+      <div className="premium-shimmer pointer-events-none absolute inset-0 opacity-60" />
+      <div className="relative flex h-full flex-col items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-[#A78BFA]" />
+        <p className="mt-2 text-xs text-[#CFCFCF]">{label}</p>
 
         <div className="absolute inset-x-2 bottom-8 h-1 overflow-hidden rounded-full bg-[#2A2A2A]">
-          <div className="h-full rounded-full bg-[#7C3AED] transition-[width] duration-500 ease-linear" style={{ width: `${progress}%` }} />
+          <div className="premium-progress-indeterminate h-full w-1/2 rounded-full bg-gradient-to-r from-[#7C3AED] to-[#A78BFA]" />
+        </div>
+
+        <div className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-black/55 px-2 py-1 text-[10px] text-[#F5F5F5] backdrop-blur">
+          {type === "image" ? <ImageIcon className="h-3 w-3" /> : type === "video" ? <Play className="h-3 w-3" /> : <Music className="h-3 w-3" />}
+          {generationTypeLabel(type)}
         </div>
 
         <p className="absolute bottom-3 left-2 text-[10px] text-[#888888]">
           {modelText} · {aspect}
         </p>
-        <p className="absolute bottom-3 right-2 text-[10px] text-[#888888]">{progress}%</p>
       </div>
     </article>
   );
