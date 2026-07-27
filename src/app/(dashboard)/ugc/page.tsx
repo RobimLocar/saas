@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Package, Pencil, Plus, Trash2, ChevronRight, Sparkles, Loader2, Upload } from "lucide-react";
+import { Package, Pencil, Plus, Trash2, ChevronRight, Sparkles, Loader2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -109,6 +109,9 @@ function ImageDropzone({
   disabled,
   onFileSelect,
   cta,
+  previewUrl,
+  uploading,
+  onRemovePreview,
 }: {
   id: string;
   title: string;
@@ -116,16 +119,19 @@ function ImageDropzone({
   disabled?: boolean;
   onFileSelect: (file: File) => void;
   cta?: string;
+  previewUrl?: string;
+  uploading?: boolean;
+  onRemovePreview?: () => void;
 }) {
   const [dragging, setDragging] = useState(false);
 
   return (
     <label
       htmlFor={id}
-      className={`block rounded-lg border-2 border-dashed p-4 text-center transition ${
+      className={`block rounded-2xl border-2 border-dashed bg-[#111111] p-6 text-center transition-all duration-200 ${
         dragging
-          ? "border-[#7C3AED] bg-[#7C3AED]/10"
-          : "border-[#2A2A2A] bg-[#1A1A1A] hover:border-[#7C3AED]/60"
+          ? "border-[#7C3AED] bg-[#7C3AED]/5"
+          : "border-[#2A2A2A] hover:border-[#7C3AED]/60"
       } ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
       onDragOver={(event) => {
         event.preventDefault();
@@ -152,12 +158,41 @@ function ImageDropzone({
           event.currentTarget.value = "";
         }}
       />
-      <div className="flex flex-col items-center gap-2">
-        <Upload className="h-5 w-5 text-[#A78BFA]" />
-        <p className="text-sm font-medium text-[#E5E5E5]">{title}</p>
-        <p className="text-xs text-[#888888]">{subtitle || "Arraste e solte ou clique para selecionar"}</p>
-        {cta && <span className="text-xs text-[#A78BFA]">{cta}</span>}
-      </div>
+
+      {previewUrl ? (
+        <div className="relative mx-auto max-w-xs">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={previewUrl} alt={title} className="mx-auto max-h-48 w-full rounded-xl object-cover" />
+          {onRemovePreview ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onRemovePreview();
+              }}
+              className="absolute right-2 top-2 rounded-full border border-[#2A2A2A] bg-black/70 p-1 text-white"
+              aria-label="Remover preview"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+        </div>
+      ) : uploading ? (
+        <div className="flex flex-col items-center gap-2">
+          <Loader2 className="h-6 w-6 animate-spin text-[#A78BFA]" />
+          <p className="text-sm text-[#888888]">Enviando…</p>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center gap-2">
+          <Upload className={`h-8 w-8 ${dragging ? "text-[#7C3AED]" : "text-[#888888]"}`} />
+          <p className="text-sm font-medium text-[#E5E5E5]">{title}</p>
+          <p className="text-xs text-[#888888]">
+            {subtitle || "Arraste e solte ou clique para selecionar"}
+          </p>
+          {cta ? <span className="text-xs text-[#A78BFA]">{cta}</span> : null}
+        </div>
+      )}
     </label>
   );
 }
@@ -1932,21 +1967,12 @@ export default function UGCPage() {
 
                   <div className="mt-4 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
                     <p className="mb-2 text-xs font-medium text-[#A3A3A3]">🔒 Locked Avatar</p>
-                    {selectedProject.avatar_image_url && (
-                      <div className="mb-3 overflow-hidden rounded-lg border border-[#2A2A2A] bg-[#111111]">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={selectedProject.avatar_image_url}
-                          alt="Avatar"
-                          className="h-28 w-full object-cover"
-                        />
-                      </div>
-                    )}
-
                     <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
                       <ImageDropzone
                         id="ugc-avatar-portrait-drop"
                         disabled={avatarUploading}
+                        uploading={avatarUploading}
+                        previewUrl={selectedProject.avatar_image_url || undefined}
                         title={avatarUploading ? "Enviando retrato..." : "Retrato do avatar"}
                         subtitle="Arraste e solte ou clique para selecionar"
                         cta={selectedProject.avatar_image_url ? "Trocar retrato" : "Enviar retrato"}
@@ -2082,19 +2108,11 @@ export default function UGCPage() {
 
                   <div className="space-y-2">
                     <label className="text-xs text-[#A3A3A3]">Product Image</label>
-                    {brollProductImageUrl && (
-                      <div className="overflow-hidden rounded-lg border border-[#2A2A2A] bg-[#111111]">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={brollProductImageUrl}
-                          alt="Produto para B-Roll"
-                          className="h-28 w-full object-cover"
-                        />
-                      </div>
-                    )}
                     <ImageDropzone
                       id="ugc-broll-product-drop"
                       disabled={brollProductUploading}
+                      uploading={brollProductUploading}
+                      previewUrl={brollProductImageUrl || undefined}
                       title={brollProductUploading ? "Enviando imagem..." : "Imagem do produto"}
                       subtitle="Arraste e solte ou clique para selecionar"
                       cta={brollProductImageUrl ? "Trocar imagem" : "Enviar imagem"}
@@ -2543,20 +2561,15 @@ export default function UGCPage() {
                   Product Image{" "}
                   <span className="text-[#777777]">(opcional — composição em breve)</span>
                 </label>
-                {avatarForm.productImageUrl && (
-                  <div className="mb-2 overflow-hidden rounded-lg border border-[#2A2A2A] bg-[#111111]">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={avatarForm.productImageUrl}
-                      alt="Produto"
-                      className="h-24 w-full object-cover"
-                    />
-                  </div>
-                )}
                 <div className="space-y-2">
                   <ImageDropzone
                     id="ugc-avatar-product-image-drop"
                     disabled={avatarForm.productImageUploading}
+                    uploading={avatarForm.productImageUploading}
+                    previewUrl={avatarForm.productImageUrl || undefined}
+                    onRemovePreview={() =>
+                      setAvatarForm((prev) => ({ ...prev, productImageUrl: "" }))
+                    }
                     title={
                       avatarForm.productImageUploading
                         ? "Enviando imagem do produto..."
@@ -2568,15 +2581,6 @@ export default function UGCPage() {
                       void handleProductImageUpload(file);
                     }}
                   />
-                  {avatarForm.productImageUrl && (
-                    <button
-                      type="button"
-                      className="text-xs text-[#FCA5A5] hover:underline"
-                      onClick={() => setAvatarForm((prev) => ({ ...prev, productImageUrl: "" }))}
-                    >
-                      Remover imagem
-                    </button>
-                  )}
                 </div>
               </div>
             </div>
@@ -2718,19 +2722,12 @@ export default function UGCPage() {
             <div className="mt-4 space-y-3">
               <div>
                 <label className="mb-1 block text-xs text-[#A3A3A3]">Imagem do produto *</label>
-                {form.imageUrl && (
-                  <div className="mb-2 overflow-hidden rounded-lg border border-[#2A2A2A] bg-[#1A1A1A]">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={form.imageUrl}
-                      alt="Preview do produto"
-                      className="h-32 w-full object-cover"
-                    />
-                  </div>
-                )}
                 <ImageDropzone
                   id="ugc-product-drop"
                   disabled={uploading || saving}
+                  uploading={uploading}
+                  previewUrl={form.imageUrl || undefined}
+                  onRemovePreview={() => setForm((prev) => ({ ...prev, imageUrl: "" }))}
                   title={uploading ? "Enviando imagem..." : "Imagem do produto"}
                   subtitle="Arraste e solte ou clique para selecionar"
                   cta={form.imageUrl ? "Trocar imagem" : "Enviar imagem"}

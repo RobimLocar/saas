@@ -208,19 +208,21 @@ function Dropzone({
   disabled,
   onFiles,
   label,
+  uploading,
 }: {
   disabled?: boolean;
   onFiles: (files: File[]) => void;
   label: string;
+  uploading?: boolean;
 }) {
   const [dragging, setDragging] = useState(false);
 
   return (
     <label
-      className={`block rounded-lg border-2 border-dashed p-4 text-center transition ${
+      className={`block rounded-2xl border-2 border-dashed bg-[#111111] p-8 text-center transition-all duration-200 ${
         dragging
-          ? "border-[#7C3AED] bg-[#7C3AED]/10"
-          : "border-[#2A2A2A] bg-[#1A1A1A] hover:border-[#7C3AED]/60"
+          ? "border-[#7C3AED] bg-[#7C3AED]/5"
+          : "border-[#2A2A2A] hover:border-[#7C3AED]/60"
       } ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
       onDragOver={(e) => {
         e.preventDefault();
@@ -247,11 +249,18 @@ function Dropzone({
           e.currentTarget.value = "";
         }}
       />
-      <div className="flex flex-col items-center gap-2">
-        <Upload className="h-5 w-5 text-[#A78BFA]" />
-        <p className="text-sm font-medium text-[#F5F5F5]">{label}</p>
-        <p className="text-xs text-[#888888]">Arraste e solte ou clique para selecionar</p>
-      </div>
+      {uploading ? (
+        <div className="flex flex-col items-center gap-2">
+          <Sparkles className="h-6 w-6 animate-spin text-[#A78BFA]" />
+          <p className="text-sm text-[#888888]">Enviando…</p>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center gap-2">
+          <Upload className={`h-8 w-8 ${dragging ? "text-[#7C3AED]" : "text-[#888888]"}`} />
+          <p className="text-sm font-medium text-[#F5F5F5]">{label}</p>
+          <p className="text-xs text-[#888888]">Arraste e solte ou clique para selecionar</p>
+        </div>
+      )}
     </label>
   );
 }
@@ -1415,6 +1424,7 @@ export default function InfluencerPage() {
                   </label>
                   <Dropzone
                     disabled={uploadingRefs}
+                    uploading={uploadingRefs}
                     label={uploadingRefs ? "Enviando referências..." : "Referências de estilo/rosto"}
                     onFiles={(files) => {
                       void uploadReferences(files);
