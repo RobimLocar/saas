@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Sparkles, Upload, Users } from "lucide-react";
+import { Sparkles, Upload, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { GenerationCard } from "@/components/ui/generation-card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -1289,14 +1290,16 @@ export default function InfluencerPage() {
             <p className="mt-1 text-sm text-[#888888]">Defina atributos e gere 4 candidatos de rosto.</p>
 
             {generating ? (
-              <div className="mt-6 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-8 text-center">
-                <Loader2 className="mx-auto h-6 w-6 animate-spin text-[#A78BFA]" />
-                <p className="mt-3 text-[#F5F5F5]">Gerando candidato {genProgress}/4...</p>
-                <div className="mx-auto mt-3 h-2 w-full max-w-sm overflow-hidden rounded-full bg-[#252525]">
-                  <div
-                    className="h-full bg-[#7C3AED] transition-all duration-500"
-                    style={{ width: `${(Math.max(0, Math.min(4, genProgress)) / 4) * 100}%` }}
-                  />
+              <div className="mt-6 space-y-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {Array.from({ length: 4 }).map((_, idx) => (
+                    <GenerationCard
+                      key={`candidate-processing-${idx}`}
+                      status="processing"
+                      label={`Candidato ${Math.max(genProgress, idx + 1)}/4`}
+                      estimatedTime="~1–3 min"
+                    />
+                  ))}
                 </div>
               </div>
             ) : variations.length > 0 ? (
@@ -1311,11 +1314,16 @@ export default function InfluencerPage() {
                         type="button"
                         onClick={() => setSelectedVariation(url)}
                         className={`overflow-hidden rounded-lg border transition ${
-                          active ? "border-[#7C3AED]" : "border-[#2A2A2A]"
+                          active ? "border-[#7C3AED] ring-2 ring-[#7C3AED]/30" : "border-[#2A2A2A]"
                         }`}
                       >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={url} alt="Variação" className="h-56 w-full object-cover" />
+                        <GenerationCard
+                          status="completed"
+                          label="Variação"
+                          result_url={url}
+                          mediaType="image"
+                          className="h-56 rounded-none border-0 ring-0"
+                        />
                       </button>
                     );
                   })}

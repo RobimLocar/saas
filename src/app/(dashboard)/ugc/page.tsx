@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { GenerationCard } from "@/components/ui/generation-card";
 import { BROLL_PRESETS } from "@/lib/ugc-broll-presets";
 
 type ViewMode = "list" | "project";
@@ -1997,12 +1998,6 @@ export default function UGCPage() {
                           <div key={key} className={`rounded-lg border p-3 ${color}`}>
                             <div className="mb-2 flex items-center justify-between">
                               <p className="text-sm font-semibold text-[#F5F5F5]">{label}</p>
-                              {isProcessing && (
-                                <div className="flex items-center gap-1 text-xs text-[#A78BFA]">
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                  Gerando...
-                                </div>
-                              )}
                               {isCompleted && !videoUrl && (
                                 <Badge className="bg-[#16A34A]/20 text-[#4ADE80]">Concluído</Badge>
                               )}
@@ -2010,11 +2005,12 @@ export default function UGCPage() {
 
                             {isCompleted && videoUrl ? (
                               <div className="space-y-2">
-                                <video
-                                  src={videoUrl}
-                                  controls
-                                  className="w-full rounded-lg"
-                                  style={{ maxHeight: "200px" }}
+                                <GenerationCard
+                                  status="completed"
+                                  label={label}
+                                  result_url={videoUrl}
+                                  mediaType="video"
+                                  className="max-h-[220px]"
                                 />
                                 <Button
                                   variant="outline"
@@ -2026,6 +2022,20 @@ export default function UGCPage() {
                                   Re-gerar
                                 </Button>
                               </div>
+                            ) : isProcessing ? (
+                              <GenerationCard
+                                status="processing"
+                                label={label}
+                                estimatedTime="~1–3 min"
+                              />
+                            ) : isFailed ? (
+                              <GenerationCard
+                                status="failed"
+                                label={label}
+                                onRetry={() => {
+                                  openAvatarSegmentModal(key, label, scriptText);
+                                }}
+                              />
                             ) : (
                               <>
                                 <p className="mb-1 line-clamp-2 text-xs text-[#888888]">
@@ -2035,19 +2045,12 @@ export default function UGCPage() {
                                   Formato: {parseFormat(seg?.format || "9:16")}
                                 </p>
                                 <Button
-                                  className="w-full bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
-                                  disabled={isProcessing}
+                                  className="w-full"
                                   onClick={() => {
                                     openAvatarSegmentModal(key, label, scriptText);
                                   }}
                                 >
-                                  {isProcessing ? (
-                                    <><Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />Gerando...</>
-                                  ) : isFailed ? (
-                                    <><Sparkles className="mr-1 h-3.5 w-3.5" />Tentar de novo</>
-                                  ) : (
-                                    <><Sparkles className="mr-1 h-3.5 w-3.5" />Generate</>
-                                  )}
+                                  <Sparkles className="mr-1 h-3.5 w-3.5" />Generate
                                 </Button>
                               </>
                             )}
@@ -2213,30 +2216,43 @@ export default function UGCPage() {
                           const processing = clip.status === "processing";
                           const completed = clip.status === "completed" && clip.result_url;
                           const failed = clip.status === "failed";
+                          const label = clip.label || brollPresetLabel(clip.preset);
+
                           return (
-                            <div key={clip.generation_id} className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
-                              <div className="mb-2 flex items-center justify-between">
-                                <p className="text-sm font-medium text-[#F5F5F5]">
-                                  {clip.label || brollPresetLabel(clip.preset)}
-                                </p>
-                                {processing && (
-                                  <span className="inline-flex items-center gap-1 text-xs text-[#A78BFA]">
-                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                    Gerando
-                                  </span>
-                                )}
-                              </div>
+                            <div key={clip.generation_id} className="space-y-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
+                              <p className="text-sm font-medium text-[#F5F5F5]">{label}</p>
 
                               {completed ? (
-                                <video src={clip.result_url} controls className="w-full rounded-lg" />
+                                <GenerationCard
+                                  status="completed"
+                                  label={label}
+                                  result_url={clip.result_url || undefined}
+                                  mediaType="video"
+                                  className="h-[180px]"
+                                />
+                              ) : failed ? (
+                                <GenerationCard
+                                  status="failed"
+                                  label={label}
+                                  onRetry={() => {
+                                    setActiveTab("broll");
+                                    setBrollSelectedPresets([clip.preset]);
+                                    setBrollDuration(
+                                      typeof clip.duration === "number" ? clip.duration : 8
+                                    );
+                                    setBrollAudio(Boolean(clip.audio));
+                                  }}
+                                />
                               ) : (
-                                <div className="rounded-lg border border-dashed border-[#2A2A2A] bg-[#111111] p-6 text-center text-xs text-[#777777]">
-                                  {failed ? "Falhou — tente novamente" : "Processando..."}
-                                </div>
+                                <GenerationCard
+                                  status="processing"
+                                  label={label}
+                                  estimatedTime="~1–3 min"
+                                />
                               )}
 
                               <Button
-                                className="mt-2 w-full bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
+                                className="mt-2 w-full"
                                 disabled={processing}
                                 onClick={() => {
                                   setActiveTab("broll");
