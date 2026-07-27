@@ -33,7 +33,6 @@ import {
   Upload,
   Video,
   Volume2,
-  VolumeX,
   X,
   Zap,
 } from "lucide-react";
@@ -217,7 +216,8 @@ function Popover({
           });
         }}
         className={cn(
-          "flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3 text-sm text-[#F5F5F5]",
+          "flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-2 text-sm text-[#d0d0d0] transition-colors duration-150 hover:border-[#7C3AED]/40 hover:bg-white/5",
+          open && "ring-1 ring-[#7C3AED]/50",
           triggerClassName
         )}
       >
@@ -303,11 +303,9 @@ function ControlButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex h-9 items-center gap-2 rounded-lg border px-3 text-sm",
-        active
-          ? "border-[#7C3AED] bg-[#7C3AED]/15 text-[#F5F5F5]"
-          : "border-[#2A2A2A] bg-[#1A1A1A]",
-        muted ? "text-[#888888]" : "text-[#F5F5F5]"
+        "flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-2 text-sm text-[#c9c9d1] transition-colors duration-150 hover:border-[#7C3AED]/40 hover:bg-white/10",
+        active && "ring-1 ring-[#7C3AED]/50",
+        muted ? "text-[#8b8b93]" : "text-[#c9c9d1]"
       )}
     >
       {icon}
@@ -1254,7 +1252,7 @@ export function GenerationDock() {
     (activeTab === "image" && refSectionOpen);
 
   return (
-    <section className="fixed bottom-4 left-1/2 z-30 w-[min(1180px,calc(100vw-32px))] -translate-x-1/2 rounded-2xl border border-[#2A2A2A] bg-[#141414]/95 shadow-2xl backdrop-blur">
+    <section className="fixed bottom-4 left-1/2 z-30 w-[min(1180px,calc(100vw-32px))] -translate-x-1/2 rounded-2xl border border-[#242428] bg-[#141416] p-4 shadow-[0_-8px_40px_rgba(0,0,0,0.4)] backdrop-blur-sm">
       {/* Painel Assist — duas colunas */}
       {activeTab !== "audio" && assistOpen && (
         <div className="border-b border-[#2A2A2A]">
@@ -1387,7 +1385,7 @@ export function GenerationDock() {
       )}
 
       {/* Tabs Image | Video | Audio */}
-      <div className="flex items-center gap-1 px-4 pt-3">
+      <div className="mt-1 flex items-center gap-1 rounded-xl bg-[#1A1A1A] p-1">
         {TABS.map(({ id, label, icon: Icon }) => {
           const active = activeTab === id;
           return (
@@ -1396,16 +1394,16 @@ export function GenerationDock() {
               type="button"
               onClick={() => setActiveTab(id)}
               className={cn(
-                "flex items-center gap-2 px-4 py-2 text-sm",
+                "flex items-center gap-2 rounded-lg px-4 py-2 text-sm transition-colors duration-150",
                 active
-                  ? "rounded-lg border-b-2 border-[#7C3AED] bg-[#1F1F1F] text-[#F5F5F5]"
-                  : "rounded-t-lg text-[#888888] hover:text-[#F5F5F5]"
+                  ? "bg-[#7C3AED]/15 text-white ring-1 ring-[#7C3AED]/50"
+                  : "text-[#8b8b93] hover:text-white"
               )}
             >
               <Icon
                 className={cn(
                   "h-4 w-4",
-                  active ? "text-[#8B5CF6]" : "text-[#888888]"
+                  active ? "text-[#8B5CF6]" : "text-[#8b8b93]"
                 )}
               />
               {label}
@@ -1414,10 +1412,10 @@ export function GenerationDock() {
         })}
       </div>
 
-      <div className="mx-4 h-px bg-[#2A2A2A]" />
+      <div className="my-2 h-px bg-[#242428]" />
 
       <form
-        className="px-5 py-4"
+        className="px-1 pb-1 pt-2"
         onSubmit={(event) => {
           event.preventDefault();
           void handleGenerate();
@@ -1436,10 +1434,10 @@ export function GenerationDock() {
             }}
             onInput={autoResize}
             placeholder={PLACEHOLDER[activeTab]}
-            className="min-h-[24px] flex-1 resize-none bg-transparent text-[15px] leading-6 text-[#F5F5F5] outline-none placeholder:text-[#666666]"
+            className="min-h-[24px] flex-1 resize-none rounded-xl border-none bg-transparent p-4 text-[15px] leading-6 text-[#F5F5F5] outline-none placeholder:text-[#666] focus:ring-1 focus:ring-[#7C3AED]/40"
           />
           <div className="flex shrink-0 items-center gap-2 pt-0.5">
-            <span className="text-[11px] text-[#666666]">
+            <span className="text-[11px] text-[#6a6a72]">
               {prompt.length}/8000
             </span>
             <button
@@ -1482,10 +1480,10 @@ export function GenerationDock() {
               type="button"
               onClick={() => setReferenceTab("start-end")}
               className={cn(
-                "h-10 rounded-lg text-sm",
+                "h-10 rounded-lg text-sm transition-colors duration-150",
                 referenceTab === "start-end"
-                  ? "bg-[#2A2A2A] font-medium text-[#F5F5F5]"
-                  : "text-[#888888] hover:text-[#F5F5F5]"
+                  ? "bg-[#7C3AED]/15 font-medium text-white ring-1 ring-[#7C3AED]/50"
+                  : "text-[#8b8b93] hover:text-white"
               )}
             >
               Start / End Frame
@@ -1494,10 +1492,10 @@ export function GenerationDock() {
               type="button"
               onClick={() => setReferenceTab("omni")}
               className={cn(
-                "h-10 rounded-lg text-sm",
+                "h-10 rounded-lg text-sm transition-colors duration-150",
                 referenceTab === "omni"
-                  ? "bg-[#2A2A2A] font-medium text-[#F5F5F5]"
-                  : "text-[#888888] hover:text-[#F5F5F5]"
+                  ? "bg-[#7C3AED]/15 font-medium text-white ring-1 ring-[#7C3AED]/50"
+                  : "text-[#8b8b93] hover:text-white"
               )}
             >
               Omni Reference
@@ -1511,7 +1509,7 @@ export function GenerationDock() {
             <button
               type="button"
               onClick={() => startInputRef.current?.click()}
-              className="flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3 text-xs text-[#F5F5F5]"
+              className="flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-white/5 px-3 py-2 text-xs text-[#c9c9d1] transition-colors duration-150 hover:bg-white/10"
             >
               {startImageUrl && (
                 <Image
@@ -1540,7 +1538,7 @@ export function GenerationDock() {
             <button
               type="button"
               onClick={() => endInputRef.current?.click()}
-              className="flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3 text-xs text-[#888888]"
+              className="flex h-9 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-white/5 px-3 py-2 text-xs text-[#c9c9d1] transition-colors duration-150 hover:bg-white/10"
             >
               {endImageUrl && (
                 <Image
@@ -1581,13 +1579,13 @@ export function GenerationDock() {
                 type="button"
                 onClick={() => setMultiShotEnabled((v) => !v)}
                 className={cn(
-                  "relative h-6 w-11 shrink-0 rounded-full transition-colors",
+                  "relative h-5 w-10 shrink-0 rounded-full transition-colors duration-200",
                   multiShotEnabled ? "bg-[#7C3AED]" : "bg-[#2A2A2A]"
                 )}
               >
                 <span
                   className={cn(
-                    "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform",
+                    "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-200",
                     multiShotEnabled ? "translate-x-5" : "translate-x-0.5"
                   )}
                 />
@@ -1653,7 +1651,7 @@ export function GenerationDock() {
                           onClick={() =>
                             setAutoShotCount((v) => Math.max(1, v - 1))
                           }
-                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#2A2A2A] text-[#888888] hover:text-[#F5F5F5]"
+                          className="flex h-7 w-7 items-center justify-center rounded-full border border-[#2A2A2A] bg-[#1A1A1A] text-[#d0d0d0] transition-colors hover:bg-white/5"
                         >
                           −
                         </button>
@@ -1665,14 +1663,14 @@ export function GenerationDock() {
                           onChange={(e) =>
                             setAutoShotCount(Number(e.target.value))
                           }
-                          className="flex-1 accent-[#7C3AED]"
+                          className="flex-1 accent-[#7C3AED] [&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-[#2A2A2A]"
                         />
                         <button
                           type="button"
                           onClick={() =>
                             setAutoShotCount((v) => Math.min(6, v + 1))
                           }
-                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#2A2A2A] text-[#888888] hover:text-[#F5F5F5]"
+                          className="flex h-7 w-7 items-center justify-center rounded-full border border-[#2A2A2A] bg-[#1A1A1A] text-[#d0d0d0] transition-colors hover:bg-white/5"
                         >
                           +
                         </button>
@@ -1691,7 +1689,7 @@ export function GenerationDock() {
                           onClick={() =>
                             setAutoShotDuration((v) => Math.max(3, v - 1))
                           }
-                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#2A2A2A] text-[#888888] hover:text-[#F5F5F5]"
+                          className="flex h-7 w-7 items-center justify-center rounded-full border border-[#2A2A2A] bg-[#1A1A1A] text-[#d0d0d0] transition-colors hover:bg-white/5"
                         >
                           −
                         </button>
@@ -1703,14 +1701,14 @@ export function GenerationDock() {
                           onChange={(e) =>
                             setAutoShotDuration(Number(e.target.value))
                           }
-                          className="flex-1 accent-[#7C3AED]"
+                          className="flex-1 accent-[#7C3AED] [&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-[#2A2A2A]"
                         />
                         <button
                           type="button"
                           onClick={() =>
                             setAutoShotDuration((v) => Math.min(15, v + 1))
                           }
-                          className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#2A2A2A] text-[#888888] hover:text-[#F5F5F5]"
+                          className="flex h-7 w-7 items-center justify-center rounded-full border border-[#2A2A2A] bg-[#1A1A1A] text-[#d0d0d0] transition-colors hover:bg-white/5"
                         >
                           +
                         </button>
@@ -1741,7 +1739,7 @@ export function GenerationDock() {
                                 )
                               )
                             }
-                            className="flex h-7 w-7 items-center justify-center rounded border border-[#2A2A2A] text-xs text-[#888888] hover:text-[#F5F5F5]"
+                            className="flex h-7 w-7 items-center justify-center rounded-full border border-[#2A2A2A] bg-[#1A1A1A] text-xs text-[#d0d0d0] transition-colors hover:bg-white/5"
                           >
                             −
                           </button>
@@ -1759,7 +1757,7 @@ export function GenerationDock() {
                                 )
                               )
                             }
-                            className="flex h-7 w-7 items-center justify-center rounded border border-[#2A2A2A] text-xs text-[#888888] hover:text-[#F5F5F5]"
+                            className="flex h-7 w-7 items-center justify-center rounded-full border border-[#2A2A2A] bg-[#1A1A1A] text-xs text-[#d0d0d0] transition-colors hover:bg-white/5"
                           >
                             +
                           </button>
@@ -2093,7 +2091,7 @@ export function GenerationDock() {
                     step={0.01}
                     value={stability}
                     onChange={(e) => setStability(Number(e.target.value))}
-                    className="h-1 w-16 accent-[#7C3AED]"
+                    className="h-1.5 w-16 accent-[#7C3AED] [&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-[#2A2A2A]"
                   />
                   <span className="w-8 text-xs text-[#F5F5F5]">
                     {Math.round(stability * 100)}%
@@ -2109,7 +2107,7 @@ export function GenerationDock() {
                     step={0.01}
                     value={similarity}
                     onChange={(e) => setSimilarity(Number(e.target.value))}
-                    className="h-1 w-16 accent-[#7C3AED]"
+                    className="h-1.5 w-16 accent-[#7C3AED] [&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-[#2A2A2A]"
                   />
                   <span className="w-8 text-xs text-[#F5F5F5]">
                     {Math.round(similarity * 100)}%
@@ -2125,7 +2123,7 @@ export function GenerationDock() {
                     step={0.05}
                     value={speed}
                     onChange={(e) => setSpeed(Number(e.target.value))}
-                    className="h-1 w-16 accent-[#7C3AED]"
+                    className="h-1.5 w-16 accent-[#7C3AED] [&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-[#2A2A2A]"
                   />
                   <span className="w-10 text-xs text-[#F5F5F5]">
                     {speed.toFixed(2)}x
@@ -2202,7 +2200,7 @@ export function GenerationDock() {
                   step={1}
                   value={safeDuration}
                   onChange={(event) => setDuration(Number(event.target.value))}
-                  className="h-1 w-16 accent-[#7C3AED]"
+                  className="h-1.5 w-16 accent-[#7C3AED] [&::-webkit-slider-runnable-track]:h-1.5 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-[#2A2A2A]"
                 />
                 <span className="text-xs text-[#F5F5F5]">{safeDuration}s</span>
               </div>
@@ -2302,18 +2300,21 @@ export function GenerationDock() {
                     ? "Áudio ativado — clique para desativar"
                     : "Áudio desativado — clique para ativar"
                 }
-                className={cn(
-                  "h-9 w-9 rounded-lg border",
-                  audioEnabled
-                    ? "border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
-                    : "border-[#2A2A2A] bg-[#1A1A1A] text-[#666666]"
-                )}
+                className="relative h-5 w-10 rounded-full transition-colors duration-200"
+                aria-pressed={audioEnabled}
               >
-                {audioEnabled ? (
-                  <Volume2 className="mx-auto h-4 w-4" />
-                ) : (
-                  <VolumeX className="mx-auto h-4 w-4" />
-                )}
+                <span
+                  className={cn(
+                    "absolute inset-0 rounded-full",
+                    audioEnabled ? "bg-[#7C3AED]" : "bg-[#2A2A2A]"
+                  )}
+                />
+                <span
+                  className={cn(
+                    "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-200",
+                    audioEnabled ? "translate-x-5" : "translate-x-0.5"
+                  )}
+                />
               </button>
             )}
 
@@ -2323,15 +2324,15 @@ export function GenerationDock() {
                 <button
                   type="button"
                   onClick={() => setBatchCount(batchCount - 1)}
-                  className="px-1 text-[#888888]"
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-[#1A1A1A] text-[#d0d0d0] transition-colors hover:bg-white/5"
                 >
                   —
                 </button>
-                <span className="min-w-4 text-center">{batchCount}</span>
+                <span className="min-w-4 text-center text-sm font-medium text-[#F5F5F5]">{batchCount}</span>
                 <button
                   type="button"
                   onClick={() => setBatchCount(batchCount + 1)}
-                  className="px-1 text-[#888888]"
+                  className="flex h-7 w-7 items-center justify-center rounded-full bg-[#1A1A1A] text-[#d0d0d0] transition-colors hover:bg-white/5"
                 >
                   +
                 </button>
@@ -2349,10 +2350,8 @@ export function GenerationDock() {
                     setAssistOpen(false);
                   }}
                   className={cn(
-                    "h-9 w-9 rounded-lg border",
-                    atOpen
-                      ? "border-[#7C3AED] bg-[#7C3AED]/15 text-[#F5F5F5]"
-                      : "border-[#2A2A2A] bg-[#1A1A1A] text-[#888888]"
+                    "h-9 w-9 rounded-lg border border-[#2A2A2A] bg-white/5 text-[#c9c9d1] transition-colors duration-150 hover:bg-white/10",
+                    atOpen && "ring-1 ring-[#7C3AED]/50"
                   )}
                 >
                   <AtSign className="mx-auto h-4 w-4" />
@@ -2417,10 +2416,8 @@ export function GenerationDock() {
               type="submit"
               disabled={loading || insufficient}
               className={cn(
-                "flex h-11 items-center gap-2 rounded-xl px-6 text-sm font-semibold",
-                insufficient
-                  ? "cursor-not-allowed bg-[#D4D4D4] text-[#141414]"
-                  : "bg-gradient-to-br from-[#7C3AED] to-[#6D28D9] text-white shadow-lg shadow-[#7C3AED]/30"
+                "flex h-11 items-center gap-2 rounded-xl bg-gradient-to-r from-[#7C3AED] to-[#6D28D9] px-5 py-2.5 text-sm font-medium text-white transition duration-200 hover:brightness-110 hover:shadow-[0_8px_30px_rgba(124,58,237,0.4)]",
+                (loading || insufficient) && "cursor-not-allowed opacity-50 hover:brightness-100 hover:shadow-none"
               )}
             >
               {loading ? (
@@ -2429,7 +2426,7 @@ export function GenerationDock() {
                 <>
                   Generate
                   <Zap className="h-4 w-4" fill="currentColor" />
-                  <span>{totalCost}</span>
+                  <span className="rounded-md bg-white/15 px-2 py-0.5 text-xs font-semibold">⚡ {totalCost}</span>
                 </>
               )}
             </button>
