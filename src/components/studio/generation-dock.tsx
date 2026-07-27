@@ -21,6 +21,7 @@ import {
   Gauge,
   ImageIcon,
   Loader2,
+  Lock,
   Monitor,
   Music,
   Play,
@@ -331,7 +332,7 @@ interface FamilyGroup {
   models: ApiModel[];
 }
 
-/** Menu hierárquico de modelos: famílias à esquerda, variantes em flyout à direita. */
+/** Menu premium de modelos com busca, badges e estado de bloqueio. */
 function ModelMenu({
   groups,
   selectedId,
@@ -341,109 +342,108 @@ function ModelMenu({
   selectedId: string;
   onSelect: (model: ApiModel) => void;
 }) {
-  const [openFamily, setOpenFamily] = useState<string | null>(() => {
-    const g = groups.find((item) =>
-      item.models.some((m) => m.id === selectedId)
-    );
-    return g?.family ?? groups[0]?.family ?? null;
-  });
+  const [query, setQuery] = useState("");
+
+  function tierBadge(model: ApiModel): { label: string; className: string } {
+    const source = `${model.provider} ${model.family} ${model.type} ${model.badge || ""}`.toLowerCase();
+    if (source.includes("gpt")) return { label: "GPT", className: "bg-emerald-500/10 text-emerald-400" };
+    if (source.includes("video")) return { label: "Video", className: "bg-blue-500/10 text-blue-400" };
+    if (source.includes("audio") || source.includes("tts")) {
+      return { label: "Audio", className: "bg-cyan-500/10 text-cyan-400" };
+    }
+    return { label: model.family || "Model", className: "bg-violet-500/10 text-violet-300" };
+  }
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredGroups = groups
+    .map((group) => ({
+      ...group,
+      models: group.models.filter((model) => {
+        if (!normalizedQuery) return true;
+        const haystack = `${model.name} ${model.family} ${model.provider} ${model.badge || ""}`.toLowerCase();
+        return haystack.includes(normalizedQuery);
+      }),
+    }))
+    .filter((group) => group.models.length > 0);
 
   return (
-    <div className="w-[340px] p-1">
-      {groups.map((group) => {
-        const isOpen = openFamily === group.family;
-        const hasSelected = group.models.some((m) => m.id === selectedId);
-        return (
-          <div
-            key={group.family}
-            className="relative"
-            onMouseEnter={() => setOpenFamily(group.family)}
-          >
-            <button
-              type="button"
-              onClick={() => setOpenFamily(group.family)}
-              className={cn(
-                "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left",
-                isOpen ? "bg-[#1F1F1F]" : "hover:bg-[#1F1F1F]"
-              )}
-            >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#2A2A2A] text-sm font-semibold text-[#F5F5F5]">
-                {group.family.charAt(0)}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span
-                  className={cn(
-                    "block truncate text-sm",
-                    hasSelected ? "font-medium text-[#F5F5F5]" : "text-[#F5F5F5]"
-                  )}
-                >
-                  {group.family}
-                </span>
-                <span className="block truncate text-xs text-[#888888]">
-                  {group.description}
-                </span>
-              </span>
-              <ChevronRight className="h-4 w-4 shrink-0 text-[#666666]" />
-            </button>
+    <div className="w-[360px] p-2">
+      <div className="mb-2 flex items-center gap-2 rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] px-2.5">
+        <Search className="h-3.5 w-3.5 text-[#666666]" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Buscar modelo..."
+          className="h-9 w-full bg-transparent text-sm text-[#F5F5F5] placeholder:text-[#666666] focus:outline-none"
+        />
+      </div>
 
-            {isOpen && (
-              <div className="absolute bottom-0 left-full z-50 ml-1.5 w-[290px] rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] p-1.5 shadow-2xl">
+      <div className="max-h-80 overflow-y-auto pr-1 [scrollbar-color:#7C3AED_#1A1A1A] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#7C3AED]/50 [&::-webkit-scrollbar-track]:bg-[#1A1A1A] [&::-webkit-scrollbar]:w-1.5">
+        {filteredGroups.length === 0 ? (
+          <p className="py-8 text-center text-xs text-[#777777]">Nenhum modelo encontrado.</p>
+        ) : (
+          filteredGroups.map((group) => (
+            <div key={group.family} className="mb-3">
+              <p className="px-2 py-1 text-xs font-semibold uppercase tracking-wider text-[#888888]">
+                {group.family}
+              </p>
+
+              <div className="space-y-1.5">
                 {group.models.map((model) => {
                   const selected = model.id === selectedId;
+                  const available = model.available !== false;
+                  const badge = tierBadge(model);
+                  const disabledTitle = available ? undefined : "Modelo indisponível para seu plano";
+
                   return (
                     <button
                       key={model.id}
                       type="button"
+                      title={disabledTitle}
+                      disabled={!available}
                       onClick={() => onSelect(model)}
                       className={cn(
-                        "block w-full rounded-lg px-2.5 py-2 text-left",
-                        selected ? "bg-[#1F1F1F]" : "hover:bg-[#1F1F1F]"
+                        "flex w-full items-center gap-3 rounded-xl p-2 text-left transition duration-150",
+                        "hover:bg-white/5",
+                        selected &&
+                          "bg-[#7C3AED]/5 ring-2 ring-[#7C3AED] shadow-[0_0_15px_rgba(124,58,237,0.2)]",
+                        !available && "pointer-events-none opacity-50"
                       )}
                     >
-                      <span className="flex items-center gap-1.5">
-                        <span className="truncate text-sm text-[#F5F5F5]">
-                          {model.name}
-                        </span>
-                        {model.has_audio && (
-                          <Volume2 className="h-3 w-3 shrink-0 text-[#888888]" />
-                        )}
-                        {model.badge && (
-                          <span className="shrink-0 text-[9px] font-semibold tracking-wider text-[#888888]">
-                            {model.badge}
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#2A2A2A] text-xs font-semibold text-[#F5F5F5]">
+                        {(model.family || model.name || "M").charAt(0)}
+                      </span>
+
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-2">
+                          <span className="truncate text-sm font-medium text-[#F5F5F5]">{model.name}</span>
+                          <span className={cn("rounded-full px-1.5 py-0.5 text-[10px]", badge.className)}>
+                            {badge.label}
                           </span>
-                        )}
-                        {selected && (
-                          <Check className="ml-auto h-3.5 w-3.5 shrink-0 text-[#F5F5F5]" />
-                        )}
+                          {model.has_audio ? <Volume2 className="h-3 w-3 text-[#888888]" /> : null}
+                          {!available ? <Lock className="ml-auto h-3.5 w-3.5 text-[#888888]" /> : null}
+                          {selected ? <Check className="ml-auto h-3.5 w-3.5 text-[#A78BFA]" /> : null}
+                        </span>
+
+                        <span className="mt-1 flex items-center gap-1.5">
+                          {model.resolution ? (
+                            <SpecPill icon={<Monitor className="h-2.5 w-2.5" />} label={model.resolution} />
+                          ) : null}
+                          {model.duration_range ? (
+                            <SpecPill icon={<Clock className="h-2.5 w-2.5" />} label={model.duration_range} />
+                          ) : null}
+                        </span>
                       </span>
-                      <span className="mt-1 flex items-center gap-1.5">
-                        {model.resolution && (
-                          <SpecPill
-                            icon={<Monitor className="h-2.5 w-2.5" />}
-                            label={model.resolution}
-                          />
-                        )}
-                        {model.duration_range && (
-                          <SpecPill
-                            icon={<Clock className="h-2.5 w-2.5" />}
-                            label={model.duration_range}
-                          />
-                        )}
-                        {model.gen_time && (
-                          <SpecPill
-                            icon={<Zap className="h-2.5 w-2.5" />}
-                            label={model.gen_time}
-                          />
-                        )}
-                      </span>
+
+                      <span className="shrink-0 text-xs text-[#888888]">⚡ {model.credit_cost}</span>
                     </button>
                   );
                 })}
               </div>
-            )}
-          </div>
-        );
-      })}
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }
