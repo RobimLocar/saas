@@ -1435,7 +1435,7 @@ export function GenerationDock() {
       {activeTab !== "audio" && assistOpen && (
         <div
           ref={clampPanelToViewport}
-          className="dock-panel-enter fx-scroll absolute bottom-full right-4 z-50 mb-2 w-[560px] max-w-[calc(100vw-2rem)] rounded-xl border border-[#2A2A2A] bg-[#161618] shadow-2xl"
+          className="dock-panel-enter fx-scroll absolute bottom-[4.5rem] right-4 z-50 w-[560px] max-w-[calc(100vw-2rem)] rounded-xl border border-[#2A2A2A] bg-[#161618] shadow-2xl"
         >
           <div className="grid grid-cols-[180px_1fr]">
             <div className="fx-scroll max-h-[min(40vh,300px)] overflow-y-auto border-r border-[#242428] p-2">
@@ -1490,7 +1490,7 @@ export function GenerationDock() {
       {activeTab !== "audio" && atOpen && (
         <div
           ref={clampPanelToViewport}
-          className="dock-panel-enter fx-scroll absolute bottom-full right-4 z-50 mb-2 w-[560px] max-w-[calc(100vw-2rem)] rounded-xl border border-[#2A2A2A] bg-[#161618] shadow-2xl"
+          className="dock-panel-enter fx-scroll absolute bottom-[4.5rem] right-4 z-50 w-[560px] max-w-[calc(100vw-2rem)] rounded-xl border border-[#2A2A2A] bg-[#161618] shadow-2xl"
         >
           <div className="grid grid-cols-[180px_1fr]">
             <div className="fx-scroll max-h-[min(40vh,300px)] overflow-y-auto border-r border-[#242428] p-2">
