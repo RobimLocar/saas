@@ -33,6 +33,7 @@ import {
   Upload,
   Video,
   Volume2,
+  VolumeX,
   X,
   Zap,
 } from "lucide-react";
@@ -470,7 +471,7 @@ function ModelMenu({
         />
       </div>
 
-      <div className="fx-scroll max-h-[min(50vh,420px)] overflow-y-auto pr-1">
+      <div className="fx-scroll max-h-[min(40vh,300px)] overflow-y-auto pr-1">
         {filteredGroups.length === 0 ? (
           <p className="py-8 text-center text-xs text-[#777777]">Nenhum modelo encontrado.</p>
         ) : (
@@ -619,7 +620,7 @@ function VoiceSelector({
       )}
     >
       {(close) => (
-        <div className="flex max-h-[min(50vh,420px)] w-full flex-col p-1.5">
+        <div className="flex max-h-[min(40vh,300px)] w-full flex-col p-1.5">
           {/* Busca */}
           <div className="mb-2 flex items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#000000] px-2.5">
             <Search className="h-3.5 w-3.5 shrink-0 text-[#666666]" />
@@ -668,7 +669,7 @@ function VoiceSelector({
           </div>
 
           {/* Lista de vozes */}
-          <div className="fx-scroll max-h-[min(50vh,420px)] flex-1 space-y-0.5 overflow-y-auto">
+          <div className="fx-scroll max-h-[min(40vh,300px)] flex-1 space-y-0.5 overflow-y-auto">
             {filtered.length === 0 && (
               <p className="px-2 py-3 text-center text-xs text-[#666666]">
                 No voices found
@@ -1437,7 +1438,7 @@ export function GenerationDock() {
           className="fx-scroll absolute bottom-full right-4 z-50 mb-2 w-[560px] max-w-[calc(100vw-2rem)] rounded-xl border border-[#2A2A2A] bg-[#161618] shadow-2xl"
         >
           <div className="grid grid-cols-[180px_1fr]">
-            <div className="fx-scroll max-h-[min(50vh,420px)] overflow-y-auto border-r border-[#242428] p-2">
+            <div className="fx-scroll max-h-[min(40vh,300px)] overflow-y-auto border-r border-[#242428] p-2">
               <p className="mb-1.5 px-2 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
                 Categories
               </p>
@@ -1457,7 +1458,7 @@ export function GenerationDock() {
                 </button>
               ))}
             </div>
-            <div className="fx-scroll max-h-[min(50vh,420px)] overflow-y-auto p-2">
+            <div className="fx-scroll max-h-[min(40vh,300px)] overflow-y-auto p-2">
               <div className="mb-1.5 flex items-center justify-between px-2 pt-1">
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
                   {activeAssistCategory.label} · Click to add
@@ -1492,7 +1493,7 @@ export function GenerationDock() {
           className="fx-scroll absolute bottom-full right-4 z-50 mb-2 w-[560px] max-w-[calc(100vw-2rem)] rounded-xl border border-[#2A2A2A] bg-[#161618] shadow-2xl"
         >
           <div className="grid grid-cols-[180px_1fr]">
-            <div className="fx-scroll max-h-[min(50vh,420px)] overflow-y-auto border-r border-[#242428] p-2">
+            <div className="fx-scroll max-h-[min(40vh,300px)] overflow-y-auto border-r border-[#242428] p-2">
               <p className="mb-1.5 px-2 pt-1 text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
                 Categories
               </p>
@@ -1512,7 +1513,7 @@ export function GenerationDock() {
                 </button>
               ))}
             </div>
-            <div className="fx-scroll max-h-[min(50vh,420px)] overflow-y-auto p-2">
+            <div className="fx-scroll max-h-[min(40vh,300px)] overflow-y-auto p-2">
               <div className="mb-1.5 flex items-center justify-between px-2 pt-1">
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
                   {activeAssetCategory.label} · Click to add
@@ -2158,7 +2159,7 @@ export function GenerationDock() {
                     )}
                   >
                     {(close) => (
-                      <div className="fx-scroll max-h-[min(50vh,420px)] overflow-y-auto pr-1">
+                      <div className="fx-scroll max-h-[min(40vh,300px)] overflow-y-auto pr-1">
                         <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-[#666666]">
                           Seus Seeds
                         </p>
@@ -2464,7 +2465,7 @@ export function GenerationDock() {
                 )}
               >
                 {(close) => (
-                  <div className="fx-scroll max-h-[min(50vh,420px)] space-y-0.5 overflow-y-auto">
+                  <div className="fx-scroll max-h-[min(40vh,300px)] space-y-0.5 overflow-y-auto">
                     {aspectOptions.map((option) => (
                       <button
                         key={option}
@@ -2538,7 +2539,7 @@ export function GenerationDock() {
                 )}
               >
                 {(close) => (
-                  <div className="fx-scroll max-h-[min(50vh,420px)] space-y-0.5 overflow-y-auto">
+                  <div className="fx-scroll max-h-[min(40vh,300px)] space-y-0.5 overflow-y-auto">
                     {resolutionOptions.map((option) => (
                       <button
                         key={option}
@@ -2578,7 +2579,7 @@ export function GenerationDock() {
                 )}
               >
                 {(close) => (
-                  <div className="fx-scroll max-h-[min(50vh,420px)] space-y-0.5 overflow-y-auto">
+                  <div className="fx-scroll max-h-[min(40vh,300px)] space-y-0.5 overflow-y-auto">
                     {QUALITY_OPTIONS.map((option) => (
                       <button
                         key={option}
@@ -2603,11 +2604,9 @@ export function GenerationDock() {
               </Popover>
             )}
 
-            {/* Áudio on/off (vídeo) — só para modelos com suporte a áudio */}
+            {/* Áudio on/off (vídeo) — botão-ícone, igual aos demais controles */}
             {activeTab === "video" && selectedModel?.has_audio !== false && (
-              <div className="flex h-8 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-2.5">
-                <Volume2 className="h-3.5 w-3.5 text-[#888888]" />
-                <button
+              <button
                 type="button"
                 onClick={() => {
                   const next = !audioEnabled;
@@ -2621,23 +2620,20 @@ export function GenerationDock() {
                     ? "Áudio ativado — clique para desativar"
                     : "Áudio desativado — clique para ativar"
                 }
-                className="relative h-5 w-10 rounded-full transition-colors duration-200"
                 aria-pressed={audioEnabled}
+                className={cn(
+                  "flex h-8 w-8 items-center justify-center rounded-lg border border-[#2A2A2A] transition-colors duration-150",
+                  audioEnabled
+                    ? "bg-[#7C3AED]/15 text-[#A78BFA] ring-1 ring-[#7C3AED]/50"
+                    : "bg-white/5 text-[#888888] hover:bg-white/10"
+                )}
               >
-                <span
-                  className={cn(
-                    "absolute inset-0 rounded-full",
-                    audioEnabled ? "bg-[#7C3AED]" : "bg-[#2A2A2A]"
-                  )}
-                />
-                <span
-                  className={cn(
-                    "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-200",
-                    audioEnabled ? "translate-x-5" : "translate-x-0.5"
-                  )}
-                />
+                {audioEnabled ? (
+                  <Volume2 className="h-3.5 w-3.5" />
+                ) : (
+                  <VolumeX className="h-3.5 w-3.5" />
+                )}
               </button>
-              </div>
             )}
 
             {/* Batch (imagem) */}
