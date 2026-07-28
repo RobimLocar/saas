@@ -1845,8 +1845,8 @@ export function GenerationDock() {
               >
                 <span
                   className={cn(
-                    "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-200",
-                    multiShotEnabled ? "translate-x-5" : "translate-x-0.5"
+                    "absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform duration-200",
+                    multiShotEnabled ? "translate-x-5" : "translate-x-0"
                   )}
                 />
               </button>
@@ -2605,7 +2605,9 @@ export function GenerationDock() {
 
             {/* Áudio on/off (vídeo) — só para modelos com suporte a áudio */}
             {activeTab === "video" && selectedModel?.has_audio !== false && (
-              <button
+              <div className="flex h-8 items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-2.5">
+                <Volume2 className="h-3.5 w-3.5 text-[#888888]" />
+                <button
                 type="button"
                 onClick={() => {
                   const next = !audioEnabled;
@@ -2635,6 +2637,7 @@ export function GenerationDock() {
                   )}
                 />
               </button>
+              </div>
             )}
 
             {/* Batch (imagem) */}
