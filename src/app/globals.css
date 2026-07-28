@@ -279,3 +279,21 @@ body {
 .media-card-enter {
   animation: fadeScaleIn 0.3s ease-out forwards;
 }
+
+@keyframes dockPanelEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+.dock-panel-enter {
+  animation: dockPanelEnter 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: bottom center;
+}
