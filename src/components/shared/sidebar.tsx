@@ -174,7 +174,7 @@ function SidebarContent({ credits, initials }: { credits: number; initials: stri
 export function Sidebar({ credits = 0, initials = "FL" }: SidebarProps) {
   return (
     <SidebarPrimitive animate>
-      <DesktopSidebar className="fixed left-0 top-[72px] z-20 h-[calc(100vh-88px)] rounded-r-2xl border border-[#2A2A2A] bg-[#111111]/95 backdrop-blur">
+      <DesktopSidebar className="fixed left-2.5 top-[80px] z-20 h-[calc(100vh-100px)] rounded-2xl border border-[#242428] bg-[#0f0f11]/95 shadow-[0_8px_40px_rgba(0,0,0,0.45)] backdrop-blur">
         <SidebarContent credits={credits} initials={initials} />
       </DesktopSidebar>
 
