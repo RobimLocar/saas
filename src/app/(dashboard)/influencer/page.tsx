@@ -824,26 +824,29 @@ export default function InfluencerPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-[#F5F5F5]">Your very own influencer studio</h1>
-            <p className="mt-1 text-sm text-[#9A9A9A]">
-              Crie personas visuais consistentes e prepare sua operação de conteúdo.
+    <div className="space-y-8">
+      <section className="relative overflow-hidden rounded-2xl border border-[#242428] p-6 sm:p-8">
+        <div className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-br from-[#1b1030] via-[#141416] to-[#0f0f11]" />
+        <div className="pointer-events-none absolute -right-16 -top-24 -z-10 h-72 w-72 rounded-full bg-[#7C3AED]/25 blur-[110px]" />
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="max-w-xl">
+            <h1 className="text-2xl font-bold text-white sm:text-3xl">Your very own influencer studio</h1>
+            <p className="mt-2 text-sm text-[#b8b8c0]">
+              Crie personas de IA consistentes, gere conteúdo ilimitado e veja o engajamento explodir.
             </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
-              className="border-[#2A2A2A] text-[#F5F5F5]"
+              className="border-[#2A2A2A] bg-white/5 text-[#F5F5F5] hover:bg-white/10"
               onClick={() => setPremadeOpen(true)}
             >
+              <Users className="mr-2 h-4 w-4" />
               Choose Premade
             </Button>
             <Button
-              className="bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
+              className="bg-white text-black hover:bg-white/90"
               onClick={openCreateModal}
             >
               <Sparkles className="mr-2 h-4 w-4" />
@@ -854,9 +857,15 @@ export default function InfluencerPage() {
       </section>
 
       <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-[#F5F5F5]">Personas</h2>
-          <Badge className="bg-[#2A2A2A] text-[#BDBDBD]">{influencers.length} criadas</Badge>
+        <div className="flex items-end justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-[#F5F5F5]">My Influencers</h2>
+            <p className="text-sm text-[#888888]">
+              {influencers.length > 0
+                ? `${influencers.length} persona${influencers.length === 1 ? "" : "s"} criada${influencers.length === 1 ? "" : "s"}`
+                : "Suas personas criadas"}
+            </p>
+          </div>
         </div>
 
         {loading ? (
