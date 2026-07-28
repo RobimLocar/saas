@@ -96,6 +96,7 @@ const EYE_COLORS = ["Brown", "Blue", "Green", "Hazel", "Gray", "Amber", "Black",
 const PREMADES = [
   {
     title: "The Lifestyle Guru",
+    image: "",
     values: {
       gender: "Female",
       age_range: "25-34",
@@ -107,6 +108,7 @@ const PREMADES = [
   },
   {
     title: "The Fitness Coach",
+    image: "",
     values: {
       gender: "Male",
       age_range: "25-34",
@@ -118,6 +120,7 @@ const PREMADES = [
   },
   {
     title: "The Luxury Influencer",
+    image: "",
     values: {
       gender: "Female",
       age_range: "35-44",
@@ -129,6 +132,7 @@ const PREMADES = [
   },
   {
     title: "The Streetwear Artist",
+    image: "",
     values: {
       gender: "Male",
       age_range: "18-24",
@@ -1305,21 +1309,34 @@ export default function InfluencerPage() {
       {premadeOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-2xl rounded-xl border border-[#2A2A2A] bg-[#131313] p-5">
-            <h3 className="text-lg font-semibold text-[#F5F5F5]">Choose Premade</h3>
-            <p className="mt-1 text-sm text-[#888888]">Escolha um preset para pré-preencher o formulário.</p>
+            <h3 className="text-lg font-semibold text-[#F5F5F5]">Choose Premade Influencer</h3>
+            <p className="mt-1 text-sm text-[#888888]">Selecione um avatar para criar um perfil de influencer.</p>
 
-            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
               {PREMADES.map((preset, index) => (
                 <button
                   key={preset.title}
                   type="button"
                   onClick={() => applyPremade(index)}
-                  className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3 text-left hover:border-[#7C3AED]/60"
+                  className="group relative aspect-[3/4] overflow-hidden rounded-xl bg-[#1A1A1A] text-left ring-1 ring-white/5 transition-all duration-200 hover:-translate-y-0.5 hover:ring-[#7C3AED]/50"
                 >
-                  <p className="text-sm font-semibold text-[#F5F5F5]">{preset.title}</p>
-                  <p className="mt-1 text-xs text-[#888888]">
-                    {preset.values.gender} • {preset.values.age_range} • {preset.values.styles.join("/")}
-                  </p>
+                  {preset.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={preset.image}
+                      alt={preset.title}
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#241a3a] to-[#141416]">
+                      <User className="h-8 w-8 text-[#7C3AED]/50" />
+                    </div>
+                  )}
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/85 to-transparent" />
+                  <div className="absolute inset-x-0 bottom-0 p-2.5">
+                    <p className="line-clamp-1 text-sm font-semibold text-white">{preset.title}</p>
+                    <p className="line-clamp-1 text-[11px] text-white/60">{preset.values.styles.join(" · ")}</p>
+                  </div>
                 </button>
               ))}
             </div>
