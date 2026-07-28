@@ -1054,7 +1054,7 @@ export default function InfluencerPage() {
 
           {activePersonaTab === "presets" && (
             <div className="space-y-4">
-              <div className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-4">
+              <div className="rounded-xl border border-[#242428] bg-[#101012] p-4">
                 <h3 className="text-sm font-semibold text-[#F5F5F5]">Quick Generate</h3>
 
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -1191,7 +1191,7 @@ export default function InfluencerPage() {
 
           {activePersonaTab === "captions" && (
             <div className="space-y-4">
-              <div className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-4">
+              <div className="rounded-xl border border-[#242428] bg-[#101012] p-4">
                 <h3 className="text-sm font-semibold text-[#F5F5F5]">Gerar legendas</h3>
 
                 <div className="mt-3 space-y-3">
@@ -1246,7 +1246,7 @@ export default function InfluencerPage() {
               </div>
 
               {captionOptions.length > 0 && (
-                <div className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-4">
+                <div className="rounded-xl border border-[#242428] bg-[#101012] p-4">
                   <h3 className="text-sm font-semibold text-[#F5F5F5]">Opções</h3>
                   <div className="mt-3 space-y-3">
                     {captionOptions.map((caption, idx) => (
