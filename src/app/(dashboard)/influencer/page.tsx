@@ -873,7 +873,7 @@ export default function InfluencerPage() {
             />
           </div>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="fx-scroll flex gap-4 overflow-x-auto pb-2">
             {influencers.map((inf) => {
               const active = inf.id === selectedInfluencerId;
               const status = inf.avatar_image_url ? "active" : (inf.status || "draft");
@@ -896,15 +896,41 @@ export default function InfluencerPage() {
                     setSelectedInfluencerId(inf.id);
                     setActivePersonaTab("feed");
                   }}
-                  className={`group relative overflow-hidden rounded-2xl bg-[#141416] p-3 text-left ring-1 ring-white/5 transition-all duration-200 ${
+                  className={`group relative aspect-[3/4] w-[210px] shrink-0 cursor-pointer overflow-hidden rounded-2xl bg-[#1A1A1A] text-left ring-1 transition-all duration-200 ${
                     active
-                      ? "ring-2 ring-[#7C3AED] shadow-[0_0_20px_rgba(124,58,237,0.2)]"
-                      : "hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(124,58,237,0.15)] hover:ring-[#7C3AED]/25"
+                      ? "ring-2 ring-[#7C3AED] shadow-[0_0_20px_rgba(124,58,237,0.25)]"
+                      : "ring-white/5 hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(124,58,237,0.15)] hover:ring-[#7C3AED]/25"
                   }`}
                 >
+                  {inf.avatar_image_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={inf.avatar_image_url}
+                      alt={inf.name}
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-4 text-center">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#7C3AED]/10">
+                        <User className="h-6 w-6 text-[#7C3AED]" />
+                      </div>
+                      <p className="text-xs text-[#8b8b93]">Escolha um avatar</p>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openDraftChooser(inf);
+                        }}
+                        className="text-xs text-[#7C3AED] underline transition-colors hover:text-[#8B5CF6]"
+                      >
+                        Finalizar
+                      </button>
+                    </div>
+                  )}
+
                   <button
                     type="button"
-                    className="absolute right-2 top-2 z-10 rounded-lg bg-black/60 p-1.5 text-xs text-red-400 opacity-0 transition-opacity duration-200 hover:bg-black/80 hover:text-red-300 group-hover:opacity-100"
+                    className="absolute right-2 top-2 z-20 rounded-lg bg-black/60 p-1.5 text-xs text-red-400 opacity-0 transition-opacity duration-200 hover:bg-black/80 hover:text-red-300 group-hover:opacity-100"
                     onClick={(e) => {
                       e.stopPropagation();
                       void handleDeleteInfluencer(inf.id);
@@ -913,40 +939,21 @@ export default function InfluencerPage() {
                     Excluir
                   </button>
 
-                  <div className="aspect-[3/4] overflow-hidden rounded-xl bg-[#1A1A1A]">
-                    {inf.avatar_image_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={inf.avatar_image_url}
-                        alt={inf.name}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-4 text-center">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#7C3AED]/10">
-                          <User className="h-6 w-6 text-[#7C3AED]" />
-                        </div>
-                        <p className="text-xs text-[#8b8b93]">Escolha um avatar</p>
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openDraftChooser(inf);
-                          }}
-                          className="text-xs text-[#7C3AED] underline transition-colors hover:text-[#8B5CF6]"
-                        >
-                          Finalizar
-                        </button>
+                  {inf.avatar_image_url && (
+                    <span className={`absolute left-2 top-2 z-10 rounded-md px-2 py-0.5 text-[10px] font-semibold backdrop-blur-sm ${statusClass}`}>
+                      {status.toUpperCase()}
+                    </span>
+                  )}
+
+                  {inf.avatar_image_url && (
+                    <>
+                      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-black/85 to-transparent" />
+                      <div className="absolute inset-x-0 bottom-0 p-3">
+                        <p className="line-clamp-1 text-sm font-semibold text-white">{inf.name}</p>
+                        <p className="line-clamp-1 text-xs text-white/70">{inf.handle || "@sem_handle"}</p>
                       </div>
-                    )}
-                  </div>
-                  <div className="p-3">
-                    <p className="line-clamp-1 text-sm font-semibold text-white">{inf.name}</p>
-                    <p className="line-clamp-1 text-xs text-[#8b8b93]">{inf.handle || "@sem_handle"}</p>
-                  </div>
-                  <div className="px-3 pb-1">
-                    <Badge className={statusClass}>{status.toUpperCase()}</Badge>
-                  </div>
+                    </>
+                  )}
                 </div>
               );
             })}
