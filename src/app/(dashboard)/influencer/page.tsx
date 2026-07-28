@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Upload, User, Users } from "lucide-react";
+import { ChevronDown, Sparkles, Upload, User, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { GenerationCard } from "@/components/ui/generation-card";
@@ -275,6 +275,7 @@ export default function InfluencerPage() {
   const [influencers, setInfluencers] = useState<InfluencerItem[]>([]);
   const [selectedInfluencerId, setSelectedInfluencerId] = useState<string | null>(null);
   const [activePersonaTab, setActivePersonaTab] = useState<"feed" | "presets" | "captions">("feed");
+  const [openLibrary, setOpenLibrary] = useState<string | null>(null);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [premadeOpen, setPremadeOpen] = useState(false);
@@ -1154,49 +1155,69 @@ export default function InfluencerPage() {
 
               <div className="rounded-xl border border-[#242428] bg-[#101012] p-4">
                 <h3 className="text-sm font-semibold text-[#F5F5F5]">Prompt Library</h3>
-                <div className="mt-4 space-y-5">
-                  {CONTENT_PRESETS.map((preset) => (
-                    <div key={`library-${preset.key}`}>
-                      <p className="mb-1.5 flex items-center gap-1.5 px-1 text-[11px] font-semibold uppercase tracking-wider text-[#8b8b93]">
-                        <span>{preset.icon}</span>
-                        {preset.label}
-                      </p>
-                      <div className="space-y-0.5">
-                        {preset.scenes.map((scene) => {
-                          const fullPrompt = buildContentPrompt(
-                            buildPersonaDescription(selectedInfluencer),
-                            scene
-                          );
-                          return (
-                            <div
-                              key={`${preset.key}-${scene}`}
-                              className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-white/5"
-                            >
-                              <p className="min-w-0 flex-1 truncate text-xs text-[#BDBDBD]">{scene}</p>
-                              <div className="flex shrink-0 items-center gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    void handleCopyPromptForStudio(fullPrompt);
-                                  }}
-                                  className="rounded-md border border-[#2A2A2A] bg-white/5 px-2.5 py-1 text-[11px] text-[#d0d0d0] transition-colors hover:bg-white/10"
+                <div className="mt-4 space-y-2">
+                  {CONTENT_PRESETS.map((preset) => {
+                    const open = openLibrary === preset.key;
+                    return (
+                      <div
+                        key={`library-${preset.key}`}
+                        className="overflow-hidden rounded-lg border border-[#242428]"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setOpenLibrary(open ? null : preset.key)}
+                          className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left transition-colors hover:bg-white/5"
+                        >
+                          <span className="flex items-center gap-2 text-sm font-medium text-[#F5F5F5]">
+                            <span>{preset.icon}</span>
+                            {preset.label}
+                            <span className="text-[11px] font-normal text-[#666666]">
+                              {preset.scenes.length} cenas
+                            </span>
+                          </span>
+                          <ChevronDown
+                            className={`h-4 w-4 shrink-0 text-[#666666] transition-transform ${open ? "rotate-180" : ""}`}
+                          />
+                        </button>
+                        {open && (
+                          <div className="space-y-0.5 border-t border-[#242428] p-2">
+                            {preset.scenes.map((scene) => {
+                              const fullPrompt = buildContentPrompt(
+                                buildPersonaDescription(selectedInfluencer),
+                                scene
+                              );
+                              return (
+                                <div
+                                  key={`${preset.key}-${scene}`}
+                                  className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-white/5"
                                 >
-                                  Copy
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleUseSceneInStudio(scene)}
-                                  className="rounded-md bg-[#7C3AED]/15 px-2.5 py-1 text-[11px] font-medium text-[#A78BFA] transition-colors hover:bg-[#7C3AED]/25"
-                                >
-                                  Usar no Studio
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
+                                  <p className="min-w-0 flex-1 truncate text-xs text-[#BDBDBD]">{scene}</p>
+                                  <div className="flex shrink-0 items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        void handleCopyPromptForStudio(fullPrompt);
+                                      }}
+                                      className="rounded-md border border-[#2A2A2A] bg-white/5 px-2.5 py-1 text-[11px] text-[#d0d0d0] transition-colors hover:bg-white/10"
+                                    >
+                                      Copy
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUseSceneInStudio(scene)}
+                                      className="rounded-md bg-[#7C3AED]/15 px-2.5 py-1 text-[11px] font-medium text-[#A78BFA] transition-colors hover:bg-[#7C3AED]/25"
+                                    >
+                                      Usar no Studio
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
