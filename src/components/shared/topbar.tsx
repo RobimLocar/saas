@@ -72,7 +72,7 @@ export function Topbar() {
   const selected = VIEW_OPTIONS.find((item) => item.value === viewFilter) ?? VIEW_OPTIONS[0];
 
   return (
-    <header className="fixed inset-x-0 top-0 z-30 flex h-[68px] items-center justify-between px-6">
+    <header className="fixed inset-x-0 top-0 z-30 flex h-[68px] items-center justify-between border-b border-[#1e1e22] bg-[#0A0A0A]/80 px-6 backdrop-blur-md">
       <Link href="/studio" className="flex items-center gap-4">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-[#7C3AED] to-[#6D28D9] shadow-lg shadow-[#7C3AED]/30">
           <Zap className="h-5 w-5 text-white" fill="currentColor" />
