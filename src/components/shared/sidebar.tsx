@@ -114,20 +114,7 @@ function SidebarContent({ credits, initials }: { credits: number; initials: stri
 
   return (
     <>
-      <div className="mb-6 flex items-center gap-2 px-2">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-[#7C3AED] to-[#6D28D9]">
-          <Zap className="h-4 w-4 text-white" />
-        </div>
-        <motion.span
-          animate={{
-            display: animate ? (open ? "inline-block" : "none") : "inline-block",
-            opacity: animate ? (open ? 1 : 0) : 1,
-          }}
-          className="text-lg font-bold text-white"
-        >
-          Fluxyra
-        </motion.span>
-      </div>
+      <div className="pt-1" />
 
       <div className="flex-1 space-y-1 overflow-y-auto">
         {mainNav.map(renderItem)}
@@ -146,7 +133,7 @@ function SidebarContent({ credits, initials }: { credits: number; initials: stri
       </div>
 
       <div className="mt-2 border-t border-[#2A2A2A] pt-3">
-        <div className="flex items-center justify-between gap-2">
+        <div className={cn("flex gap-2", isExpanded ? "items-center justify-between" : "flex-col items-center")}>
           <Link
             href="/pricing"
             className="inline-flex items-center gap-1.5 rounded-md bg-gradient-to-br from-[#EA580C] to-[#C2410C] px-2.5 py-1 text-xs font-semibold text-white transition-opacity hover:opacity-90"
