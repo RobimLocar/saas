@@ -1762,8 +1762,13 @@ export default function UGCPage() {
                             className="absolute inset-0 h-full w-full object-cover"
                           />
                         ) : (
-                          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#241a3a] to-[#141416]">
-                            <Clapperboard className="h-7 w-7 text-[#7C3AED]/40" />
+                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gradient-to-b from-[#2a1f45] via-[#171326] to-[#0f0d16]">
+                            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10 backdrop-blur">
+                              <Clapperboard className="h-6 w-6 text-[#A78BFA]" />
+                            </span>
+                            <span className="rounded-full bg-black/30 px-2.5 py-0.5 text-[10px] font-medium text-white/45">
+                              Demo em breve
+                            </span>
                           </div>
                         )}
                         <span
