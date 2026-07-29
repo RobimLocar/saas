@@ -13,6 +13,7 @@ export const MIN_MARGIN = 0.4;
 // Cooldown de 30s para gerações acima de 10 créditos (§4, §6)
 export const HIGH_COST_THRESHOLD_CREDITS = 10;
 export const HIGH_COST_COOLDOWN_SECONDS = 30;
+export const FREE_PLAN_COST_MULTIPLIER = 2;
 
 // Alertas de saldo (§6)
 export const LOW_BALANCE_TOAST_PCT = 0.2; // toast < 20%

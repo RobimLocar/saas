@@ -42,3 +42,15 @@ next-env.d.ts
 
 # permitir o arquivo de exemplo
 !.env.local.example
+
+# logs e artefatos internos
+logs/
+*.log
+DUMP_*.md
+DUMP_*.pdf
+DUMP_*.docx
+CONTEXT_DUMP_*
+AUDITORIA_*.md
+AUDITORIA_*.pdf
+PLANO_*.md
+.abacus.donotdelete

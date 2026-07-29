@@ -9,7 +9,11 @@ const nextConfig: NextConfig = {
     ],
   },
   // Permite acesso via URL de preview (dev server host allowlist)
-  allowedDevOrigins: ["*"],
+  allowedDevOrigins: [
+    "281f3287b.na115.preview.abacusai.app",
+    "*.preview.abacusai.app",
+    "*.abacusai.app",
+  ],
 };
 
 export default nextConfig;
