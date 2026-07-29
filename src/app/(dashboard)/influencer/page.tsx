@@ -95,51 +95,87 @@ const EYE_COLORS = ["Brown", "Blue", "Green", "Hazel", "Gray", "Amber", "Black",
 
 const PREMADES = [
   {
-    title: "The Lifestyle Guru",
+    title: "Fashion Model",
+    handle: "@fashionmodel",
+    tags: ["Luxury", "Lifestyle", "Streetwear"],
     image: "",
     values: {
       gender: "Female",
-      age_range: "25-34",
-      styles: ["Lifestyle", "Casual"],
-      hair_color: "Blonde",
-      eye_color: "Blue",
-      additional_details: "natural smile, confident posture",
-    },
-  },
-  {
-    title: "The Fitness Coach",
-    image: "",
-    values: {
-      gender: "Male",
-      age_range: "25-34",
-      styles: ["Fitness", "Lifestyle"],
-      hair_color: "Brown",
-      eye_color: "Brown",
-      additional_details: "athletic look, energetic expression",
-    },
-  },
-  {
-    title: "The Luxury Influencer",
-    image: "",
-    values: {
-      gender: "Female",
-      age_range: "35-44",
-      styles: ["Luxury", "Corporate"],
-      hair_color: "Brunette",
-      eye_color: "Hazel",
-      additional_details: "elegant makeup, premium editorial vibe",
-    },
-  },
-  {
-    title: "The Streetwear Artist",
-    image: "",
-    values: {
-      gender: "Male",
       age_range: "18-24",
-      styles: ["Streetwear", "Artistic"],
+      styles: ["Luxury", "Lifestyle"],
+      hair_color: "Dark Brown",
+      eye_color: "Brown",
+      additional_details: "editorial fashion look, confident pose, urban rooftop",
+    },
+  },
+  {
+    title: "Fitness Bro",
+    handle: "@fitnessbro",
+    tags: ["Fitness", "Casual"],
+    image: "",
+    values: {
+      gender: "Male",
+      age_range: "25-30",
+      styles: ["Fitness", "Casual"],
+      hair_color: "Dark Brown",
+      eye_color: "Brown",
+      additional_details: "athletic build, gym setting, energetic",
+    },
+  },
+  {
+    title: "Soft Girl",
+    handle: "@softgirl",
+    tags: ["Soft Girl", "Artistic", "Lifestyle"],
+    image: "",
+    values: {
+      gender: "Female",
+      age_range: "18-24",
+      styles: ["Soft Girl", "Artistic"],
+      hair_color: "Light Brown",
+      eye_color: "Green",
+      additional_details: "soft natural light, dreamy aesthetic, gentle smile",
+    },
+  },
+  {
+    title: "Corporate Pro",
+    handle: "@corporatepro",
+    tags: ["Corporate", "Luxury"],
+    image: "",
+    values: {
+      gender: "Male",
+      age_range: "31-37",
+      styles: ["Corporate", "Luxury"],
       hair_color: "Black",
       eye_color: "Brown",
-      additional_details: "creative attitude, urban aesthetics",
+      additional_details: "tailored suit, premium interior, executive vibe",
+    },
+  },
+  {
+    title: "Anime Style",
+    handle: "@animestyle",
+    tags: ["Artistic", "Streetwear"],
+    image: "",
+    values: {
+      gender: "Female",
+      age_range: "18-24",
+      styles: ["Artistic", "Streetwear"],
+      hair_color: "Black",
+      eye_color: "Brown",
+      additional_details: "edgy accessories, alternative style, bold makeup",
+    },
+  },
+  {
+    title: "Instagram Model",
+    handle: "@instagrammodel",
+    tags: ["Luxury", "Lifestyle"],
+    image: "",
+    values: {
+      gender: "Female",
+      age_range: "25-30",
+      styles: ["Luxury", "Lifestyle"],
+      hair_color: "Blonde",
+      eye_color: "Blue",
+      additional_details: "beach lifestyle, sun-kissed, relaxed glam",
     },
   },
 ] as const;
@@ -276,6 +312,14 @@ export default function InfluencerPage() {
   const [selectedInfluencerId, setSelectedInfluencerId] = useState<string | null>(null);
   const [activePersonaTab, setActivePersonaTab] = useState<"feed" | "presets" | "captions">("feed");
   const [openLibrary, setOpenLibrary] = useState<string | null>(null);
+  const [onboardOpen, setOnboardOpen] = useState(false);
+  useEffect(() => {
+    try {
+      if (!window.localStorage.getItem("fluxyra_influencer_onboarded")) {
+        setOnboardOpen(true);
+      }
+    } catch {}
+  }, []);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [premadeOpen, setPremadeOpen] = useState(false);
@@ -975,6 +1019,60 @@ export default function InfluencerPage() {
         )}
       </section>
 
+      <section className="space-y-4">
+        <div className="flex items-end justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-[#F5F5F5]">Preset templates</h2>
+            <p className="text-sm text-[#888888]">Comece com uma persona pronta e personalize.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setPremadeOpen(true)}
+            className="text-sm text-[#8b8b93] transition-colors hover:text-white"
+          >
+            See all
+          </button>
+        </div>
+        <div className="fx-scroll flex gap-4 overflow-x-auto pb-2">
+          {PREMADES.map((preset, index) => (
+            <button
+              key={preset.title}
+              type="button"
+              onClick={() => applyPremade(index)}
+              className="group relative aspect-[3/4] w-[210px] shrink-0 cursor-pointer overflow-hidden rounded-2xl bg-[#1A1A1A] text-left ring-1 ring-white/5 transition-all duration-200 hover:-translate-y-0.5 hover:ring-[#7C3AED]/30"
+            >
+              {preset.image ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={preset.image}
+                  alt={preset.title}
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#241a3a] to-[#141416]">
+                  <User className="h-8 w-8 text-[#7C3AED]/40" />
+                </div>
+              )}
+              <div className="absolute left-2 top-2 flex flex-wrap gap-1">
+                {preset.tags.map((t) => (
+                  <span
+                    key={t}
+                    className="rounded-md bg-black/50 px-2 py-0.5 text-[10px] font-medium text-white/90 backdrop-blur-sm"
+                  >
+                    {t}
+                  </span>
+                ))}
+              </div>
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-black/85 to-transparent" />
+              <div className="absolute inset-x-0 bottom-0 p-3">
+                <p className="line-clamp-1 text-sm font-semibold text-white">{preset.title}</p>
+                <p className="line-clamp-1 text-xs text-white/70">{preset.handle}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </section>
+
       {selectedInfluencer && (
         <section className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-5">
           <div className="mb-4 flex flex-wrap gap-2">
@@ -1325,6 +1423,32 @@ export default function InfluencerPage() {
             </div>
           )}
         </section>
+      )}
+
+      {onboardOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-[#242428] bg-[#0f0f11] p-6 shadow-2xl">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-[#7C3AED]/15">
+              <Sparkles className="h-6 w-6 text-[#A78BFA]" />
+            </div>
+            <h2 className="text-xl font-semibold text-white">Influencer Studio</h2>
+            <p className="mt-2 text-sm leading-relaxed text-[#9a9aa3]">
+              Crie influenciadores de IA com rostos consistentes. Suba fotos de referência, gere conteúdo ilimitado com presets e monte um feed social completo.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setOnboardOpen(false);
+                try {
+                  window.localStorage.setItem("fluxyra_influencer_onboarded", "1");
+                } catch {}
+              }}
+              className="mt-6 w-full rounded-xl bg-white py-3 text-sm font-semibold text-black transition-colors hover:bg-white/90"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
       )}
 
       {premadeOpen && (
