@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Package, Pencil, Plus, Trash2, ChevronRight, Sparkles, Loader2, Upload, X, Clapperboard, Check } from "lucide-react";
+import { Package, Pencil, Plus, Trash2, ChevronRight, Sparkles, Loader2, Upload, X, Clapperboard, Check, User } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1574,13 +1574,25 @@ export default function UGCPage() {
                   ))}
                 </div>
               ) : sortedProjects.length === 0 ? (
-                <div className="mt-3 rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] px-4">
-                  <EmptyState
-                    icon={Sparkles}
-                    title="Crie seu primeiro projeto UGC"
-                    description="Comece gerando seu roteiro segmentado com IA para escalar sua operação de vídeos."
-                    action={{ label: "New UGC Project", onClick: () => setProjectCreateOpen(true) }}
-                  />
+                <div className="mt-3 flex min-h-[340px] flex-col items-center justify-center rounded-2xl border border-[#242428] bg-[#0f0f11] p-8 text-center">
+                  <div className="relative mb-6 h-28 w-36">
+                    <div className="absolute left-1/2 top-2 h-24 w-[72px] -translate-x-1/2 -rotate-12 rounded-lg border-4 border-white/90 bg-gradient-to-br from-[#2a2036] to-[#15121c] shadow-lg" />
+                    <div className="absolute left-1/2 top-0 h-24 w-[72px] -translate-x-1/2 rotate-[10deg] rounded-lg border-4 border-white/90 bg-gradient-to-br from-[#2a2036] to-[#15121c] shadow-lg" />
+                    <div className="absolute left-1/2 top-1 flex h-24 w-[72px] -translate-x-1/2 items-center justify-center rounded-lg border-4 border-white/90 bg-gradient-to-br from-[#3a2a4a] to-[#1a1522] shadow-xl">
+                      <User className="h-6 w-6 text-white/40" />
+                    </div>
+                  </div>
+                  <h3 className="text-lg font-semibold text-[#F5F5F5]">Nenhum projeto ainda</h3>
+                  <p className="mt-1 max-w-sm text-sm text-[#888888]">
+                    Crie seu primeiro projeto de UGC e comece a gerar conteúdo incrível.
+                  </p>
+                  <Button
+                    onClick={() => setProjectCreateOpen(true)}
+                    className="mt-6 bg-white text-black hover:bg-white/90"
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    New UGC Project
+                  </Button>
                 </div>
               ) : (
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
