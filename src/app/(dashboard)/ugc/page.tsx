@@ -1500,7 +1500,7 @@ export default function UGCPage() {
   }, [selectedProject]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 px-6">
       {view === "list" ? (
         <>
           <section className="space-y-4">
