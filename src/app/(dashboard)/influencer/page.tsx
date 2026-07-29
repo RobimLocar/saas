@@ -873,7 +873,7 @@ export default function InfluencerPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 px-6">
       <section className="relative overflow-hidden rounded-2xl border border-[#242428] p-6 sm:p-8">
         <div className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-br from-[#1b1030] via-[#141416] to-[#0f0f11]" />
         <div className="pointer-events-none absolute -right-16 -top-24 -z-10 h-72 w-72 rounded-full bg-[#7C3AED]/25 blur-[110px]" />
