@@ -2750,14 +2750,19 @@ export default function UGCPage() {
       )}
 
       {projectCreateOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-lg rounded-xl border border-[#2A2A2A] bg-[#131313] p-5">
-            <h3 className="text-lg font-semibold text-[#F5F5F5]">New UGC Project</h3>
-            <p className="mt-1 text-sm text-[#888888]">
-              Crie um projeto para organizar roteiro, avatar e b-roll.
-            </p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-[#242428] bg-[#0f0f11] p-6 shadow-2xl">
+            <div className="mb-5 flex flex-col items-center text-center">
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-[#7C3AED]/15">
+                <Clapperboard className="h-6 w-6 text-[#A78BFA]" />
+              </div>
+              <h3 className="text-xl font-semibold text-white">New UGC Project</h3>
+              <p className="mt-1 text-sm text-[#888888]">
+                Crie um projeto para organizar roteiro, avatar e b-roll.
+              </p>
+            </div>
 
-            <div className="mt-4 space-y-3">
+            <div className="space-y-3">
               <div>
                 <label className="mb-1 block text-xs text-[#A3A3A3]">Nome do projeto *</label>
                 <Input
@@ -2799,10 +2804,10 @@ export default function UGCPage() {
               </div>
             </div>
 
-            <div className="mt-5 flex justify-end gap-2">
+            <div className="mt-6 flex gap-2">
               <Button
                 variant="outline"
-                className="border-[#2A2A2A] text-[#E5E5E5]"
+                className="flex-1 border-[#2A2A2A] text-[#E5E5E5]"
                 onClick={() => {
                   if (!projectSaving) {
                     setProjectCreateOpen(false);
@@ -2815,7 +2820,7 @@ export default function UGCPage() {
                 Cancelar
               </Button>
               <Button
-                className="bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
+                className="flex-1 bg-white text-black hover:bg-white/90"
                 onClick={() => void handleCreateProject()}
                 disabled={projectSaving}
               >
