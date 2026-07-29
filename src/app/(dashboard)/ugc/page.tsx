@@ -1519,24 +1519,32 @@ export default function UGCPage() {
     <div className="space-y-6 px-6">
       {view === "list" ? (
         <>
-          <section className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-semibold text-[#F5F5F5]">UGC Factory</h1>
-                <Badge className="bg-[#2A2A2A] text-[#BDBDBD]">{projectCount} projetos</Badge>
+          <section className="space-y-6">
+            <div className="relative overflow-hidden rounded-2xl border border-[#242428] p-6 sm:p-8">
+              <div className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-br from-[#1b1030] via-[#141416] to-[#0f0f11]" />
+              <div className="pointer-events-none absolute -right-16 -top-24 -z-10 h-72 w-72 rounded-full bg-[#7C3AED]/25 blur-[110px]" />
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="max-w-xl">
+                  <h1 className="text-2xl font-bold text-white sm:text-3xl">Anúncios UGC com cara de gente</h1>
+                  <p className="mt-2 text-sm text-[#b8b8c0]">
+                    Lipsync convincente, realismo cinematográfico e B-roll — tudo o que você precisa pra produzir UGC que prende o scroll.
+                  </p>
+                </div>
+                <Button
+                  onClick={() => setProjectCreateOpen(true)}
+                  className="bg-white text-black hover:bg-white/90"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  New UGC Project
+                </Button>
               </div>
-
-              <Button
-                onClick={() => setProjectCreateOpen(true)}
-                className="rounded-full bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
-              >
-                <Plus className="mr-1 h-4 w-4" />
-                New UGC Project
-              </Button>
             </div>
 
-            <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-5">
-              <h2 className="text-base font-semibold text-[#F5F5F5]">Projetos Recentes</h2>
+            <div>
+              <div className="mb-3">
+                <h2 className="text-lg font-semibold text-[#F5F5F5]">My projects</h2>
+                <p className="text-sm text-[#888888]">Seus projetos de UGC criados.</p>
+              </div>
 
               {projectsLoading ? (
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
