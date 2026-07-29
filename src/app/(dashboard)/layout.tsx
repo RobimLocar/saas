@@ -17,7 +17,7 @@ export default async function DashboardLayout({
         credits={profile?.credits_balance ?? 0}
         initials={initialsFromProfile(profile)}
       />
-      <main className="ml-[220px] pt-[72px]">{children}</main>
+      <main className="ml-[220px] min-w-0 overflow-x-clip pt-[72px]">{children}</main>
     </div>
   );
 }
