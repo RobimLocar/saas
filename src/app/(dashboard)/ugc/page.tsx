@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Package, Pencil, Plus, Trash2, ChevronRight, Sparkles, Loader2, Upload, X } from "lucide-react";
+import { Package, Pencil, Plus, Trash2, ChevronRight, Sparkles, Loader2, Upload, X, Clapperboard, Check } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,6 +79,21 @@ interface InfluencerAvatarItem {
 }
 
 type AvatarFormat = "9:16" | "1:1" | "16:9";
+
+const VIDEO_TYPES = [
+  { id: "talking-broll", title: "UGC Talking + B-Roll", subtitle: "High-converting", image: "" },
+  { id: "fast-broll", title: "Fast-Cut B-Roll", subtitle: "ASMR / Visual Hook", image: "" },
+  { id: "normal-broll", title: "Normal-Cut B-Roll", subtitle: "ASMR / Visual Hook", image: "" },
+  { id: "avatar-product", title: "Avatar Talking with Product", subtitle: "Holds / shows product", image: "" },
+  { id: "avatar-no-product", title: "Avatar Talking No Product", subtitle: "Just the avatar talking", image: "" },
+  { id: "problem-solution", title: "Problem to Solution", subtitle: "Story-based", image: "" },
+  { id: "lifestyle", title: "Lifestyle Montage", subtitle: "Aesthetic / Vibe", image: "" },
+  { id: "before-after", title: "Before vs After", subtitle: "Comparison", image: "" },
+  { id: "authority", title: "Authority / Expert", subtitle: "Credibility", image: "" },
+  { id: "day-in-life", title: "Day-in-the-Life", subtitle: "Relatable", image: "" },
+  { id: "reaction", title: "Reaction / First Impression", subtitle: "Emotional hook", image: "" },
+  { id: "fashion", title: "Fashion Try-On", subtitle: "Showcase", image: "" },
+] as const;
 
 const FORMAT_PRESETS: Record<AvatarFormat, { width: number; height: number }> = {
   "9:16": { width: 576, height: 1024 },
@@ -281,6 +296,7 @@ function brollPresetLabel(key: string): string {
 
 export default function UGCPage() {
   const [view, setView] = useState<ViewMode>("list");
+  const [selectedVideoType, setSelectedVideoType] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<UgcTab>("script");
 
   // Projetos UGC
@@ -1709,6 +1725,59 @@ export default function UGCPage() {
             </div>
           ) : (
             <>
+              <section className="space-y-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-[#F5F5F5]">Choose video type</h2>
+                  <p className="text-sm text-[#888888]">
+                    Comece com um tipo de vídeo e personalize.
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+                  {VIDEO_TYPES.map((vt) => {
+                    const active = selectedVideoType === vt.id;
+                    return (
+                      <button
+                        key={vt.id}
+                        type="button"
+                        onClick={() => setSelectedVideoType(vt.id)}
+                        className={`group relative aspect-[9/16] overflow-hidden rounded-xl bg-[#1A1A1A] text-left ring-1 transition-all duration-200 ${
+                          active
+                            ? "ring-2 ring-[#7C3AED]"
+                            : "ring-white/5 hover:-translate-y-0.5 hover:ring-[#7C3AED]/40"
+                        }`}
+                      >
+                        {vt.image ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={vt.image}
+                            alt={vt.title}
+                            className="absolute inset-0 h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#241a3a] to-[#141416]">
+                            <Clapperboard className="h-7 w-7 text-[#7C3AED]/40" />
+                          </div>
+                        )}
+                        <span
+                          className={`absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full border ${
+                            active
+                              ? "border-[#7C3AED] bg-[#7C3AED]"
+                              : "border-white/40 bg-black/30"
+                          }`}
+                        >
+                          {active && <Check className="h-3 w-3 text-white" />}
+                        </span>
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/85 to-transparent" />
+                        <div className="absolute inset-x-0 bottom-0 p-2.5">
+                          <p className="line-clamp-2 text-xs font-semibold text-white">{vt.title}</p>
+                          <p className="line-clamp-1 text-[10px] text-white/60">{vt.subtitle}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
               <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="min-w-[280px] flex-1">
