@@ -95,6 +95,9 @@ const VIDEO_TYPES = [
   { id: "fashion", title: "Fashion Try-On", subtitle: "Showcase", image: "" },
 ] as const;
 
+// Capa do hero da UGC. Deixe "" para o placeholder; cole a URL da imagem gerada (recomendado 1920x640 px, ~3:1).
+const UGC_COVER_IMAGE = "";
+
 const FORMAT_PRESETS: Record<AvatarFormat, { width: number; height: number }> = {
   "9:16": { width: 576, height: 1024 },
   "1:1": { width: 768, height: 768 },
@@ -1520,19 +1523,34 @@ export default function UGCPage() {
       {view === "list" ? (
         <>
           <section className="space-y-6">
-            <div className="relative overflow-hidden rounded-2xl border border-[#242428] p-6 sm:p-8">
-              <div className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-br from-[#1b1030] via-[#141416] to-[#0f0f11]" />
-              <div className="pointer-events-none absolute -right-16 -top-24 -z-10 h-72 w-72 rounded-full bg-[#7C3AED]/25 blur-[110px]" />
-              <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative h-[340px] overflow-hidden rounded-2xl border border-[#242428] sm:h-[420px]">
+              {UGC_COVER_IMAGE ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={UGC_COVER_IMAGE}
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#2a1f45] via-[#171326] to-[#0f0d16]">
+                  <span className="rounded-full bg-white/5 px-3 py-1 text-xs text-white/30 ring-1 ring-white/10">
+                    Capa 1920×640 — cole a URL em UGC_COVER_IMAGE
+                  </span>
+                </div>
+              )}
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-black/10" />
+              <div className="absolute inset-x-0 bottom-0 flex flex-col gap-4 p-6 sm:flex-row sm:items-end sm:justify-between sm:p-8">
                 <div className="max-w-xl">
-                  <h1 className="text-2xl font-bold text-white sm:text-3xl">Anúncios UGC com cara de gente</h1>
-                  <p className="mt-2 text-sm text-[#b8b8c0]">
-                    Lipsync convincente, realismo cinematográfico e B-roll — tudo o que você precisa pra produzir UGC que prende o scroll.
+                  <h1 className="text-2xl font-bold text-white sm:text-3xl">
+                    Crie anúncios UGC com cara de gente
+                  </h1>
+                  <p className="mt-2 text-sm text-white/70">
+                    Lipsync perfeito, realismo cinematográfico e B-roll — tudo pra produzir UGC que prende o scroll.
                   </p>
                 </div>
                 <Button
                   onClick={() => setProjectCreateOpen(true)}
-                  className="bg-white text-black hover:bg-white/90"
+                  className="shrink-0 bg-white text-black hover:bg-white/90"
                 >
                   <Plus className="mr-2 h-4 w-4" />
                   New UGC Project
