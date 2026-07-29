@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Eye, ChevronDown, LayoutDashboard, ImageIcon, Video, Music, Zap } from "lucide-react";
+import { Eye, ChevronDown, LayoutDashboard, ImageIcon, Video, Music } from "lucide-react";
+import { LogoMark } from "@/components/shared/logo";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { useStudioStore } from "@/stores/use-studio-store";
@@ -74,9 +75,7 @@ export function Topbar() {
   return (
     <header className="fixed inset-x-0 top-0 z-30 flex h-[68px] items-center justify-between border-b border-[#1e1e22] bg-[#0A0A0A]/80 px-6 backdrop-blur-md">
       <Link href="/studio" className="flex items-center gap-4">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-[#7C3AED] to-[#6D28D9] shadow-lg shadow-[#7C3AED]/30">
-          <Zap className="h-5 w-5 text-white" fill="currentColor" />
-        </div>
+        <LogoMark className="h-9 w-9" />
         <div className="flex items-center gap-2 text-sm text-[#F5F5F5]">
           <LayoutDashboard className="h-4 w-4 text-[#888888]" />
           <span className="font-medium">Studio</span>
