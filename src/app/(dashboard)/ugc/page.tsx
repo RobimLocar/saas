@@ -369,6 +369,7 @@ export default function UGCPage() {
   const [brollSelectedPresets, setBrollSelectedPresets] = useState<string[]>([]);
   const [brollDuration, setBrollDuration] = useState(8);
   const [brollAudio, setBrollAudio] = useState(false);
+  const [brollDescription, setBrollDescription] = useState("");
   const [brollGenerating, setBrollGenerating] = useState(false);
   const [brollUnitCost, setBrollUnitCost] = useState(0);
 
@@ -2450,6 +2451,18 @@ export default function UGCPage() {
                     </div>
                   </section>
 
+                  <section className="rounded-2xl border border-[#242428] bg-[#141416] p-5 space-y-4">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#7C3AED]/15 text-sm font-semibold text-[#A78BFA] ring-1 ring-[#7C3AED]/30">
+                        2
+                      </span>
+                      <div>
+                        <h3 className="text-sm font-semibold text-[#F5F5F5]">Configuration</h3>
+                        <p className="text-xs text-[#888888]">
+                          Ângulo de câmera, duração e áudio do clipe.
+                        </p>
+                      </div>
+                    </div>
                   <div>
                     <label className="mb-2 block text-xs text-[#A3A3A3]">Camera Angle</label>
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -2514,6 +2527,52 @@ export default function UGCPage() {
                       </label>
                     </div>
                   </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-[#242428] bg-[#141416] p-5">
+                    <div className="mb-3 flex items-center gap-3">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#7C3AED]/15 text-sm font-semibold text-[#A78BFA] ring-1 ring-[#7C3AED]/30">
+                        3
+                      </span>
+                      <div>
+                        <h3 className="text-sm font-semibold text-[#F5F5F5]">Describe Your Video</h3>
+                        <p className="text-xs text-[#888888]">
+                          Opcional. Conte a cena, o clima e o que o produto deve mostrar.
+                        </p>
+                      </div>
+                    </div>
+                    <Textarea
+                      value={brollDescription}
+                      onChange={(e) => setBrollDescription(e.target.value)}
+                      placeholder="Ex.: close no produto sobre bancada de mármore, luz natural da manhã, mãos abrindo a embalagem..."
+                      className="min-h-[110px] resize-none border-[#2A2A2A] bg-[#1A1A1A] text-sm text-[#F5F5F5] placeholder:text-[#5a5a63]"
+                    />
+                  </section>
+
+                  <section className="rounded-2xl border border-[#242428] bg-[#141416] p-5">
+                    <div className="mb-3 flex items-center gap-3">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/5 text-sm font-semibold text-[#888888] ring-1 ring-white/10">
+                        4
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-semibold text-[#F5F5F5]">Extend a Video</h3>
+                        <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-medium text-[#888888]">
+                          Opcional
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#2A2A2A] bg-[#1A1A1A]/60 px-4 py-8 text-center">
+                      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10">
+                        <Clapperboard className="h-5 w-5 text-[#555555]" />
+                      </span>
+                      <p className="text-xs text-[#888888]">
+                        Continue um clipe já gerado a partir do último frame.
+                      </p>
+                      <span className="rounded-full bg-black/30 px-2.5 py-0.5 text-[10px] font-medium text-white/45">
+                        Em breve
+                      </span>
+                    </div>
+                  </section>
 
                   <div className="space-y-3">
                     {(() => {
