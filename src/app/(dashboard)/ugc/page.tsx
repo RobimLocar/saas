@@ -370,6 +370,7 @@ export default function UGCPage() {
   const [brollDuration, setBrollDuration] = useState(8);
   const [brollAudio, setBrollAudio] = useState(false);
   const [brollDescription, setBrollDescription] = useState("");
+  const [brollSpeech, setBrollSpeech] = useState("");
   const [brollGenerating, setBrollGenerating] = useState(false);
   const [brollUnitCost, setBrollUnitCost] = useState(0);
 
@@ -1869,22 +1870,51 @@ export default function UGCPage() {
         </section>
       ) : (
         <section className="space-y-4">
-          <div className="flex items-center gap-2 text-sm text-[#888888]">
-            <button
-              type="button"
-              onClick={() => {
-                setView("list");
-                setSelectedProjectId(null);
-                setSelectedProject(null);
-              }}
-              className="hover:text-[#F5F5F5]"
-            >
-              UGC Factory
-            </button>
-            <span>/</span>
-            <span className="text-[#F5F5F5]">
-              {selectedProject?.name || "Projeto"}
-            </span>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm text-[#888888]">
+              <button
+                type="button"
+                onClick={() => {
+                  setView("list");
+                  setSelectedProjectId(null);
+                  setSelectedProject(null);
+                }}
+                className="hover:text-[#F5F5F5]"
+              >
+                UGC Factory
+              </button>
+              <span>/</span>
+              <span className="text-[#F5F5F5]">
+                {selectedProject?.name || "Projeto"}
+              </span>
+              <span className="rounded-full border border-[#7C3AED]/40 bg-[#7C3AED]/15 px-2 py-0.5 text-[10px] font-medium text-[#A78BFA]">
+                Premium
+              </span>
+            </div>
+            <div className="inline-flex items-center gap-1 rounded-lg border border-[#242428] bg-[#141416] p-1">
+              <button
+                type="button"
+                onClick={() => setActiveTab("broll")}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                  activeTab !== "generations"
+                    ? "bg-[#7C3AED] text-white"
+                    : "text-[#888888] hover:text-white"
+                }`}
+              >
+                Video generation
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("generations")}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                  activeTab === "generations"
+                    ? "bg-[#7C3AED] text-white"
+                    : "text-[#888888] hover:text-white"
+                }`}
+              >
+                Project generations
+              </button>
+            </div>
           </div>
 
           {!selectedProject ? (
@@ -2360,7 +2390,7 @@ export default function UGCPage() {
                         </p>
                       </div>
                     </div>
-                    <div className="grid gap-3 md:grid-cols-2">
+                    <div className="grid gap-3 md:grid-cols-3">
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <label className="text-xs text-[#A3A3A3]">Product Image</label>
@@ -2383,20 +2413,44 @@ export default function UGCPage() {
                       </div>
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <label className="text-xs text-[#A3A3A3]">Referência extra</label>
+                          <label className="text-xs text-[#A3A3A3]">Interno</label>
                           <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-medium text-[#888888]">
                             Opcional
                           </span>
                         </div>
-                        <div className="flex h-full min-h-[168px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#2A2A2A] bg-[#1A1A1A]/60 px-4 text-center">
+                        <div className="flex min-h-[168px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#2A2A2A] bg-[#1A1A1A]/60 px-4 text-center">
                           <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10">
                             <Upload className="h-5 w-5 text-[#555555]" />
                           </span>
-                          <p className="text-xs text-[#888888]">Cenário ou estilo de referência</p>
+                          <p className="text-xs text-[#888888]">Imagem do interno / uso</p>
                           <span className="rounded-full bg-black/30 px-2.5 py-0.5 text-[10px] font-medium text-white/45">
                             Em breve
                           </span>
                         </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs text-[#A3A3A3]">Avatar</label>
+                          <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-medium text-[#888888]">
+                            Opcional
+                          </span>
+                        </div>
+                        <div className="flex min-h-[122px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#2A2A2A] bg-[#1A1A1A]/60 px-4 text-center">
+                          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10">
+                            <User className="h-5 w-5 text-[#555555]" />
+                          </span>
+                          <p className="text-xs text-[#888888]">Imagem do avatar</p>
+                          <span className="rounded-full bg-black/30 px-2.5 py-0.5 text-[10px] font-medium text-white/45">
+                            Em breve
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          disabled
+                          className="w-full rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] py-2 text-xs font-medium text-[#888888] opacity-60"
+                        >
+                          Escolher avatar pronto
+                        </button>
                       </div>
                     </div>
                   </section>
@@ -2491,12 +2545,32 @@ export default function UGCPage() {
                         </p>
                       </div>
                     </div>
-                    <Textarea
-                      value={brollDescription}
-                      onChange={(e) => setBrollDescription(e.target.value)}
-                      placeholder="Ex.: close no produto sobre bancada de mármore, luz natural da manhã, mãos abrindo a embalagem..."
-                      className="min-h-[110px] resize-none border-[#2A2A2A] bg-[#1A1A1A] text-sm text-[#F5F5F5] placeholder:text-[#5a5a63]"
-                    />
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div>
+                        <div className="mb-1 flex items-center justify-between">
+                          <label className="text-xs text-[#A3A3A3]">Product Description</label>
+                          <span className="text-[10px] text-[#666666]">O que é e como se usa</span>
+                        </div>
+                        <Textarea
+                          value={brollDescription}
+                          onChange={(e) => setBrollDescription(e.target.value)}
+                          placeholder="Ex.: whey protein, uma dose por copo com água..."
+                          className="min-h-[110px] resize-none border-[#2A2A2A] bg-[#1A1A1A] text-sm text-[#F5F5F5] placeholder:text-[#5a5a63]"
+                        />
+                      </div>
+                      <div>
+                        <div className="mb-1 flex items-center justify-between">
+                          <label className="text-xs text-[#A3A3A3]">Custom Speech <span className="text-[#666666]">(Opcional)</span></label>
+                          <span className="text-[10px] text-[#666666]">Vazio = roteiro por IA</span>
+                        </div>
+                        <Textarea
+                          value={brollSpeech}
+                          onChange={(e) => setBrollSpeech(e.target.value)}
+                          placeholder="Escreva sua própria fala (até ~40 palavras)."
+                          className="min-h-[110px] resize-none border-[#2A2A2A] bg-[#1A1A1A] text-sm text-[#F5F5F5] placeholder:text-[#5a5a63]"
+                        />
+                      </div>
+                    </div>
                   </section>
 
                   <section className="rounded-2xl border border-[#242428] bg-[#141416] p-5">
@@ -2511,16 +2585,27 @@ export default function UGCPage() {
                         </span>
                       </div>
                     </div>
-                    <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#2A2A2A] bg-[#1A1A1A]/60 px-4 py-8 text-center">
-                      <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10">
-                        <Clapperboard className="h-5 w-5 text-[#555555]" />
-                      </span>
-                      <p className="text-xs text-[#888888]">
-                        Continue um clipe já gerado a partir do último frame.
-                      </p>
-                      <span className="rounded-full bg-black/30 px-2.5 py-0.5 text-[10px] font-medium text-white/45">
-                        Em breve
-                      </span>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <label className="text-xs text-[#A3A3A3]">Vídeo</label>
+                        <div className="flex min-h-[128px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#2A2A2A] bg-[#1A1A1A]/60 px-4 text-center">
+                          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10">
+                            <Clapperboard className="h-5 w-5 text-[#555555]" />
+                          </span>
+                          <p className="text-xs text-[#888888]">Arraste um clipe MP4 / MOV</p>
+                          <span className="rounded-full bg-black/30 px-2.5 py-0.5 text-[10px] font-medium text-white/45">
+                            Em breve
+                          </span>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs text-[#A3A3A3]">Prompt de continuação</label>
+                        <Textarea
+                          disabled
+                          placeholder="Ex.: continue o vídeo — a pessoa pega o produto e sorri..."
+                          className="min-h-[128px] resize-none border-[#2A2A2A] bg-[#1A1A1A]/60 text-sm text-[#F5F5F5] placeholder:text-[#5a5a63] opacity-60"
+                        />
+                      </div>
                     </div>
                   </section>
 
@@ -2551,6 +2636,23 @@ export default function UGCPage() {
                         Créditos insuficientes para os presets selecionados.
                       </p>
                     )}
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="flex items-start gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
+                      <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#60A5FA]" />
+                      <div>
+                        <p className="text-xs font-medium text-[#F5F5F5]">A IA pode errar</p>
+                        <p className="text-[11px] text-[#888888]">Resultados variam. Cada vídeo tem cerca de 15s.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
+                      <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#FBBF24]" />
+                      <div>
+                        <p className="text-xs font-medium text-[#F5F5F5]">Uso alto</p>
+                        <p className="text-[11px] text-[#888888]">Em picos, a espera pode aumentar.</p>
+                      </div>
+                    </div>
                   </div>
 
                   <div>
