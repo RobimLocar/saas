@@ -13,7 +13,7 @@ import { GenerationCard } from "@/components/ui/generation-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { BROLL_PRESETS } from "@/lib/ugc-broll-presets";
 
-type ViewMode = "list" | "project";
+type ViewMode = "list" | "tier" | "avatar" | "project";
 type UgcTab = "script" | "avatar" | "broll" | "generations";
 
 interface ProductItem {
@@ -97,6 +97,21 @@ const VIDEO_TYPES = [
 
 // Capa do hero da UGC. Deixe "" para o placeholder; cole a URL da imagem gerada (recomendado 1920x640 px, ~3:1).
 const UGC_COVER_IMAGE = "";
+
+const AVATARS = [
+  { id: "a1", name: "Ana", handle: "@ugc_ana", image: "" },
+  { id: "a2", name: "Bruno", handle: "@ugc_bruno", image: "" },
+  { id: "a3", name: "Carla", handle: "@ugc_carla", image: "" },
+  { id: "a4", name: "Diego", handle: "@ugc_diego", image: "" },
+  { id: "a5", name: "Elena", handle: "@ugc_elena", image: "" },
+  { id: "a6", name: "Felipe", handle: "@ugc_felipe", image: "" },
+  { id: "a7", name: "Gabi", handle: "@ugc_gabi", image: "" },
+  { id: "a8", name: "Hugo", handle: "@ugc_hugo", image: "" },
+  { id: "a9", name: "Ines", handle: "@ugc_ines", image: "" },
+  { id: "a10", name: "Joao", handle: "@ugc_joao", image: "" },
+  { id: "a11", name: "Karina", handle: "@ugc_karina", image: "" },
+  { id: "a12", name: "Lucas", handle: "@ugc_lucas", image: "" },
+] as const;
 
 const FORMAT_PRESETS: Record<AvatarFormat, { width: number; height: number }> = {
   "9:16": { width: 576, height: 1024 },
@@ -890,7 +905,7 @@ export default function UGCPage() {
       setProjectForm(emptyProjectForm());
       setProjectProductId("");
       setSelectedProjectId(created.id);
-      setView("project");
+      setView("tier");
       toast.success("Projeto criado.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Falha ao criar projeto.");
@@ -1734,6 +1749,123 @@ export default function UGCPage() {
             )}
           </section>
         </>
+      ) : view === "tier" ? (
+        <section className="space-y-6">
+          <div className="flex items-center gap-2 text-sm text-[#888888]">
+            <button type="button" onClick={() => setView("list")} className="hover:text-[#F5F5F5]">
+              UGC Factory
+            </button>
+            <span>/</span>
+            <span className="text-[#F5F5F5]">{selectedProject?.name || "Novo projeto"}</span>
+          </div>
+          <div className="py-4 text-center">
+            <h1 className="text-3xl font-bold text-white">Create UGC Video</h1>
+            <p className="mt-2 text-[#888888]">Escolha o tier de geração</p>
+          </div>
+          <div className="mx-auto grid max-w-4xl gap-4 md:grid-cols-2">
+            <div className="flex flex-col rounded-2xl border border-[#242428] bg-[#141416] p-6">
+              <span className="mb-4 inline-flex w-fit items-center gap-1.5 rounded-full border border-[#7C3AED]/40 bg-[#7C3AED]/10 px-2.5 py-1 text-xs font-semibold text-[#A78BFA]">
+                <Sparkles className="h-3 w-3" /> Premium
+              </span>
+              <h2 className="text-2xl font-bold text-white">Seedance x Wise UGC</h2>
+              <p className="mt-1 text-sm text-[#888888]">Melhores resultados. Usa mais créditos.</p>
+              <ul className="mt-4 space-y-2 text-sm text-[#c9c9d1]">
+                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#7C3AED]" /> Motor de vídeo Seedance 2.0 Pro</li>
+                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#7C3AED]" /> Consistência de personagem</li>
+                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#7C3AED]" /> Suporte a Omni reference</li>
+                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#7C3AED]" /> Melhor para UGC de produto</li>
+              </ul>
+              <button
+                type="button"
+                onClick={() => {
+                  setView("project");
+                  setActiveTab("script");
+                }}
+                className="mt-6 flex items-center justify-center gap-2 rounded-xl bg-white py-3 text-sm font-semibold text-black transition-colors hover:bg-white/90"
+              >
+                Continue with Premium
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex flex-col rounded-2xl border border-[#242428] bg-[#141416] p-6">
+              <span className="mb-4 inline-flex w-fit items-center gap-1.5 rounded-full border border-[#2A2A2A] bg-white/5 px-2.5 py-1 text-xs font-semibold text-[#c9c9d1]">
+                <Sparkles className="h-3 w-3" /> Standard
+              </span>
+              <h2 className="text-2xl font-bold text-white">Veo 3.1 x Kling UGC</h2>
+              <p className="mt-1 text-sm text-[#888888]">Ótimos resultados. Usa menos créditos.</p>
+              <ul className="mt-4 space-y-2 text-sm text-[#c9c9d1]">
+                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#666666]" /> Motores Veo 3.1 + Kling 3.0</li>
+                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#666666]" /> Boa qualidade de movimento</li>
+                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#666666]" /> Mais econômico</li>
+                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#666666]" /> Bom para UGC geral</li>
+              </ul>
+              <button
+                type="button"
+                onClick={() => setView("avatar")}
+                className="mt-6 flex items-center justify-center gap-2 rounded-xl border border-[#2A2A2A] bg-white/5 py-3 text-sm font-semibold text-[#F5F5F5] transition-colors hover:bg-white/10"
+              >
+                Continue with Standard
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+          <div className="flex justify-center pt-2">
+            <button
+              type="button"
+              onClick={() => setView("list")}
+              className="flex items-center gap-1.5 text-sm text-[#888888] hover:text-[#F5F5F5]"
+            >
+              <ChevronRight className="h-4 w-4 rotate-180" /> Back
+            </button>
+          </div>
+        </section>
+      ) : view === "avatar" ? (
+        <section className="space-y-6">
+          <div className="flex items-center gap-2 text-sm text-[#888888]">
+            <button type="button" onClick={() => setView("tier")} className="hover:text-[#F5F5F5]">
+              UGC Factory
+            </button>
+            <span>/</span>
+            <span className="text-[#F5F5F5]">Veo 3.1 x Kling UGC</span>
+          </div>
+          <div className="py-2 text-center">
+            <h1 className="text-3xl font-bold text-white">Choose your avatar</h1>
+            <p className="mt-2 text-sm text-[#888888]">
+              Esse avatar será usado no conteúdo de{" "}
+              <span className="text-[#A78BFA]">{selectedProject?.name || "seu projeto"}</span>.
+            </p>
+          </div>
+          <div>
+            <h2 className="mb-3 text-sm font-semibold text-[#F5F5F5]">Premade Avatars</h2>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+              {AVATARS.map((av) => (
+                <button
+                  key={av.id}
+                  type="button"
+                  onClick={() => {
+                    setView("project");
+                    setActiveTab("script");
+                  }}
+                  className="group relative aspect-[3/4] overflow-hidden rounded-xl bg-[#1A1A1A] text-left ring-1 ring-white/5 transition-all duration-200 hover:-translate-y-0.5 hover:ring-[#7C3AED]/40"
+                >
+                  {av.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={av.image} alt={av.name} className="absolute inset-0 h-full w-full object-cover" />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#241a3a] to-[#141416]">
+                      <User className="h-7 w-7 text-[#7C3AED]/40" />
+                    </div>
+                  )}
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/85 to-transparent" />
+                  <div className="absolute inset-x-0 bottom-0 p-2.5">
+                    <p className="line-clamp-1 text-sm font-semibold text-white">{av.name}</p>
+                    <p className="line-clamp-1 text-[10px] text-white/60">{av.handle}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
       ) : (
         <section className="space-y-4">
           <div className="flex items-center gap-2 text-sm text-[#888888]">
@@ -2771,34 +2903,6 @@ export default function UGCPage() {
                     setProjectForm((prev) => ({ ...prev, name: e.target.value }))
                   }
                   placeholder="Ex.: UGC Hidratante Vitamina C"
-                  className="border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs text-[#A3A3A3]">Produto relacionado</label>
-                <select
-                  value={projectProductId}
-                  onChange={(e) => setProjectProductId(e.target.value)}
-                  className="h-10 w-full rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-2.5 text-sm text-[#F5F5F5] outline-none"
-                >
-                  <option value="">Nenhum</option>
-                  {products.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {product.title}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs text-[#A3A3A3]">Avatar label (opcional)</label>
-                <Input
-                  value={projectForm.description}
-                  onChange={(e) =>
-                    setProjectForm((prev) => ({ ...prev, description: e.target.value }))
-                  }
-                  placeholder="Ex.: Criadora 27 anos, tom amigável"
                   className="border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
                 />
               </div>
