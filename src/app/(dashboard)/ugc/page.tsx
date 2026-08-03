@@ -1895,6 +1895,48 @@ export default function UGCPage() {
             </div>
           ) : (
             <>
+              <section className="rounded-2xl border border-[#242428] bg-[#141416] p-6">
+                <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="max-w-xs">
+                    <h2 className="text-base font-semibold text-[#F5F5F5]">Como funciona</h2>
+                    <p className="mt-1 text-sm text-[#888888]">
+                      Suba seu produto, mostre o interno, escolha um avatar — o resto é com a gente.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-center gap-3">
+                    <div className="text-center">
+                      <div className="flex h-24 w-20 items-center justify-center overflow-hidden rounded-xl bg-[#1A1A1A] ring-1 ring-white/5">
+                        <Package className="h-6 w-6 text-[#7C3AED]/40" />
+                      </div>
+                      <p className="mt-1.5 text-[11px] text-[#888888]">Produto</p>
+                    </div>
+                    <span className="text-lg text-[#666666]">+</span>
+                    <div className="text-center">
+                      <div className="flex h-24 w-20 items-center justify-center overflow-hidden rounded-xl bg-[#1A1A1A] ring-1 ring-white/5">
+                        <Package className="h-6 w-6 text-[#7C3AED]/40" />
+                      </div>
+                      <p className="mt-1.5 text-[11px] text-[#888888]">Interno</p>
+                    </div>
+                    <span className="text-lg text-[#666666]">+</span>
+                    <div className="text-center">
+                      <div className="flex h-24 w-20 items-center justify-center overflow-hidden rounded-xl bg-[#1A1A1A] ring-1 ring-white/5">
+                        <User className="h-6 w-6 text-[#7C3AED]/40" />
+                      </div>
+                      <p className="mt-1.5 text-[11px] text-[#888888]">Avatar</p>
+                    </div>
+                    <span className="text-lg text-[#666666]">=</span>
+                    <div className="text-center">
+                      <div className="flex h-24 w-20 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-[#241a3a] to-[#141416] ring-1 ring-[#7C3AED]/30">
+                        <Sparkles className="h-6 w-6 text-[#A78BFA]" />
+                      </div>
+                      <p className="mt-1.5 flex items-center justify-center gap-1 text-[11px] text-[#A78BFA]">
+                        <Sparkles className="h-2.5 w-2.5" /> Resultado
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
               <section className="space-y-4">
                 <div>
                   <h2 className="text-lg font-semibold text-[#F5F5F5]">Choose video type</h2>
