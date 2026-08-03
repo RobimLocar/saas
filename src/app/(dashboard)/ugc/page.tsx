@@ -315,7 +315,7 @@ function brollPresetLabel(key: string): string {
 export default function UGCPage() {
   const [view, setView] = useState<ViewMode>("list");
   const [selectedVideoType, setSelectedVideoType] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<UgcTab>("script");
+  const [activeTab, setActiveTab] = useState<UgcTab>("broll");
 
   // Projetos UGC
   const [projects, setProjects] = useState<UgcProject[]>([]);
@@ -1629,7 +1629,7 @@ export default function UGCPage() {
                         onClick={() => {
                           setSelectedProjectId(project.id);
                           setView("project");
-                          setActiveTab("script");
+                          setActiveTab("broll");
                         }}
                         className={`group relative overflow-hidden rounded-2xl bg-[#141416] p-3 text-left ring-1 ring-white/5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(124,58,237,0.15)] hover:ring-[#7C3AED]/25 ${
                           selected ? "ring-2 ring-[#7C3AED] shadow-[0_0_20px_rgba(124,58,237,0.2)]" : ""
@@ -1780,7 +1780,7 @@ export default function UGCPage() {
                 type="button"
                 onClick={() => {
                   setView("project");
-                  setActiveTab("script");
+                  setActiveTab("broll");
                 }}
                 className="mt-6 flex items-center justify-center gap-2 rounded-xl bg-white py-3 text-sm font-semibold text-black transition-colors hover:bg-white/90"
               >
@@ -1845,7 +1845,7 @@ export default function UGCPage() {
                   type="button"
                   onClick={() => {
                     setView("project");
-                    setActiveTab("script");
+                    setActiveTab("broll");
                   }}
                   className="group relative aspect-[3/4] overflow-hidden rounded-xl bg-[#1A1A1A] text-left ring-1 ring-white/5 transition-all duration-200 hover:-translate-y-0.5 hover:ring-[#7C3AED]/40"
                 >
@@ -2051,56 +2051,6 @@ export default function UGCPage() {
                       Excluir projeto
                     </Button>
                   </div>
-                </div>
-
-                <div className="mt-4 grid gap-2 sm:grid-cols-4">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("script")}
-                    className={`rounded-lg border px-3 py-2 text-left transition ${
-                      activeTab === "script"
-                        ? "border-[#7C3AED] bg-[#7C3AED]/10 text-[#F5F5F5]"
-                        : "border-[#2A2A2A] bg-[#1A1A1A] text-[#BDBDBD]"
-                    }`}
-                  >
-                    <p className="text-sm font-medium">Script Writer</p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("avatar")}
-                    className={`rounded-lg border px-3 py-2 text-left transition ${
-                      activeTab === "avatar"
-                        ? "border-[#7C3AED] bg-[#7C3AED]/10 text-[#F5F5F5]"
-                        : "border-[#2A2A2A] bg-[#1A1A1A] text-[#BDBDBD]"
-                    }`}
-                  >
-                    <p className="text-sm font-medium">Talking Avatar</p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("broll")}
-                    className={`rounded-lg border px-3 py-2 text-left transition ${
-                      activeTab === "broll"
-                        ? "border-[#7C3AED] bg-[#7C3AED]/10 text-[#F5F5F5]"
-                        : "border-[#2A2A2A] bg-[#1A1A1A] text-[#BDBDBD]"
-                    }`}
-                  >
-                    <p className="text-sm font-medium">B-Roll</p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("generations")}
-                    className={`rounded-lg border px-3 py-2 text-left transition ${
-                      activeTab === "generations"
-                        ? "border-[#7C3AED] bg-[#7C3AED]/10 text-[#F5F5F5]"
-                        : "border-[#2A2A2A] bg-[#1A1A1A] text-[#BDBDBD]"
-                    }`}
-                  >
-                    <p className="text-sm font-medium">Project Generations</p>
-                  </button>
                 </div>
               </div>
 
@@ -2393,7 +2343,7 @@ export default function UGCPage() {
 
               {activeTab === "broll" && selectedProject && (
                 <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-5 space-y-4">
-                  <h2 className="text-base font-semibold text-[#F5F5F5]">B-Roll Studio</h2>
+                  <h2 className="text-base font-semibold text-[#F5F5F5]">Gerar vídeo</h2>
                   <div className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3 text-sm text-[#A3A3A3]">
                     Gere quantos clipes precisar — mire 1 clipe por seção de 5–8s.
                   </div>
@@ -2675,22 +2625,6 @@ export default function UGCPage() {
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    <Button
-                      variant="outline"
-                      className="border-[#2A2A2A] text-[#F5F5F5]"
-                      onClick={() => setActiveTab("avatar")}
-                    >
-                      ← Back to avatar
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="border-[#2A2A2A] text-[#F5F5F5]"
-                      onClick={() => setActiveTab("generations")}
-                    >
-                      Ver Project Generations →
-                    </Button>
-                  </div>
                 </div>
               )}
 
