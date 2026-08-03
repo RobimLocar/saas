@@ -1905,28 +1905,28 @@ export default function UGCPage() {
                   </div>
                   <div className="flex flex-wrap items-center justify-center gap-3">
                     <div className="text-center">
-                      <div className="flex h-24 w-20 items-center justify-center overflow-hidden rounded-xl bg-[#1A1A1A] ring-1 ring-white/5">
+                      <div className="flex h-32 w-24 items-center justify-center overflow-hidden rounded-xl bg-[#1A1A1A] ring-1 ring-white/5">
                         <Package className="h-6 w-6 text-[#7C3AED]/40" />
                       </div>
                       <p className="mt-1.5 text-[11px] text-[#888888]">Produto</p>
                     </div>
                     <span className="text-lg text-[#666666]">+</span>
                     <div className="text-center">
-                      <div className="flex h-24 w-20 items-center justify-center overflow-hidden rounded-xl bg-[#1A1A1A] ring-1 ring-white/5">
+                      <div className="flex h-32 w-24 items-center justify-center overflow-hidden rounded-xl bg-[#1A1A1A] ring-1 ring-white/5">
                         <Package className="h-6 w-6 text-[#7C3AED]/40" />
                       </div>
                       <p className="mt-1.5 text-[11px] text-[#888888]">Interno</p>
                     </div>
                     <span className="text-lg text-[#666666]">+</span>
                     <div className="text-center">
-                      <div className="flex h-24 w-20 items-center justify-center overflow-hidden rounded-xl bg-[#1A1A1A] ring-1 ring-white/5">
+                      <div className="flex h-32 w-24 items-center justify-center overflow-hidden rounded-xl bg-[#1A1A1A] ring-1 ring-white/5">
                         <User className="h-6 w-6 text-[#7C3AED]/40" />
                       </div>
                       <p className="mt-1.5 text-[11px] text-[#888888]">Avatar</p>
                     </div>
                     <span className="text-lg text-[#666666]">=</span>
                     <div className="text-center">
-                      <div className="flex h-24 w-20 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-[#241a3a] to-[#141416] ring-1 ring-[#7C3AED]/30">
+                      <div className="flex h-32 w-24 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-[#241a3a] to-[#141416] ring-1 ring-[#7C3AED]/30">
                         <Sparkles className="h-6 w-6 text-[#A78BFA]" />
                       </div>
                       <p className="mt-1.5 flex items-center justify-center gap-1 text-[11px] text-[#A78BFA]">
@@ -2397,21 +2397,58 @@ export default function UGCPage() {
                     Gere quantos clipes precisar — mire 1 clipe por seção de 5–8s.
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-xs text-[#A3A3A3]">Product Image</label>
-                    <ImageDropzone
-                      id="ugc-broll-product-drop"
-                      disabled={brollProductUploading}
-                      uploading={brollProductUploading}
-                      previewUrl={brollProductImageUrl || undefined}
-                      title={brollProductUploading ? "Enviando imagem..." : "Imagem do produto"}
-                      subtitle="Arraste e solte ou clique para selecionar"
-                      cta={brollProductImageUrl ? "Trocar imagem" : "Enviar imagem"}
-                      onFileSelect={(file) => {
-                        void handleBrollProductImageUpload(file);
-                      }}
-                    />
-                  </div>
+                  <section className="rounded-2xl border border-[#242428] bg-[#141416] p-5">
+                    <div className="mb-4 flex items-center gap-3">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#7C3AED]/15 text-sm font-semibold text-[#A78BFA] ring-1 ring-[#7C3AED]/30">
+                        1
+                      </span>
+                      <div>
+                        <h3 className="text-sm font-semibold text-[#F5F5F5]">Upload Assets</h3>
+                        <p className="text-xs text-[#888888]">
+                          Suba a imagem do seu produto. PNG ou JPG, fundo limpo funciona melhor.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs text-[#A3A3A3]">Product Image</label>
+                          <span className="rounded-full bg-[#7C3AED]/15 px-2 py-0.5 text-[10px] font-medium text-[#A78BFA]">
+                            Obrigatório
+                          </span>
+                        </div>
+                        <ImageDropzone
+                          id="ugc-broll-product-drop"
+                          disabled={brollProductUploading}
+                          uploading={brollProductUploading}
+                          previewUrl={brollProductImageUrl || undefined}
+                          title={brollProductUploading ? "Enviando imagem..." : "Imagem do produto"}
+                          subtitle="Arraste e solte ou clique para selecionar"
+                          cta={brollProductImageUrl ? "Trocar imagem" : "Enviar imagem"}
+                          onFileSelect={(file) => {
+                            void handleBrollProductImageUpload(file);
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs text-[#A3A3A3]">Referência extra</label>
+                          <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-medium text-[#888888]">
+                            Opcional
+                          </span>
+                        </div>
+                        <div className="flex h-full min-h-[168px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#2A2A2A] bg-[#1A1A1A]/60 px-4 text-center">
+                          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10">
+                            <Upload className="h-5 w-5 text-[#555555]" />
+                          </span>
+                          <p className="text-xs text-[#888888]">Cenário ou estilo de referência</p>
+                          <span className="rounded-full bg-black/30 px-2.5 py-0.5 text-[10px] font-medium text-white/45">
+                            Em breve
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
 
                   <div>
                     <label className="mb-2 block text-xs text-[#A3A3A3]">Camera Angle</label>
