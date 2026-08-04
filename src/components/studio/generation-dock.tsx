@@ -1130,19 +1130,31 @@ export function GenerationDock() {
     event: ChangeEvent<HTMLInputElement>,
     add: (value: string) => void
   ) {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(event.target.files ?? []);
+    if (files.length === 0) return;
 
-    const toastId = toast.loading("Enviando arquivo...");
+    const toastId = toast.loading(
+      files.length > 1 ? `Enviando ${files.length} arquivos...` : "Enviando arquivo..."
+    );
+    let ok = 0;
     try {
-      const url = await uploadReferenceFile(file);
-      add(url);
-      toast.success("Referência adicionada.", { id: toastId });
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Não foi possível enviar o arquivo.",
-        { id: toastId }
-      );
+      for (const file of files) {
+        try {
+          const url = await uploadReferenceFile(file);
+          add(url);
+          ok += 1;
+        } catch {
+          // segue com os demais arquivos
+        }
+      }
+      if (ok > 0) {
+        toast.success(
+          ok > 1 ? `${ok} referências adicionadas.` : "Referência adicionada.",
+          { id: toastId }
+        );
+      } else {
+        toast.error("Não foi possível enviar os arquivos.", { id: toastId });
+      }
     } finally {
       event.target.value = "";
     }
@@ -2349,6 +2361,7 @@ export function GenerationDock() {
           ref={refImageInputRef}
           type="file"
           accept="image/*"
+          multiple
           className="hidden"
           onChange={(event) => void handlePickToList(event, addReferenceImage)}
         />
@@ -2356,6 +2369,7 @@ export function GenerationDock() {
           ref={refVideoInputRef}
           type="file"
           accept="video/*"
+          multiple
           className="hidden"
           onChange={(event) => void handlePickToList(event, addReferenceVideo)}
         />
@@ -2363,6 +2377,7 @@ export function GenerationDock() {
           ref={refAudioInputRef}
           type="file"
           accept="audio/*"
+          multiple
           className="hidden"
           onChange={(event) => void handlePickToList(event, addReferenceAudio)}
         />
