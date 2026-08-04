@@ -366,7 +366,12 @@ export default function UGCPage() {
   // ── B-Roll ──
   const [brollProductImageUrl, setBrollProductImageUrl] = useState("");
   const [brollProductUploading, setBrollProductUploading] = useState(false);
-  const [brollSelectedPresets, setBrollSelectedPresets] = useState<string[]>([]);
+  const [brollInsideImageUrl, setBrollInsideImageUrl] = useState("");
+  const [brollInsideUploading, setBrollInsideUploading] = useState(false);
+  const [brollAvatarImageUrl, setBrollAvatarImageUrl] = useState("");
+  const [brollAvatarUploading, setBrollAvatarUploading] = useState(false);
+  const [brollAspect, setBrollAspect] = useState("9:16");
+  const [brollResolution, setBrollResolution] = useState("720p");
   const [brollDuration, setBrollDuration] = useState(8);
   const [brollAudio, setBrollAudio] = useState(false);
   const [brollDescription, setBrollDescription] = useState("");
@@ -1208,12 +1213,29 @@ export default function UGCPage() {
     }
   }
 
-  function toggleBrollPreset(presetKey: string) {
-    setBrollSelectedPresets((prev) =>
-      prev.includes(presetKey)
-        ? prev.filter((x) => x !== presetKey)
-        : [...prev, presetKey]
-    );
+  async function handleBrollRefUpload(
+    file: File,
+    setUploading: (v: boolean) => void,
+    setUrl: (v: string) => void,
+    labelName: string
+  ) {
+    setUploading(true);
+    const toastId = toast.loading(`Enviando ${labelName}...`);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.url) {
+        throw new Error(data?.error || `Falha no upload (${labelName}).`);
+      }
+      setUrl(data.url);
+      toast.success(`${labelName} enviada.`, { id: toastId });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha no upload.", { id: toastId });
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function handleGenerateBroll() {
@@ -1224,8 +1246,8 @@ export default function UGCPage() {
       return;
     }
 
-    if (brollSelectedPresets.length === 0) {
-      toast.error("Selecione pelo menos 1 preset de camera angle.");
+    if (!brollDescription.trim()) {
+      toast.error("Descreva seu vídeo (Describe) antes de gerar.");
       return;
     }
 
@@ -1238,7 +1260,10 @@ export default function UGCPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           product_image_url: brollProductImageUrl,
-          presets: brollSelectedPresets,
+          reference_images: [brollInsideImageUrl, brollAvatarImageUrl].filter(Boolean),
+          prompt: brollDescription.trim(),
+          aspect_ratio: brollAspect,
+          resolution: brollResolution,
           duration: brollDuration,
           audio: brollAudio,
         }),
@@ -1487,7 +1512,7 @@ export default function UGCPage() {
       scriptDraft.cta.text
   );
 
-  const brollTotalCost = brollUnitCost * brollSelectedPresets.length;
+  const brollTotalCost = brollUnitCost;
   const brollInsufficientCredits =
     userCredits !== null ? userCredits < brollTotalCost : false;
 
@@ -2423,15 +2448,18 @@ export default function UGCPage() {
                             Opcional
                           </span>
                         </div>
-                        <div className="flex min-h-[168px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#2A2A2A] bg-[#1A1A1A]/60 px-4 text-center">
-                          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10">
-                            <Upload className="h-5 w-5 text-[#555555]" />
-                          </span>
-                          <p className="text-xs text-[#888888]">Imagem do interno / uso</p>
-                          <span className="rounded-full bg-black/30 px-2.5 py-0.5 text-[10px] font-medium text-white/45">
-                            Em breve
-                          </span>
-                        </div>
+                        <ImageDropzone
+                          id="ugc-broll-inside-drop"
+                          disabled={brollInsideUploading}
+                          uploading={brollInsideUploading}
+                          previewUrl={brollInsideImageUrl || undefined}
+                          title={brollInsideUploading ? "Enviando imagem..." : "Imagem do interno / uso"}
+                          subtitle="Arraste e solte ou clique para selecionar"
+                          cta={brollInsideImageUrl ? "Trocar imagem" : "Enviar imagem"}
+                          onFileSelect={(file) => {
+                            void handleBrollRefUpload(file, setBrollInsideUploading, setBrollInsideImageUrl, "imagem do interno");
+                          }}
+                        />
                       </div>
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
@@ -2440,22 +2468,18 @@ export default function UGCPage() {
                             Opcional
                           </span>
                         </div>
-                        <div className="flex min-h-[122px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#2A2A2A] bg-[#1A1A1A]/60 px-4 text-center">
-                          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10">
-                            <User className="h-5 w-5 text-[#555555]" />
-                          </span>
-                          <p className="text-xs text-[#888888]">Imagem do avatar</p>
-                          <span className="rounded-full bg-black/30 px-2.5 py-0.5 text-[10px] font-medium text-white/45">
-                            Em breve
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          disabled
-                          className="w-full rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] py-2 text-xs font-medium text-[#888888] opacity-60"
-                        >
-                          Escolher avatar pronto
-                        </button>
+                        <ImageDropzone
+                          id="ugc-broll-avatar-drop"
+                          disabled={brollAvatarUploading}
+                          uploading={brollAvatarUploading}
+                          previewUrl={brollAvatarImageUrl || undefined}
+                          title={brollAvatarUploading ? "Enviando imagem..." : "Imagem do avatar"}
+                          subtitle="Arraste e solte ou clique para selecionar"
+                          cta={brollAvatarImageUrl ? "Trocar imagem" : "Enviar imagem"}
+                          onFileSelect={(file) => {
+                            void handleBrollRefUpload(file, setBrollAvatarUploading, setBrollAvatarImageUrl, "imagem do avatar");
+                          }}
+                        />
                       </div>
                     </div>
                   </section>
@@ -2472,34 +2496,30 @@ export default function UGCPage() {
                         </p>
                       </div>
                     </div>
-                  <div>
-                    <label className="mb-2 block text-xs text-[#A3A3A3]">Camera Angle</label>
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                      {BROLL_PRESETS.map((preset) => {
-                        const selected = brollSelectedPresets.includes(preset.key);
-                        return (
-                          <button
-                            key={preset.key}
-                            type="button"
-                            onClick={() => toggleBrollPreset(preset.key)}
-                            className={`rounded-lg border p-3 text-left transition ${
-                              selected
-                                ? "border-[#7C3AED] bg-[#7C3AED]/10"
-                                : "border-[#2A2A2A] bg-[#1A1A1A] hover:border-[#7C3AED]/50"
-                            }`}
-                          >
-                            <div className="mb-2 flex items-center justify-between">
-                              <span className="text-lg">🎬</span>
-                              <span className={`h-4 w-4 rounded border ${
-                                selected
-                                  ? "border-[#7C3AED] bg-[#7C3AED]"
-                                  : "border-[#555555]"
-                              }`} />
-                            </div>
-                            <p className="text-sm font-medium text-[#F5F5F5]">{preset.label}</p>
-                          </button>
-                        );
-                      })}
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1.5 block text-xs text-[#A3A3A3]">Aspect ratio</label>
+                      <select
+                        value={brollAspect}
+                        onChange={(e) => setBrollAspect(e.target.value)}
+                        className="h-10 w-full rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3 text-sm text-[#F5F5F5]"
+                      >
+                        <option value="9:16">9:16 (Vertical)</option>
+                        <option value="1:1">1:1 (Quadrado)</option>
+                        <option value="16:9">16:9 (Horizontal)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs text-[#A3A3A3]">Resolution</label>
+                      <select
+                        value={brollResolution}
+                        onChange={(e) => setBrollResolution(e.target.value)}
+                        className="h-10 w-full rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3 text-sm text-[#F5F5F5]"
+                      >
+                        <option value="480p">480p</option>
+                        <option value="720p">720p</option>
+                        <option value="1080p">1080p</option>
+                      </select>
                     </div>
                   </div>
 
@@ -2619,7 +2639,7 @@ export default function UGCPage() {
                       const balance = userCredits ?? 0;
                       const disabled =
                         brollGenerating ||
-                        brollSelectedPresets.length === 0 ||
+                        !brollDescription.trim() ||
                         !brollProductImageUrl ||
                         brollInsufficientCredits;
 
@@ -2630,15 +2650,15 @@ export default function UGCPage() {
                           onClick={() => void handleGenerateBroll()}
                         >
                           {brollGenerating
-                            ? "Gerando B-Roll..."
-                            : `Generate B-Roll — ~${brollTotalCost} créditos (only ${balance} available)`}
+                            ? "Gerando vídeo..."
+                            : `Generate UGC video — ~${brollTotalCost} créditos (${balance} disponíveis)`}
                         </Button>
                       );
                     })()}
 
                     {brollInsufficientCredits && (
                       <p className="text-xs text-[#FCA5A5]">
-                        Créditos insuficientes para os presets selecionados.
+                        Créditos insuficientes para gerar o vídeo.
                       </p>
                     )}
                   </div>
@@ -2696,7 +2716,6 @@ export default function UGCPage() {
                                   label={label}
                                   onRetry={() => {
                                     setActiveTab("broll");
-                                    setBrollSelectedPresets([clip.preset]);
                                     setBrollDuration(
                                       typeof clip.duration === "number" ? clip.duration : 8
                                     );
@@ -2716,7 +2735,6 @@ export default function UGCPage() {
                                 disabled={processing}
                                 onClick={() => {
                                   setActiveTab("broll");
-                                  setBrollSelectedPresets([clip.preset]);
                                   setBrollDuration(
                                     typeof clip.duration === "number" ? clip.duration : 8
                                   );
