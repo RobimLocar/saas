@@ -370,6 +370,7 @@ export default function UGCPage() {
   const [extendFrameUrl, setExtendFrameUrl] = useState("");
   const [extendExtracting, setExtendExtracting] = useState(false);
   const [extendPrompt, setExtendPrompt] = useState("");
+  const [extendSpeech, setExtendSpeech] = useState("");
   const [extendGenerating, setExtendGenerating] = useState(false);
   const [brollDuration, setBrollDuration] = useState(8);
   const [brollAudio, setBrollAudio] = useState(false);
@@ -1320,7 +1321,9 @@ export default function UGCPage() {
         body: JSON.stringify({
           product_image_url: extendFrameUrl,
           reference_images: [],
-          prompt: extendPrompt.trim(),
+          prompt: extendSpeech.trim()
+            ? `${extendPrompt.trim()}\n\nA pessoa fala em português: "${extendSpeech.trim()}".`
+            : extendPrompt.trim(),
           aspect_ratio: brollAspect,
           resolution: brollResolution,
           duration: brollDuration,
@@ -1384,7 +1387,9 @@ export default function UGCPage() {
         body: JSON.stringify({
           product_image_url: brollProductImageUrl,
           reference_images: [brollInsideImageUrl, brollAvatarImageUrl].filter(Boolean),
-          prompt: brollDescription.trim(),
+          prompt: brollSpeech.trim()
+            ? `${brollDescription.trim()}\n\nA pessoa fala em português: "${brollSpeech.trim()}".`
+            : brollDescription.trim(),
           aspect_ratio: brollAspect,
           resolution: brollResolution,
           duration: brollDuration,
@@ -2690,32 +2695,32 @@ export default function UGCPage() {
                       <div>
                         <h3 className="text-sm font-semibold text-[#F5F5F5]">Describe Your Video</h3>
                         <p className="text-xs text-[#888888]">
-                          Opcional. Conte a cena, o clima e o que o produto deve mostrar.
+                          Descreva a cena e, se quiser, o que a pessoa fala no vídeo.
                         </p>
                       </div>
                     </div>
                     <div className="grid gap-3 md:grid-cols-2">
                       <div>
                         <div className="mb-1 flex items-center justify-between">
-                          <label className="text-xs text-[#A3A3A3]">Product Description</label>
-                          <span className="text-[10px] text-[#666666]">O que é e como se usa</span>
+                          <label className="text-xs text-[#A3A3A3]">Descreva a cena</label>
+                          <span className="text-[10px] text-[#666666]">Cenário, ação e clima</span>
                         </div>
                         <Textarea
                           value={brollDescription}
                           onChange={(e) => setBrollDescription(e.target.value)}
-                          placeholder="Ex.: whey protein, uma dose por copo com água..."
+                          placeholder="Ex.: pessoa na cozinha segurando o produto, luz natural da manhã, close no rótulo..."
                           className="min-h-[110px] resize-none border-[#2A2A2A] bg-[#1A1A1A] text-sm text-[#F5F5F5] placeholder:text-[#5a5a63]"
                         />
                       </div>
                       <div>
                         <div className="mb-1 flex items-center justify-between">
-                          <label className="text-xs text-[#A3A3A3]">Custom Speech <span className="text-[#666666]">(Opcional)</span></label>
-                          <span className="text-[10px] text-[#666666]">Vazio = roteiro por IA</span>
+                          <label className="text-xs text-[#A3A3A3]">Texto de fala <span className="text-[#666666]">(opcional)</span></label>
+                          <span className="text-[10px] text-[#666666]">O que a pessoa diz</span>
                         </div>
                         <Textarea
                           value={brollSpeech}
                           onChange={(e) => setBrollSpeech(e.target.value)}
-                          placeholder="Escreva sua própria fala (até ~40 palavras)."
+                          placeholder="Ex.: 'esse produto mudou minha rotina...' (até ~40 palavras)"
                           className="min-h-[110px] resize-none border-[#2A2A2A] bg-[#1A1A1A] text-sm text-[#F5F5F5] placeholder:text-[#5a5a63]"
                         />
                       </div>
@@ -2791,14 +2796,25 @@ export default function UGCPage() {
                           </label>
                         )}
                       </div>
-                      <div className="space-y-2">
-                        <label className="text-xs text-[#A3A3A3]">Prompt de continuação</label>
-                        <Textarea
-                          value={extendPrompt}
-                          onChange={(e) => setExtendPrompt(e.target.value)}
-                          placeholder="Ex.: continue o vídeo — a pessoa pega o produto e sorri..."
-                          className="min-h-[128px] resize-none border-[#2A2A2A] bg-[#1A1A1A] text-sm text-[#F5F5F5] placeholder:text-[#5a5a63]"
-                        />
+                      <div className="space-y-3">
+                        <div>
+                          <label className="mb-1 block text-xs text-[#A3A3A3]">Descreva a cena (continuação)</label>
+                          <Textarea
+                            value={extendPrompt}
+                            onChange={(e) => setExtendPrompt(e.target.value)}
+                            placeholder="Ex.: continue o vídeo — a pessoa pega o produto e sorri..."
+                            className="min-h-[70px] resize-none border-[#2A2A2A] bg-[#1A1A1A] text-sm text-[#F5F5F5] placeholder:text-[#5a5a63]"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-[#A3A3A3]">Texto de fala <span className="text-[#666666]">(opcional)</span></label>
+                          <Textarea
+                            value={extendSpeech}
+                            onChange={(e) => setExtendSpeech(e.target.value)}
+                            placeholder="O que a pessoa diz na continuação..."
+                            className="min-h-[70px] resize-none border-[#2A2A2A] bg-[#1A1A1A] text-sm text-[#F5F5F5] placeholder:text-[#5a5a63]"
+                          />
+                        </div>
                         <Button
                           className="w-full bg-[#7C3AED] text-white hover:bg-[#6D28D9] disabled:opacity-50"
                           disabled={extendGenerating || !extendFrameUrl || !extendPrompt.trim()}
