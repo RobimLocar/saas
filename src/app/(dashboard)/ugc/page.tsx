@@ -1464,6 +1464,11 @@ export default function UGCPage() {
       return;
     }
 
+    if (!brollAvatarImageUrl) {
+      toast.error("Suba uma imagem de avatar para travar a mesma pessoa no vídeo.");
+      return;
+    }
+
     if (!brollDescription.trim()) {
       toast.error("Descreva seu vídeo (Describe) antes de gerar.");
       return;
@@ -2685,8 +2690,8 @@ export default function UGCPage() {
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <label className="text-xs text-[#A3A3A3]">Avatar</label>
-                          <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-medium text-[#888888]">
-                            Opcional
+                          <span className="rounded-full bg-[#7C3AED]/15 px-2 py-0.5 text-[10px] font-medium text-[#A78BFA]">
+                            Obrigatório
                           </span>
                         </div>
                         <ImageDropzone
@@ -2930,6 +2935,7 @@ export default function UGCPage() {
                         brollGenerating ||
                         !brollDescription.trim() ||
                         !brollProductImageUrl ||
+                        !brollAvatarImageUrl ||
                         brollInsufficientCredits;
 
                       return (
