@@ -81,18 +81,18 @@ interface InfluencerAvatarItem {
 type AvatarFormat = "9:16" | "1:1" | "16:9";
 
 const VIDEO_TYPES = [
-  { id: "talking-broll", title: "UGC Talking + B-Roll", subtitle: "High-converting", image: "" },
-  { id: "fast-broll", title: "Fast-Cut B-Roll", subtitle: "ASMR / Visual Hook", image: "" },
-  { id: "normal-broll", title: "Normal-Cut B-Roll", subtitle: "ASMR / Visual Hook", image: "" },
-  { id: "avatar-product", title: "Avatar Talking with Product", subtitle: "Holds / shows product", image: "" },
-  { id: "avatar-no-product", title: "Avatar Talking No Product", subtitle: "Just the avatar talking", image: "" },
-  { id: "problem-solution", title: "Problem to Solution", subtitle: "Story-based", image: "" },
-  { id: "lifestyle", title: "Lifestyle Montage", subtitle: "Aesthetic / Vibe", image: "" },
-  { id: "before-after", title: "Before vs After", subtitle: "Comparison", image: "" },
-  { id: "authority", title: "Authority / Expert", subtitle: "Credibility", image: "" },
-  { id: "day-in-life", title: "Day-in-the-Life", subtitle: "Relatable", image: "" },
-  { id: "reaction", title: "Reaction / First Impression", subtitle: "Emotional hook", image: "" },
-  { id: "fashion", title: "Fashion Try-On", subtitle: "Showcase", image: "" },
+  { id: "talking-broll", title: "UGC Talking + B-Roll", subtitle: "High-converting", image: "", prompt: "Pessoa real segurando o produto e falando direto para a câmera em tom animado, intercalado com cortes de b-roll do produto em uso. Luz natural, estilo UGC gravado no celular, vertical 9:16." },
+  { id: "fast-broll", title: "Fast-Cut B-Roll", subtitle: "ASMR / Visual Hook", image: "", prompt: "Sequência rápida de closes do produto em estilo ASMR, cortes secos no ritmo, foco em textura e detalhe, sem rosto, fundo limpo e iluminação suave." },
+  { id: "normal-broll", title: "Normal-Cut B-Roll", subtitle: "ASMR / Visual Hook", image: "", prompt: "Closes suaves do produto sendo usado, ritmo calmo, luz natural, transições limpas e foco nos detalhes, estilo ASMR." },
+  { id: "avatar-product", title: "Avatar Talking with Product", subtitle: "Holds / shows product", image: "", prompt: "Avatar segurando e mostrando o produto enquanto fala os benefícios, gestos naturais, ambiente de casa aconchegante, vertical 9:16." },
+  { id: "avatar-no-product", title: "Avatar Talking No Product", subtitle: "Just the avatar talking", image: "", prompt: "Avatar falando direto para a câmera sobre o produto, sem segurá-lo, expressão confiante e amigável, fundo neutro e desfocado." },
+  { id: "problem-solution", title: "Problem to Solution", subtitle: "Story-based", image: "", prompt: "Começa mostrando um problema do dia a dia, depois apresenta o produto como a solução, tom de alívio e storytelling, cortes claros entre as duas partes." },
+  { id: "lifestyle", title: "Lifestyle Montage", subtitle: "Aesthetic / Vibe", image: "", prompt: "Montagem lifestyle com o produto integrado à rotina, estética aspiracional, luz dourada, cortes no ritmo da música." },
+  { id: "before-after", title: "Before vs After", subtitle: "Comparison", image: "", prompt: "Comparação antes e depois usando o produto, corte claro ou split screen, ênfase na transformação e no resultado." },
+  { id: "authority", title: "Authority / Expert", subtitle: "Credibility", image: "", prompt: "Especialista explicando por que o produto funciona, tom confiável e didático, ambiente profissional, olhando direto para a câmera." },
+  { id: "day-in-life", title: "Day-in-the-Life", subtitle: "Relatable", image: "", prompt: "Rotina do dia a dia usando o produto em vários momentos, tom relatable e espontâneo, gravação de celular." },
+  { id: "reaction", title: "Reaction / First Impression", subtitle: "Emotional hook", image: "", prompt: "Primeira reação ao usar o produto, surpresa genuína, close no rosto, gancho emocional forte nos primeiros segundos." },
+  { id: "fashion", title: "Fashion Try-On", subtitle: "Showcase", image: "", prompt: "Try-on mostrando o produto vestido, giro para mostrar o caimento, espelho ou câmera fixa, vibe fashion e confiante." },
 ] as const;
 
 // Capa do hero da UGC. Deixe "" para o placeholder; cole a URL da imagem gerada (recomendado 1920x640 px, ~3:1).
@@ -1982,7 +1982,12 @@ export default function UGCPage() {
                       <button
                         key={vt.id}
                         type="button"
-                        onClick={() => setSelectedVideoType(vt.id)}
+                        onClick={() => {
+                          setSelectedVideoType(vt.id);
+                          setBrollDescription(vt.prompt);
+                          setActiveTab("broll");
+                          toast.success("Prompt de exemplo aplicado no Describe.");
+                        }}
                         className={`group relative aspect-[9/16] overflow-hidden rounded-xl bg-[#1A1A1A] text-left ring-1 transition-all duration-200 ${
                           active
                             ? "ring-2 ring-[#7C3AED]"
