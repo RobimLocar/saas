@@ -11,7 +11,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { GenerationCard } from "@/components/ui/generation-card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { BROLL_PRESETS } from "@/lib/ugc-broll-presets";
 
 type ViewMode = "list" | "tier" | "avatar" | "project";
 type UgcTab = "script" | "avatar" | "broll" | "generations";
@@ -307,10 +306,6 @@ function normalizeBroll(raw: unknown): BrollClip[] {
   return Array.isArray(raw) ? (raw as BrollClip[]) : [];
 }
 
-function brollPresetLabel(key: string): string {
-  const found = BROLL_PRESETS.find((x) => x.key === key);
-  return found?.label || key;
-}
 
 export default function UGCPage() {
   const [view, setView] = useState<ViewMode>("list");
@@ -1302,7 +1297,8 @@ export default function UGCPage() {
         void loadMe();
       }
 
-      toast.success(`${clips.length} clipe(s) de B-Roll em processamento.`, { id: toastId });
+      setActiveTab("generations");
+      toast.success("Vídeo em processamento. Veja em Project generations.", { id: toastId });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao gerar B-Roll.", { id: toastId });
     } finally {
@@ -1546,7 +1542,7 @@ export default function UGCPage() {
     for (const clip of normalizeBroll(selectedProject?.broll)) {
       if (clip.status === "completed" && typeof clip.result_url === "string") {
         result.push({
-          label: `B-Roll • ${clip.label || brollPresetLabel(clip.preset)}`,
+          label: selectedProject?.name || clip.label || "Vídeo UGC",
           result_url: clip.result_url,
           created_at: clip.created_at,
         });
@@ -2678,76 +2674,6 @@ export default function UGCPage() {
                         <p className="text-[11px] text-[#888888]">Em picos, a espera pode aumentar.</p>
                       </div>
                     </div>
-                  </div>
-
-                  <div>
-                    <h3 className="mb-2 text-sm font-semibold text-[#F5F5F5]">Clipes B-Roll</h3>
-                    {normalizeBroll(selectedProject.broll).length === 0 ? (
-                      <div className="rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] px-4">
-                        <EmptyState
-                          icon={Sparkles}
-                          title="Nenhum clipe de B-Roll gerado ainda"
-                          description="Selecione presets e gere seu primeiro lote de clipes."
-                        />
-                      </div>
-                    ) : (
-                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                        {normalizeBroll(selectedProject.broll).map((clip) => {
-                          const processing = clip.status === "processing";
-                          const completed = clip.status === "completed" && clip.result_url;
-                          const failed = clip.status === "failed";
-                          const label = clip.label || brollPresetLabel(clip.preset);
-
-                          return (
-                            <div key={clip.generation_id} className="space-y-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
-                              <p className="text-sm font-medium text-[#F5F5F5]">{label}</p>
-
-                              {completed ? (
-                                <GenerationCard
-                                  status="completed"
-                                  label={label}
-                                  result_url={clip.result_url || undefined}
-                                  mediaType="video"
-                                  className="h-[180px]"
-                                />
-                              ) : failed ? (
-                                <GenerationCard
-                                  status="failed"
-                                  label={label}
-                                  onRetry={() => {
-                                    setActiveTab("broll");
-                                    setBrollDuration(
-                                      typeof clip.duration === "number" ? clip.duration : 8
-                                    );
-                                    setBrollAudio(Boolean(clip.audio));
-                                  }}
-                                />
-                              ) : (
-                                <GenerationCard
-                                  status="processing"
-                                  label={label}
-                                  estimatedTime="~1–3 min"
-                                />
-                              )}
-
-                              <Button
-                                className="mt-2 w-full"
-                                disabled={processing}
-                                onClick={() => {
-                                  setActiveTab("broll");
-                                  setBrollDuration(
-                                    typeof clip.duration === "number" ? clip.duration : 8
-                                  );
-                                  setBrollAudio(Boolean(clip.audio));
-                                }}
-                              >
-                                {failed ? "Tentar de novo" : "Re-gerar"}
-                              </Button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
                   </div>
 
                 </div>
