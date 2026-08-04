@@ -118,6 +118,28 @@ const FORMAT_PRESETS: Record<AvatarFormat, { width: number; height: number }> = 
   "16:9": { width: 1024, height: 576 },
 };
 
+function buildUgcPrompt(
+  scene: string,
+  speech: string,
+  opts?: { sameAsRef?: boolean }
+): string {
+  const parts: string[] = [];
+  const sc = scene.trim();
+  if (sc) parts.push(sc);
+  if (opts?.sameAsRef) {
+    parts.push(
+      "Mantenha exatamente a mesma pessoa das imagens de referência: mesmo rosto, cabelo, roupa e ambiente."
+    );
+  }
+  const sp = speech.trim();
+  if (sp) {
+    parts.push(
+      `A pessoa olha para a câmera e fala diretamente (lip sync, sincronia labial perfeita, fala na câmera — não é narração em off) em português: "${sp}".`
+    );
+  }
+  return parts.join("\n\n");
+}
+
 function audioBufferToWav(buffer: AudioBuffer): Blob {
   const sampleRate = buffer.sampleRate;
   const length = buffer.length;
@@ -1393,13 +1415,11 @@ export default function UGCPage() {
           product_image_url: extendFrameUrl,
           reference_images: [],
           reference_audios: extendAudioUrl ? [extendAudioUrl] : [],
-          prompt: extendSpeech.trim()
-            ? `${extendPrompt.trim()}\n\nA pessoa fala em português: "${extendSpeech.trim()}".`
-            : extendPrompt.trim(),
+          prompt: buildUgcPrompt(extendPrompt, extendSpeech, { sameAsRef: true }),
           aspect_ratio: brollAspect,
           resolution: brollResolution,
           duration: brollDuration,
-          audio: brollAudio,
+          audio: brollAudio || Boolean(extendSpeech.trim()),
         }),
       });
       const data = await res.json().catch(() => null);
@@ -1459,13 +1479,13 @@ export default function UGCPage() {
         body: JSON.stringify({
           product_image_url: brollProductImageUrl,
           reference_images: [brollInsideImageUrl, brollAvatarImageUrl].filter(Boolean),
-          prompt: brollSpeech.trim()
-            ? `${brollDescription.trim()}\n\nA pessoa fala em português: "${brollSpeech.trim()}".`
-            : brollDescription.trim(),
+          prompt: buildUgcPrompt(brollDescription, brollSpeech, {
+            sameAsRef: Boolean(brollAvatarImageUrl || brollInsideImageUrl),
+          }),
           aspect_ratio: brollAspect,
           resolution: brollResolution,
           duration: brollDuration,
-          audio: brollAudio,
+          audio: brollAudio || Boolean(brollSpeech.trim()),
         }),
       });
 
