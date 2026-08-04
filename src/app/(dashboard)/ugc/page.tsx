@@ -118,6 +118,61 @@ const FORMAT_PRESETS: Record<AvatarFormat, { width: number; height: number }> = 
   "16:9": { width: 1024, height: 576 },
 };
 
+function audioBufferToWav(buffer: AudioBuffer): Blob {
+  const sampleRate = buffer.sampleRate;
+  const length = buffer.length;
+  const mono = new Float32Array(length);
+  const chs = buffer.numberOfChannels || 1;
+  for (let c = 0; c < chs; c++) {
+    const ch = buffer.getChannelData(c);
+    for (let i = 0; i < length; i++) mono[i] += ch[i] / chs;
+  }
+  const blockAlign = 2;
+  const dataSize = length * blockAlign;
+  const ab = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(ab);
+  const writeStr = (off: number, str: string) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i));
+  };
+  writeStr(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, "data");
+  view.setUint32(40, dataSize, true);
+  let off = 44;
+  for (let i = 0; i < length; i++) {
+    const sample = Math.max(-1, Math.min(1, mono[i]));
+    view.setInt16(off, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+    off += 2;
+  }
+  return new Blob([view], { type: "audio/wav" });
+}
+
+async function extractAudioAsWav(file: File): Promise<Blob | null> {
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const AC =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AC) return null;
+    const ctx = new AC();
+    const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
+    void ctx.close();
+    if (!audioBuffer || audioBuffer.length === 0) return null;
+    return audioBufferToWav(audioBuffer);
+  } catch {
+    return null;
+  }
+}
+
 function isAvatarFormat(value: unknown): value is AvatarFormat {
   return value === "9:16" || value === "1:1" || value === "16:9";
 }
@@ -371,6 +426,7 @@ export default function UGCPage() {
   const [extendExtracting, setExtendExtracting] = useState(false);
   const [extendPrompt, setExtendPrompt] = useState("");
   const [extendSpeech, setExtendSpeech] = useState("");
+  const [extendAudioUrl, setExtendAudioUrl] = useState("");
   const [extendGenerating, setExtendGenerating] = useState(false);
   const [brollDuration, setBrollDuration] = useState(8);
   const [brollAudio, setBrollAudio] = useState(false);
@@ -1282,6 +1338,7 @@ export default function UGCPage() {
 
   async function handleExtendVideoSelect(file: File) {
     setExtendExtracting(true);
+    setExtendAudioUrl("");
     const toastId = toast.loading("Extraindo o último frame...");
     try {
       const blob = await extractLastFrame(file);
@@ -1294,6 +1351,20 @@ export default function UGCPage() {
         throw new Error(data?.error || "Falha ao enviar o frame.");
       }
       setExtendFrameUrl(data.url);
+      // Consistência de voz: extrai o áudio do vídeo e envia como referência (best-effort).
+      try {
+        const wav = await extractAudioAsWav(file);
+        if (wav) {
+          const audioFile = new File([wav], "ref-audio.wav", { type: "audio/wav" });
+          const afd = new FormData();
+          afd.append("file", audioFile);
+          const ares = await fetch("/api/upload", { method: "POST", body: afd });
+          const adata = await ares.json().catch(() => null);
+          if (ares.ok && adata?.url) setExtendAudioUrl(adata.url);
+        }
+      } catch {
+        // sem áudio de referência — segue só com o frame
+      }
       toast.success("Último frame capturado.", { id: toastId });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Falha ao extrair o frame.", { id: toastId });
@@ -1321,6 +1392,7 @@ export default function UGCPage() {
         body: JSON.stringify({
           product_image_url: extendFrameUrl,
           reference_images: [],
+          reference_audios: extendAudioUrl ? [extendAudioUrl] : [],
           prompt: extendSpeech.trim()
             ? `${extendPrompt.trim()}\n\nA pessoa fala em português: "${extendSpeech.trim()}".`
             : extendPrompt.trim(),
@@ -2753,6 +2825,11 @@ export default function UGCPage() {
                             <p className="text-[11px] text-[#888888]">
                               Último frame capturado — será o início da continuação.
                             </p>
+                            {extendAudioUrl && (
+                              <p className="text-[11px] text-[#A78BFA]">
+                                Áudio de referência capturado — a voz será usada para manter o tom.
+                              </p>
+                            )}
                             <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-1.5 text-xs text-[#F5F5F5] hover:bg-[#202020]">
                               <input
                                 type="file"

@@ -73,6 +73,9 @@ export async function POST(
     const referenceExtrasRaw: unknown[] = Array.isArray(body?.reference_images)
       ? body.reference_images
       : [];
+    const referenceAudiosRaw: unknown[] = Array.isArray(body?.reference_audios)
+      ? body.reference_audios
+      : [];
     const aspectRatio =
       typeof body?.aspect_ratio === "string" && body.aspect_ratio.trim()
         ? body.aspect_ratio.trim()
@@ -104,6 +107,14 @@ export async function POST(
     const referenceImages = Array.from(
       new Set(
         [productImageUrl, ...referenceExtrasRaw]
+          .filter((u): u is string => typeof u === "string" && u.trim().length > 0)
+          .map((u) => u.trim())
+          .filter((u) => isSafeMediaUrl(u))
+      )
+    );
+    const referenceAudios = Array.from(
+      new Set(
+        referenceAudiosRaw
           .filter((u): u is string => typeof u === "string" && u.trim().length > 0)
           .map((u) => u.trim())
           .filter((u) => isSafeMediaUrl(u))
@@ -203,6 +214,7 @@ export async function POST(
         prompt,
         product_image_url: productImageUrl,
         reference_images: referenceImages,
+        reference_audios: referenceAudios,
         aspect_ratio: aspectRatio,
         resolution,
         duration,
@@ -233,6 +245,7 @@ export async function POST(
         duration,
         imageUrl: productImageUrl,
         referenceImages,
+        referenceAudios: referenceAudios.length ? referenceAudios : undefined,
         withAudio: audio,
         aspectRatio,
         resolution,
