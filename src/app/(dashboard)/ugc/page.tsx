@@ -367,6 +367,10 @@ export default function UGCPage() {
   const [brollAvatarUploading, setBrollAvatarUploading] = useState(false);
   const [brollAspect, setBrollAspect] = useState("9:16");
   const [brollResolution, setBrollResolution] = useState("720p");
+  const [extendFrameUrl, setExtendFrameUrl] = useState("");
+  const [extendExtracting, setExtendExtracting] = useState(false);
+  const [extendPrompt, setExtendPrompt] = useState("");
+  const [extendGenerating, setExtendGenerating] = useState(false);
   const [brollDuration, setBrollDuration] = useState(8);
   const [brollAudio, setBrollAudio] = useState(false);
   const [brollDescription, setBrollDescription] = useState("");
@@ -1230,6 +1234,130 @@ export default function UGCPage() {
       toast.error(err instanceof Error ? err.message : "Falha no upload.", { id: toastId });
     } finally {
       setUploading(false);
+    }
+  }
+
+  function extractLastFrame(file: File): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement("video");
+      video.preload = "auto";
+      video.muted = true;
+      (video as HTMLVideoElement & { playsInline?: boolean }).playsInline = true;
+      const url = URL.createObjectURL(file);
+      const cleanup = () => URL.revokeObjectURL(url);
+      video.onloadedmetadata = () => {
+        const target = Math.max(0, (video.duration || 0) - 0.1);
+        video.onseeked = () => {
+          try {
+            const canvas = document.createElement("canvas");
+            canvas.width = video.videoWidth || 720;
+            canvas.height = video.videoHeight || 1280;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) throw new Error("Canvas não suportado neste navegador.");
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob(
+              (blob) => {
+                cleanup();
+                if (blob) resolve(blob);
+                else reject(new Error("Não foi possível capturar o frame."));
+              },
+              "image/jpeg",
+              0.92
+            );
+          } catch (e) {
+            cleanup();
+            reject(e instanceof Error ? e : new Error("Falha ao capturar o frame."));
+          }
+        };
+        video.currentTime = target;
+      };
+      video.onerror = () => {
+        cleanup();
+        reject(new Error("Não foi possível ler esse vídeo."));
+      };
+      video.src = url;
+    });
+  }
+
+  async function handleExtendVideoSelect(file: File) {
+    setExtendExtracting(true);
+    const toastId = toast.loading("Extraindo o último frame...");
+    try {
+      const blob = await extractLastFrame(file);
+      const frameFile = new File([blob], "last-frame.jpg", { type: "image/jpeg" });
+      const fd = new FormData();
+      fd.append("file", frameFile);
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.url) {
+        throw new Error(data?.error || "Falha ao enviar o frame.");
+      }
+      setExtendFrameUrl(data.url);
+      toast.success("Último frame capturado.", { id: toastId });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha ao extrair o frame.", { id: toastId });
+    } finally {
+      setExtendExtracting(false);
+    }
+  }
+
+  async function handleExtendGenerate() {
+    if (!selectedProject) return;
+    if (!extendFrameUrl) {
+      toast.error("Anexe um vídeo para capturar o último frame.");
+      return;
+    }
+    if (!extendPrompt.trim()) {
+      toast.error("Descreva como o vídeo deve continuar.");
+      return;
+    }
+    setExtendGenerating(true);
+    const toastId = toast.loading("Iniciando continuação...");
+    try {
+      const res = await fetch(`/api/ugc/projects/${selectedProject.id}/broll`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_image_url: extendFrameUrl,
+          reference_images: [],
+          prompt: extendPrompt.trim(),
+          aspect_ratio: brollAspect,
+          resolution: brollResolution,
+          duration: brollDuration,
+          audio: brollAudio,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.error || "Falha ao iniciar a continuação.");
+      }
+      const clips = Array.isArray(data?.clips) ? (data.clips as BrollClip[]) : [];
+      if (clips.length === 0) {
+        throw new Error("Nenhum clipe foi iniciado.");
+      }
+      setSelectedProject((prev) => {
+        if (!prev) return prev;
+        const curr = normalizeBroll(prev.broll);
+        return { ...prev, broll: [...curr, ...clips] };
+      });
+      setPollingSegments((prev) => {
+        const next = { ...prev };
+        for (const clip of clips) {
+          next[`broll:${clip.generation_id}`] = clip.generation_id;
+        }
+        return next;
+      });
+      if (typeof data?.remaining === "number") {
+        setUserCredits(data.remaining);
+      } else {
+        void loadMe();
+      }
+      setActiveTab("generations");
+      toast.success("Continuação em processamento. Veja em Project generations.", { id: toastId });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao estender o vídeo.", { id: toastId });
+    } finally {
+      setExtendGenerating(false);
     }
   }
 
@@ -2609,23 +2737,75 @@ export default function UGCPage() {
                     <div className="grid gap-3 md:grid-cols-2">
                       <div className="space-y-2">
                         <label className="text-xs text-[#A3A3A3]">Vídeo</label>
-                        <div className="flex min-h-[128px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#2A2A2A] bg-[#1A1A1A]/60 px-4 text-center">
-                          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10">
-                            <Clapperboard className="h-5 w-5 text-[#555555]" />
-                          </span>
-                          <p className="text-xs text-[#888888]">Arraste um clipe MP4 / MOV</p>
-                          <span className="rounded-full bg-black/30 px-2.5 py-0.5 text-[10px] font-medium text-white/45">
-                            Em breve
-                          </span>
-                        </div>
+                        {extendFrameUrl ? (
+                          <div className="space-y-2">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={extendFrameUrl}
+                              alt="Último frame"
+                              className="max-h-[180px] w-full rounded-xl object-contain ring-1 ring-white/10"
+                            />
+                            <p className="text-[11px] text-[#888888]">
+                              Último frame capturado — será o início da continuação.
+                            </p>
+                            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-1.5 text-xs text-[#F5F5F5] hover:bg-[#202020]">
+                              <input
+                                type="file"
+                                accept="video/*"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const f = e.target.files?.[0];
+                                  if (f) void handleExtendVideoSelect(f);
+                                  e.target.value = "";
+                                }}
+                              />
+                              Trocar vídeo
+                            </label>
+                          </div>
+                        ) : (
+                          <label className="flex min-h-[128px] cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#2A2A2A] bg-[#1A1A1A]/60 px-4 text-center hover:border-[#7C3AED]/50">
+                            <input
+                              type="file"
+                              accept="video/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const f = e.target.files?.[0];
+                                if (f) void handleExtendVideoSelect(f);
+                                e.target.value = "";
+                              }}
+                            />
+                            {extendExtracting ? (
+                              <>
+                                <Loader2 className="h-5 w-5 animate-spin text-[#A78BFA]" />
+                                <p className="text-xs text-[#888888]">Extraindo o último frame...</p>
+                              </>
+                            ) : (
+                              <>
+                                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10">
+                                  <Clapperboard className="h-5 w-5 text-[#555555]" />
+                                </span>
+                                <p className="text-xs text-[#888888]">Arraste ou clique — MP4 / MOV</p>
+                                <span className="text-[10px] text-[#666666]">Pegamos o último frame automaticamente</span>
+                              </>
+                            )}
+                          </label>
+                        )}
                       </div>
                       <div className="space-y-2">
                         <label className="text-xs text-[#A3A3A3]">Prompt de continuação</label>
                         <Textarea
-                          disabled
+                          value={extendPrompt}
+                          onChange={(e) => setExtendPrompt(e.target.value)}
                           placeholder="Ex.: continue o vídeo — a pessoa pega o produto e sorri..."
-                          className="min-h-[128px] resize-none border-[#2A2A2A] bg-[#1A1A1A]/60 text-sm text-[#F5F5F5] placeholder:text-[#5a5a63] opacity-60"
+                          className="min-h-[128px] resize-none border-[#2A2A2A] bg-[#1A1A1A] text-sm text-[#F5F5F5] placeholder:text-[#5a5a63]"
                         />
+                        <Button
+                          className="w-full bg-[#7C3AED] text-white hover:bg-[#6D28D9] disabled:opacity-50"
+                          disabled={extendGenerating || !extendFrameUrl || !extendPrompt.trim()}
+                          onClick={() => void handleExtendGenerate()}
+                        >
+                          {extendGenerating ? "Gerando continuação..." : "Extend video"}
+                        </Button>
                       </div>
                     </div>
                   </section>
