@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
         const planData = PLANS[plan];
         if (planData) {
           // Rollover parcial
-          const rolloverCap = plan === "agency" ? 500 : plan === "pro" ? 100 : 0;
+          const rolloverCap = plan === "agency" ? 1000 : plan === "pro" ? 200 : 0;
           const rollover = Math.min(profile.credits_balance, rolloverCap);
           const newBalance = planData.credits + rollover;
 

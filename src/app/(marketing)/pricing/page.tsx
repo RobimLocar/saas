@@ -8,7 +8,7 @@ const PLANS = [
   {
     name: "Free",
     price: { monthly: 0, yearly: 0 },
-    credits: 10,
+    credits: 20,
     cta: "Começar grátis",
     ctaHref: "/signup",
     highlight: false,
@@ -23,7 +23,7 @@ const PLANS = [
   {
     name: "Starter",
     price: { monthly: 19, yearly: 15.2 },
-    credits: 500,
+    credits: 1000,
     cta: "Assinar Starter",
     ctaHref: "/signup",
     highlight: true,
@@ -41,7 +41,7 @@ const PLANS = [
   {
     name: "Pro",
     price: { monthly: 49, yearly: 39.2 },
-    credits: 1500,
+    credits: 3000,
     cta: "Assinar Pro",
     ctaHref: "/signup",
     highlight: false,
@@ -58,7 +58,7 @@ const PLANS = [
   {
     name: "Agency",
     price: { monthly: 149, yearly: 119.2 },
-    credits: 5000,
+    credits: 10000,
     cta: "Assinar Agency",
     ctaHref: "/signup",
     highlight: false,
@@ -75,11 +75,11 @@ const PLANS = [
 ];
 
 const TOPUPS = [
-  { credits: 100, price: 7.99 },
-  { credits: 250, price: 17.99 },
-  { credits: 500, price: 29.99 },
-  { credits: 1000, price: 49.99 },
-  { credits: 2000, price: 89.99 },
+  { credits: 200, price: 7.99 },
+  { credits: 500, price: 17.99 },
+  { credits: 1000, price: 29.99 },
+  { credits: 2000, price: 49.99 },
+  { credits: 4000, price: 89.99 },
 ];
 
 export default function PricingPage() {

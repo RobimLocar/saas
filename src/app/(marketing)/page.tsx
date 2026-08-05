@@ -75,14 +75,14 @@ const FEATURES = [
 ];
 
 const MODELS_SHOWCASE = [
-  { name: "Flux Schnell", type: "Imagem", credits: "1 cr", tier: "Free" },
-  { name: "GPT Image 2", type: "Imagem", credits: "1 cr", tier: "Starter" },
-  { name: "Kling Standard 4s", type: "Vídeo", credits: "7 cr", tier: "Starter" },
-  { name: "Seedance 2.0 Fast", type: "Vídeo", credits: "15 cr", tier: "Starter" },
-  { name: "Veo 3.1 Lite", type: "Vídeo", credits: "8 cr", tier: "Pro" },
-  { name: "Sora 2 Pro", type: "Vídeo", credits: "35 cr", tier: "Agency" },
-  { name: "Ace-Step 30s", type: "Música", credits: "1 cr", tier: "Free" },
-  { name: "ElevenLabs v3", type: "TTS", credits: "4 cr", tier: "Pro" },
+  { name: "Flux Schnell", type: "Imagem", credits: "2 cr", tier: "Free" },
+  { name: "GPT Image 2", type: "Imagem", credits: "2 cr", tier: "Starter" },
+  { name: "Kling Standard 4s", type: "Vídeo", credits: "14 cr", tier: "Starter" },
+  { name: "Seedance 2.0 Fast", type: "Vídeo", credits: "30 cr", tier: "Starter" },
+  { name: "Veo 3.1 Lite", type: "Vídeo", credits: "16 cr", tier: "Pro" },
+  { name: "Sora 2 Pro", type: "Vídeo", credits: "70 cr", tier: "Agency" },
+  { name: "Ace-Step 30s", type: "Música", credits: "2 cr", tier: "Free" },
+  { name: "ElevenLabs v3", type: "TTS", credits: "8 cr", tier: "Pro" },
 ];
 
 export default function LandingPage() {
