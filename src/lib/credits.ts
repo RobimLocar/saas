@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { auditLog } from "@/lib/audit-log";
-import { FREE_PLAN_COST_MULTIPLIER } from "@/lib/constants";
+import { PLAN_COST_MULTIPLIER } from "@/lib/constants";
 
 /**
  * Helpers de crédito — débito atômico (compare-and-swap) e estorno idempotente.
@@ -183,8 +183,10 @@ export async function refundCredits(
   return { ok: true, refunded: true, balance: restored };
 }
 
-/** Custo efectivo do modelo para o plano do utilizador.
- * Plano free paga 2x (surcharge). Outros planos pagam o custo base. */
+/** Custo efetivo do modelo para o plano do usuário.
+ * Não altera o preço-base: aplica um multiplicador de CONSUMO por plano
+ * (free 2,5x · básico 1,8x · pro 1,3x · agency 1x). Planos desconhecidos = 1x. */
 export function effectiveCost(baseCost: number, plan: string): number {
-  return plan === "free" ? Math.ceil(baseCost * FREE_PLAN_COST_MULTIPLIER) : baseCost;
+  const mult = PLAN_COST_MULTIPLIER[plan] ?? 1;
+  return Math.ceil(baseCost * mult);
 }

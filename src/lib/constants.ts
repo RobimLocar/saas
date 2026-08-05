@@ -13,7 +13,18 @@ export const MIN_MARGIN = 0.4;
 // Cooldown de 30s para gerações acima de 10 créditos (§4, §6)
 export const HIGH_COST_THRESHOLD_CREDITS = 10;
 export const HIGH_COST_COOLDOWN_SECONDS = 30;
-export const FREE_PLAN_COST_MULTIPLIER = 2;
+export const FREE_PLAN_COST_MULTIPLIER = 2.5;
+
+// Multiplicador de CONSUMO de créditos por plano (não altera o preço-base das IAs;
+// só faz a mesma geração consumir mais créditos nos planos menores).
+// Escada agressiva: free 2,5x · básico(starter) 1,8x · pro 1,3x · agency 1x.
+// Planos desconhecidos (ex.: "base" da landing) pagam 1x.
+export const PLAN_COST_MULTIPLIER: Record<string, number> = {
+  free: 2.5,
+  starter: 1.8,
+  pro: 1.3,
+  agency: 1,
+};
 
 // Alertas de saldo (§6)
 export const LOW_BALANCE_TOAST_PCT = 0.2; // toast < 20%
