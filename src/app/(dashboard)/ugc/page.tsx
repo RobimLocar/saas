@@ -2744,7 +2744,6 @@ export default function UGCPage() {
                       >
                         <option value="480p">480p</option>
                         <option value="720p">720p</option>
-                        <option value="1080p">1080p</option>
                       </select>
                     </div>
                   </div>

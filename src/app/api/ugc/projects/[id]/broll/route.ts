@@ -25,6 +25,10 @@ function normalizeBroll(input: unknown): BrollClip[] {
 }
 
 function pickSeedanceFastModel(models: Array<Record<string, unknown>>) {
+  // Preferência: Seedance 2.5 (flagship com refs de imagem/vídeo/áudio).
+  const v25 = models.find((m) => m.model_id === "seedance-2.5");
+  if (v25) return v25;
+
   const byModelId = models.find((m) => m.model_id === "seedance-2.0-fast");
   if (byModelId) return byModelId;
 
@@ -180,18 +184,22 @@ export async function POST(
     });
 
     const modelParams = ((selectedModel.params as Record<string, unknown> | null) || {}) as VideoModelParams;
-    const seedanceParams: VideoModelParams = {
-      ...modelParams,
-      backend: "seedance",
-      task_type:
-        typeof modelParams.task_type === "string" && modelParams.task_type.includes("fast")
-          ? modelParams.task_type
-          : "seedance-2-fast",
-      seedance_tier:
-        modelParams.seedance_tier === "fast" || modelParams.task_type === "seedance-2-fast"
-          ? "fast"
-          : modelParams.seedance_tier,
-    };
+    const isV25 =
+      typeof modelParams.task_type === "string" && modelParams.task_type.includes("2.5");
+    const seedanceParams: VideoModelParams = isV25
+      ? { ...modelParams, backend: "seedance", task_type: "seedance-2.5" }
+      : {
+          ...modelParams,
+          backend: "seedance",
+          task_type:
+            typeof modelParams.task_type === "string" && modelParams.task_type.includes("fast")
+              ? modelParams.task_type
+              : "seedance-2-fast",
+          seedance_tier:
+            modelParams.seedance_tier === "fast" || modelParams.task_type === "seedance-2-fast"
+              ? "fast"
+              : modelParams.seedance_tier,
+        };
 
     const currentBroll = normalizeBroll(project.broll);
     const clips: BrollClip[] = [];
