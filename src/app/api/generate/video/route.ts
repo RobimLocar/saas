@@ -154,7 +154,19 @@ export async function POST(req: NextRequest) {
       .eq("id", user.id)
       .single();
 
-    const cost = effectiveCost(aiModel.credit_cost, profile?.plan ?? "free");
+    // Custo: modelos com credit_per_second (ex.: Seedance) cobram por
+    // duração × resolução; os demais mantêm o credit_cost fixo do catálogo.
+    const videoCostParams = (aiModel.params as Record<string, unknown> | null) || {};
+    const cpsMap = videoCostParams.credit_per_second as Record<string, number> | undefined;
+    let baseVideoCost = aiModel.credit_cost;
+    if (cpsMap && typeof cpsMap === "object") {
+      const durNum = Number(duration);
+      const dsafe = Number.isFinite(durNum) && durNum > 0 ? Math.round(durNum) : 5;
+      const resKey = typeof resolution === "string" && resolution ? resolution : "720p";
+      const rate = Number(cpsMap[resKey] ?? cpsMap["720p"] ?? 0);
+      if (rate > 0) baseVideoCost = Math.ceil(rate * dsafe);
+    }
+    const cost = effectiveCost(baseVideoCost, profile?.plan ?? "free");
 
     if (!profile || profile.credits_balance < cost) {
       // AUDIT: saldo insuficiente — bloqueado ANTES do débito e ANTES da PiAPI
