@@ -468,6 +468,39 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
     }
     const hasImages = imgUrls.length > 0;
 
+    // ── Seedance 2.5 (preview) ────────────────────────────────────────────
+    // task_type único "seedance-2.5" (sem split VIP, sem "-less-restriction",
+    // sem tier). Só 480p/720p (1080p é rejeitado). Suporta image_urls (até 9),
+    // video_urls (até 3) e audio_urls (até 3; exigem ao menos 1 imagem/vídeo).
+    if ((params.task_type || "").includes("2.5")) {
+      let res25 = args.resolution || (quality === "low" ? "480p" : "720p");
+      if (res25 !== "480p" && res25 !== "720p") res25 = "720p";
+      const input25: Record<string, unknown> = {
+        prompt,
+        duration: userDur,
+        resolution: res25,
+        aspect_ratio: aspect,
+      };
+      if (imgUrls.length > 0) input25.image_urls = imgUrls.slice(0, 9);
+      if (referenceVideos && referenceVideos.length > 0) {
+        input25.video_urls = referenceVideos.slice(0, 3);
+      }
+      if (
+        referenceAudios &&
+        referenceAudios.length > 0 &&
+        (imgUrls.length > 0 || (referenceVideos && referenceVideos.length > 0))
+      ) {
+        input25.audio_urls = referenceAudios.slice(0, 3);
+      }
+      if (negativePrompt) input25.negative_prompt = negativePrompt;
+      return {
+        model: "seedance",
+        task_type: "seedance-2.5",
+        input: input25,
+        config,
+      };
+    }
+
     // Política: qualquer geração COM imagem de referência vai para a variante
     // "-less-restriction". A variante estrita bloqueia rostos reais e não há
     // como saber de antemão se a imagem enviada contém uma pessoa real — então
