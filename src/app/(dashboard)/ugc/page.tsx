@@ -2939,7 +2939,6 @@ export default function UGCPage() {
 
                   <div className="space-y-3">
                     {(() => {
-                      const balance = userCredits ?? 0;
                       const disabled =
                         brollGenerating ||
                         !brollDescription.trim() ||
@@ -2953,9 +2952,7 @@ export default function UGCPage() {
                           disabled={disabled}
                           onClick={() => void handleGenerateBroll()}
                         >
-                          {brollGenerating
-                            ? "Gerando vídeo..."
-                            : `Generate UGC video — ~${brollTotalCost} créditos (${balance} disponíveis)`}
+                          {brollGenerating ? "Gerando vídeo..." : "Generate UGC video"}
                         </Button>
                       );
                     })()}
@@ -3285,9 +3282,9 @@ export default function UGCPage() {
                     {avatarGenerating ? (
                       <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Gerando...</>
                     ) : insufficient ? (
-                      `Créditos insuficientes (precisa ${cost}, tem ${balance})`
+                      "Créditos esgotados"
                     ) : (
-                      `Generate Talking Avatar — ~${cost} créditos (only ${balance} available)`
+                      "Generate Talking Avatar"
                     )}
                   </Button>
                 );

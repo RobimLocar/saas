@@ -1681,8 +1681,8 @@ export function GenerationDock() {
           </div>
           {/* Contador — canto inferior direito do prompt */}
           <div className="flex justify-end pr-2">
-            <span className="text-[11px] text-[#6a6a72]">
-              {prompt.length}/8000
+            <span className="text-[11px] font-medium text-[#A78BFA]">
+              ⚡ {credits ?? 0} créditos
             </span>
           </div>
         </div>
@@ -2759,13 +2759,12 @@ export function GenerationDock() {
                 <>
                   Generate
                   <Zap className="h-4 w-4" fill="currentColor" />
-                  <span className="rounded-md bg-white/15 px-2 py-0.5 text-xs font-semibold">⚡ {totalCost}</span>
                 </>
               )}
             </button>
             {insufficient && (
-              <span className="mt-1 text-[11px] text-[#888888]">
-                Need {totalCost} credits. {credits ?? 0} available.
+              <span className="mt-1 text-[11px] text-[#FCA5A5]">
+                Créditos esgotados.
               </span>
             )}
           </div>
