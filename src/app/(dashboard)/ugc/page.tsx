@@ -456,6 +456,7 @@ export default function UGCPage() {
   const [brollSpeech, setBrollSpeech] = useState("");
   const [brollGenerating, setBrollGenerating] = useState(false);
   const [brollUnitCost, setBrollUnitCost] = useState(0);
+  const [brollRatePerSecond, setBrollRatePerSecond] = useState<Record<string, number> | null>(null);
 
   // Produtos (seção 4c-1 mantida)
   const [products, setProducts] = useState<ProductItem[]>([]);
@@ -762,15 +763,21 @@ export default function UGCPage() {
       if (!res.ok) return;
       const models = Array.isArray(data?.models) ? data.models : [];
 
+      const by25 = models.find((m: { model_id?: string }) => m.model_id === "seedance-2.5");
       const byModelId = models.find((m: { model_id?: string }) => m.model_id === "seedance-2.0-fast");
       const byName = models.find((m: { name?: string }) =>
         typeof m.name === "string" && /seedance/i.test(m.name) && /fast/i.test(m.name)
       );
       const byBackend = models.find((m: { backend?: string }) => m.backend === "seedance");
-      const picked = byModelId || byName || byBackend;
+      const picked = by25 || byModelId || byName || byBackend;
 
       if (picked && typeof picked.credit_cost === "number") {
         setBrollUnitCost(picked.credit_cost);
+      }
+      if (picked && picked.credit_per_second && typeof picked.credit_per_second === "object") {
+        setBrollRatePerSecond(picked.credit_per_second as Record<string, number>);
+      } else {
+        setBrollRatePerSecond(null);
       }
     } catch {
       // silencioso
@@ -1738,7 +1745,10 @@ export default function UGCPage() {
       scriptDraft.cta.text
   );
 
-  const brollTotalCost = brollUnitCost;
+  const brollRate = brollRatePerSecond
+    ? Number(brollRatePerSecond[brollResolution] ?? brollRatePerSecond["720p"] ?? 0)
+    : 0;
+  const brollTotalCost = brollRate > 0 ? Math.ceil(brollRate * brollDuration) : brollUnitCost;
   const brollInsufficientCredits =
     userCredits !== null ? userCredits < brollTotalCost : false;
 

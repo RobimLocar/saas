@@ -78,6 +78,14 @@ export async function GET(req: NextRequest) {
         backend: (p.backend as string) || null,
         task_type: (p.task_type as string) || null,
         less_restriction: p.less_restriction === true,
+        credit_per_second:
+          p.credit_per_second && typeof p.credit_per_second === "object"
+            ? Object.fromEntries(
+                Object.entries(p.credit_per_second as Record<string, unknown>).map(
+                  ([k, v]) => [k, effectiveCost(Number(v) || 0, userPlan)]
+                )
+              )
+            : null,
         thumbnail_url: m.thumbnail_url,
         // Disponível se é modelo premium (provider gpt-image/abacus) ou
         // se o backend efetivo (params.backend ?? model_id) está integrado

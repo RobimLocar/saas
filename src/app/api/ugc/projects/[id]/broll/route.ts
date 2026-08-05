@@ -158,7 +158,15 @@ export async function POST(
       return NextResponse.json({ error: "Modelo Seedance não encontrado" }, { status: 404 });
     }
 
-    const baseCost = Number(selectedModel.credit_cost || 0);
+    // Custo: se o modelo tem credit_per_second (ex.: Seedance 2.5), cobra por
+    // duração × resolução; senão, usa o credit_cost fixo do catálogo.
+    const costParams = (selectedModel.params as Record<string, unknown> | null) || {};
+    const cps = costParams.credit_per_second as Record<string, number> | undefined;
+    let baseCost = Number(selectedModel.credit_cost || 0);
+    if (cps && typeof cps === "object") {
+      const rate = Number(cps[resolution] ?? cps["720p"] ?? 0);
+      if (rate > 0) baseCost = Math.ceil(rate * duration);
+    }
     const unitCost = effectiveCost(baseCost, profile?.plan ?? "free");
     const totalCost = unitCost;
     const available = profile?.credits_balance ?? 0;
