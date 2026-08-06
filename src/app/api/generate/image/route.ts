@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { generateImage, generateImageGptSync } from "@/lib/piapi/client";
-import { generateImageAbacus } from "@/lib/abacus/client";
+import { generateImage, generateImageGptSync, submitGeminiImageTask } from "@/lib/piapi/client";
 
-// Cada modelo premium do catálogo → seu nome REAL no RouteLLM (Abacus).
-// É por aqui que "Nano Banana Pro" volta a ser Nano Banana Pro de verdade
-// (fusão multi-imagem), em vez de cair tudo no gpt-image-2.
-const ABACUS_IMAGE_MODEL: Record<string, string> = {
-  "gpt-image-2": "gpt_image2",
-  "nano-banana": "nano_banana",
-  "nano-banana-pro": "nano_banana_pro",
-  "ideogram-v4-turbo": "ideogram",
+// Modelos da família Gemini / Nano Banana → API oficial Gemini da PiAPI
+// (assíncrona, com fusão multi-imagem via input.image_urls). É o caminho certo
+// para "trocar avatar" / combinar pessoa + produto numa imagem nova.
+const GEMINI_TASK: Record<string, { taskType: string; resolution?: boolean }> = {
+  "nano-banana-pro": { taskType: "nano-banana-pro", resolution: true },
+  "nano-banana": { taskType: "gemini-2.5-flash-image" },
 };
 import { planAllows } from "@/lib/plans";
 import { debitCredits, effectiveCost, refundCredits } from "@/lib/credits";
@@ -244,6 +241,34 @@ export async function POST(req: NextRequest) {
     try {
       const modelParams = (aiModel.params as Record<string, string>) || {};
 
+      // ── Nano Banana / Nano Banana Pro (API Gemini da PiAPI, assíncrono) ─────
+      // Funde TODAS as referências (input.image_urls): troca de avatar, pessoa +
+      // produto, edição multi-imagem. O polling (status route) lê output.image_urls.
+      const geminiCfg = GEMINI_TASK[aiModel.model_id];
+      if (geminiCfg) {
+        const task = await submitGeminiImageTask({
+          taskType: geminiCfg.taskType,
+          prompt: promptEn,
+          imageUrls: refs,
+          aspectRatio: aspect_ratio,
+          resolution: geminiCfg.resolution
+            ? resolution === "2K" || resolution === "4K"
+              ? resolution
+              : "1K"
+            : undefined,
+        });
+        await supabase
+          .from("generations")
+          .update({ provider_task_id: task.data.task_id })
+          .eq("id", generation.id);
+        return NextResponse.json({
+          generation_id: generation.id,
+          status: "pending",
+          credits_used: cost,
+          balance: newBalance,
+        });
+      }
+
       // ── GPT Image 2 (PiAPI, síncrono) — modelos premium (GPT Image 2,
       // Nano Banana, Nano Banana Pro, Ideogram) e qualquer geração com
       // quality "high" sem imagem de referência. Texto renderizado perfeito.
@@ -255,31 +280,14 @@ export async function POST(req: NextRequest) {
       // Não-premium com referência: usa Flux img2img.
       const useGptSync = isPremium || (refs.length === 0 && qualityLevel === "high");
       if (useGptSync) {
-        // Provider real por modelo (Nano Banana Pro / Nano Banana / Ideogram /
-        // GPT Image 2) via RouteLLM — funde TODAS as referências. Se o RouteLLM
-        // não estiver disponível, cai no gpt-image-2 da PiAPI (1 referência).
-        const abacusModel = ABACUS_IMAGE_MODEL[aiModel.model_id] || "gpt_image2";
-        let imageUrl: string;
-        try {
-          imageUrl = await generateImageAbacus({
-            model: abacusModel,
-            prompt: promptEn,
-            aspect_ratio,
-            quality: qualityLevel,
-            reference_image_urls: refs,
-          });
-        } catch (abacusErr) {
-          console.warn(
-            "[generate/image] RouteLLM falhou, fallback gpt-image-2:",
-            abacusErr
-          );
-          imageUrl = await generateImageGptSync({
-            prompt: promptEn,
-            aspect_ratio,
-            quality: qualityLevel,
-            reference_image_url: refs[0] || undefined,
-          });
-        }
+        // GPT Image 2 / Ideogram (síncrono) — texto renderizado perfeito. Usa a
+        // 1ª referência como edição. (Fusão multi-imagem fica na família Gemini.)
+        const imageUrl = await generateImageGptSync({
+          prompt: promptEn,
+          aspect_ratio,
+          quality: qualityLevel,
+          reference_image_url: refs[0] || undefined,
+        });
 
         let finalUrl = imageUrl;
         try {

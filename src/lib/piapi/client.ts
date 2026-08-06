@@ -221,6 +221,42 @@ export async function generateImage(
   });
 }
 
+// ─── Imagem Gemini / Nano Banana (assíncrono via /task) ─────────────────────
+// Docs oficiais PiAPI: POST /task { model:"gemini", task_type, input:{ prompt,
+// image_urls[], aspect_ratio, resolution, output_format } }. Suporta EDIÇÃO e
+// FUSÃO multi-imagem (troca de avatar, pessoa + produto) via input.image_urls.
+// A saída sai em output.image_urls[] (lida pelo extractResultUrl no polling).
+export interface GeminiImageArgs {
+  taskType: string; // "nano-banana-pro" | "gemini-2.5-flash-image" | "nano-banana-2"
+  prompt: string;
+  imageUrls?: string[]; // 1+ referências → fusão/edição
+  aspectRatio?: string; // "1:1" | "9:16" | "16:9" ...
+  resolution?: string; // "1K" | "2K" | "4K" (só nano-banana-pro)
+  outputFormat?: string; // "png" (default)
+}
+
+export async function submitGeminiImageTask(
+  args: GeminiImageArgs
+): Promise<PiAPITaskResponse> {
+  const input: Record<string, unknown> = {
+    prompt: args.prompt,
+    output_format: args.outputFormat || "png",
+  };
+  if (args.aspectRatio) input.aspect_ratio = args.aspectRatio;
+  if (args.resolution) input.resolution = args.resolution;
+  if (args.imageUrls && args.imageUrls.length > 0) {
+    input.image_urls = args.imageUrls.slice(0, 6);
+  }
+  return piapiFetch<PiAPITaskResponse>("/task", {
+    method: "POST",
+    body: JSON.stringify({
+      model: "gemini",
+      task_type: args.taskType,
+      input,
+    }),
+  });
+}
+
 // ─── Imagem premium (GPT Image 2 — síncrono) ────────────────────────────────
 // Endpoint OpenAI-like da PiAPI: POST /v1/images/generations (Bearer).
 // Validado em 2026-07-24: retorna data[0].b64_json (ou url). Texto perfeito.
@@ -960,6 +996,9 @@ export function extractResultUrl(
     songUrl ||
     output.image ||
     output.images?.[0]?.url ||
+    (Array.isArray((o as { image_urls?: unknown }).image_urls)
+      ? ((o as { image_urls?: string[] }).image_urls?.[0] ?? null)
+      : null) ||
     output.videos?.[0]?.url ||
     null
   );
