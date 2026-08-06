@@ -293,7 +293,8 @@ export async function generateImageGptSync(
     prompt: params.prompt,
     n: 1,
     size,
-    quality: params.quality || "high",
+    // Doc oficial PiAPI: gpt-image-2 suporta APENAS quality "medium".
+    quality: "medium",
   };
   // Imagem de referência — aceita como "image" no body JSON (validado PiAPI 2026-07)
   if (params.reference_image_url) {
