@@ -11,13 +11,16 @@ import {
 } from "react";
 import Image from "next/image";
 import {
+  Aperture,
   AtSign,
+  BarChart3,
   Check,
   ChevronDown,
   ChevronRight,
   ChevronUp,
   Clock,
   Expand,
+  Film,
   Gauge,
   ImageIcon,
   Loader2,
@@ -34,6 +37,7 @@ import {
   Video,
   Volume2,
   VolumeX,
+  Waves,
   X,
   Zap,
 } from "lucide-react";
@@ -410,6 +414,18 @@ function SpecPill({ icon, label }: { icon: ReactNode; label: string }) {
   );
 }
 
+function familyGlyph(family: string): typeof Video {
+  const f = (family || "").toLowerCase();
+  if (f.includes("kling")) return Sparkles;
+  if (f.includes("seedance")) return BarChart3;
+  if (f.includes("veo")) return Aperture;
+  if (f.includes("hailuo")) return Waves;
+  if (f.includes("wan")) return Film;
+  if (f.includes("ltx")) return Zap;
+  if (f.includes("avatar")) return Sparkles;
+  return Video;
+}
+
 interface FamilyGroup {
   family: string;
   description: string;
@@ -464,16 +480,16 @@ function ModelMenu({
     filteredGroups.find((g) => g.family === activeFamily) ?? filteredGroups[0] ?? null;
 
   return (
-    <div className="flex items-start gap-2">
+    <div className="flex items-start gap-2.5">
       {/* Card — famílias */}
-      <div className="w-[262px] shrink-0 rounded-xl border border-[#242428] bg-[#161618] p-1.5 shadow-2xl">
-        <div className="mb-1.5 flex items-center gap-2 rounded-lg border border-white/5 bg-white/[0.03] px-2.5">
-          <Search className="h-3.5 w-3.5 text-[#666666]" />
+      <div className="w-[300px] shrink-0 rounded-2xl border border-[#242428] bg-[#161618] p-2 shadow-2xl">
+        <div className="mb-2 flex items-center gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-3">
+          <Search className="h-4 w-4 text-[#666666]" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Buscar modelo..."
-            className="h-8 w-full bg-transparent text-[12.5px] text-[#F5F5F5] placeholder:text-[#666666] focus:outline-none"
+            className="h-10 w-full bg-transparent text-sm text-[#F5F5F5] placeholder:text-[#666666] focus:outline-none"
           />
         </div>
         <div className="fx-scroll max-h-[min(46vh,360px)] overflow-y-auto pr-0.5">
@@ -489,32 +505,33 @@ function ModelMenu({
                   onClick={() => setActiveFamily(group.family)}
                   onMouseEnter={() => setActiveFamily(group.family)}
                   className={cn(
-                    "mb-0.5 flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors duration-150",
+                    "mb-0.5 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors duration-150",
                     active ? "bg-white/[0.06]" : "hover:bg-white/[0.03]"
                   )}
                 >
-                  <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#26262b] ring-1 ring-white/[0.06]">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#26262b] ring-1 ring-white/[0.06]">
                     {group.logo ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={group.logo} alt={group.family} className="h-full w-full object-cover" />
                     ) : (
-                      <span className="text-[11px] font-semibold text-[#c9c9d1]">
-                        {(group.family || "M").charAt(0)}
-                      </span>
+                      (() => {
+                        const Glyph = familyGlyph(group.family);
+                        return <Glyph className="h-[18px] w-[18px] text-[#c9c9d1]" />;
+                      })()
                     )}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[12.5px] font-medium text-[#f5f5f5]">
+                    <span className="block truncate text-[14px] font-medium text-[#f5f5f5]">
                       {group.family}
                     </span>
                     {group.description ? (
-                      <span className="block truncate text-[11px] leading-snug text-[#8b8b93]">
+                      <span className="block truncate text-[12px] leading-snug text-[#8b8b93]">
                         {group.description}
                       </span>
                     ) : null}
                   </span>
                   <ChevronRight
-                    className={cn("h-3.5 w-3.5 shrink-0 transition-colors", active ? "text-[#A78BFA]" : "text-[#555555]")}
+                    className={cn("h-4 w-4 shrink-0 transition-colors", active ? "text-[#A78BFA]" : "text-[#555555]")}
                   />
                 </button>
               );
@@ -525,7 +542,7 @@ function ModelMenu({
 
       {/* Card — modelos da família ativa */}
       {activeGroup ? (
-        <div className="w-[262px] shrink-0 rounded-xl border border-[#242428] bg-[#161618] p-1.5 shadow-2xl">
+        <div className="w-[300px] shrink-0 rounded-2xl border border-[#242428] bg-[#161618] p-2 shadow-2xl">
           <div className="fx-scroll max-h-[min(46vh,428px)] overflow-y-auto pr-0.5">
             <div className="space-y-1">
               {activeGroup.models.map((model) => {
@@ -540,32 +557,32 @@ function ModelMenu({
                     disabled={!available}
                     onClick={() => onSelect(model)}
                     className={cn(
-                      "flex w-full flex-col gap-1.5 rounded-lg px-2.5 py-2 text-left transition-colors duration-150",
+                      "flex w-full flex-col gap-2 rounded-xl px-3 py-2.5 text-left transition-colors duration-150",
                       "hover:bg-white/[0.03]",
                       selected && "bg-[#7C3AED]/[0.08] ring-1 ring-[#7C3AED]/70",
                       !available && "pointer-events-none opacity-50"
                     )}
                   >
                     <span className="flex items-center gap-1.5">
-                      <span className="truncate text-[12.5px] font-medium text-[#F5F5F5]">{model.name}</span>
-                      {model.has_audio ? <Volume2 className="h-3 w-3 text-[#888888]" /> : null}
+                      <span className="truncate text-[14px] font-medium text-[#F5F5F5]">{model.name}</span>
+                      {model.has_audio ? <Volume2 className="h-3.5 w-3.5 text-[#888888]" /> : null}
                       {capabilityTags(model).map((tag) => (
                         <span
                           key={tag}
-                          className="rounded border border-[#2E2E33] bg-white/5 px-1 py-px text-[8.5px] font-semibold tracking-wide text-[#9a9aa3]"
+                          className="rounded border border-[#2E2E33] bg-white/5 px-1.5 py-px text-[9px] font-semibold tracking-wide text-[#9a9aa3]"
                         >
                           {tag}
                         </span>
                       ))}
                       {!available ? <Lock className="ml-auto h-4 w-4 text-[#888888]" /> : null}
-                      {selected ? <Check className="ml-auto h-3.5 w-3.5 text-[#A78BFA]" /> : null}
+                      {selected ? <Check className="ml-auto h-4 w-4 text-[#A78BFA]" /> : null}
                     </span>
                     <span className="flex items-center gap-2">
                       {model.resolution ? (
-                        <SpecPill icon={<Monitor className="h-2.5 w-2.5" />} label={model.resolution} />
+                        <SpecPill icon={<Monitor className="h-3 w-3" />} label={model.resolution} />
                       ) : null}
                       {model.duration_range ? (
-                        <SpecPill icon={<Clock className="h-2.5 w-2.5" />} label={model.duration_range} />
+                        <SpecPill icon={<Clock className="h-3 w-3" />} label={model.duration_range} />
                       ) : null}
                     </span>
                   </button>
