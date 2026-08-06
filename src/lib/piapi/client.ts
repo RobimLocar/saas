@@ -221,6 +221,58 @@ export async function generateImage(
   });
 }
 
+// ─── Qwen Image (assíncrono via /task) ──────────────────────────────────────
+// Doc oficial PiAPI: model="Qubico/qwen-image".
+//   txt2img  → input{ prompt, negative_prompt, width<=1024, height<=1024, steps<=16, seed, flow_shift }
+//   image-edit → input{ image1(base), image2, image3, prompt, ... } (até 3 imagens)
+// Saída em output.image_url (lida pelo extractResultUrl).
+export async function submitQwenImageTask(args: {
+  prompt: string;
+  imageUrls?: string[];
+  negativePrompt?: string;
+  width?: number;
+  height?: number;
+}): Promise<PiAPITaskResponse> {
+  const refs = (args.imageUrls || []).filter(Boolean).slice(0, 3);
+  if (refs.length > 0) {
+    const input: Record<string, unknown> = {
+      image1: refs[0],
+      prompt: args.prompt,
+      steps: 16,
+      seed: -1,
+      flow_shift: 3,
+    };
+    if (refs[1]) input.image2 = refs[1];
+    if (refs[2]) input.image3 = refs[2];
+    if (args.negativePrompt) input.negative_prompt = args.negativePrompt;
+    return piapiFetch<PiAPITaskResponse>("/task", {
+      method: "POST",
+      body: JSON.stringify({
+        model: "Qubico/qwen-image",
+        task_type: "image-edit",
+        input,
+      }),
+    });
+  }
+  const input: Record<string, unknown> = {
+    prompt: args.prompt,
+    width: Math.min(args.width || 1024, 1024),
+    height: Math.min(args.height || 1024, 1024),
+    steps: 16,
+    seed: -1,
+    flow_shift: 3,
+  };
+  if (args.negativePrompt) input.negative_prompt = args.negativePrompt;
+  return piapiFetch<PiAPITaskResponse>("/task", {
+    method: "POST",
+    body: JSON.stringify({
+      model: "Qubico/qwen-image",
+      task_type: "txt2img",
+      input,
+    }),
+  });
+}
+
 // ─── Imagem Gemini / Nano Banana (assíncrono via /task) ─────────────────────
 // Docs oficiais PiAPI: POST /task { model:"gemini", task_type, input:{ prompt,
 // image_urls[], aspect_ratio, resolution, output_format } }. Suporta EDIÇÃO e
@@ -466,6 +518,8 @@ export interface BuildVideoArgs {
   referenceVideos?: string[];
   referenceAudios?: string[];
   shots?: Array<{ prompt: string; duration: number }>;
+  /** preset de movimento do Kling Motion Control (quando não há vídeo de referência). */
+  presetMotion?: string;
   withAudio?: boolean;
   negativePrompt?: string;
   /** id de correlação para logging estruturado da auditoria */
@@ -563,6 +617,29 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
       },
       config,
     };
+  }
+
+  // ── KLING MOTION CONTROL ───────────────────────────────────────────────────
+  // task_type="motion_control": transfere movimento (vídeo de referência ou
+  // preset) para o personagem da imagem. Doc oficial: image_url (obrig.) +
+  // (video_url OU preset_motion). Saída em output.works[] (lida no polling).
+  if (backend === "kling" && params.task_type === "motion_control") {
+    const motionImage = imageUrl || (referenceImages && referenceImages[0]);
+    const motionVideo = referenceVideos && referenceVideos[0];
+    const mcVersion =
+      params.kling_version && params.kling_version.startsWith("3") ? "3.0" : "2.6";
+    const input: Record<string, unknown> = {
+      image_url: motionImage,
+      version: mcVersion,
+      mode: quality === "high" ? "pro" : "std",
+      motion_direction: "video",
+      keep_original_sound: true,
+    };
+    // Um dos dois é obrigatório como referência de movimento.
+    if (motionVideo) input.video_url = motionVideo;
+    else input.preset_motion = args.presetMotion || "Subject 3 Dance";
+    if (prompt) input.prompt = prompt;
+    return { model: "kling", task_type: "motion_control", input, config };
   }
 
   // ── SEEDANCE ──────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { generateImage, generateImageGptSync, generateImageGptEdits, submitGeminiImageTask } from "@/lib/piapi/client";
+import { generateImage, generateImageGptSync, generateImageGptEdits, submitGeminiImageTask, submitQwenImageTask } from "@/lib/piapi/client";
 
 // Modelos da família Gemini / Nano Banana → API oficial Gemini da PiAPI
 // (assíncrona, com fusão multi-imagem via input.image_urls). É o caminho certo
@@ -11,6 +11,17 @@ export const maxDuration = 300;
 const GEMINI_TASK: Record<string, { taskType: string; resolution?: boolean }> = {
   "nano-banana-pro": { taskType: "nano-banana-pro", resolution: true },
   "nano-banana": { taskType: "gemini-2.5-flash-image" },
+};
+
+// Qwen: largura/altura no máx. 1024 (doc oficial). Mapa por proporção.
+const QWEN_DIMS: Record<string, { w: number; h: number }> = {
+  "1:1": { w: 1024, h: 1024 },
+  "9:16": { w: 576, h: 1024 },
+  "3:4": { w: 768, h: 1024 },
+  "2:3": { w: 680, h: 1024 },
+  "16:9": { w: 1024, h: 576 },
+  "4:3": { w: 1024, h: 768 },
+  "3:2": { w: 1024, h: 680 },
 };
 import { planAllows } from "@/lib/plans";
 import { debitCredits, effectiveCost, refundCredits } from "@/lib/credits";
@@ -258,6 +269,28 @@ export async function POST(req: NextRequest) {
               ? resolution
               : "1K"
             : undefined,
+        });
+        await supabase
+          .from("generations")
+          .update({ provider_task_id: task.data.task_id })
+          .eq("id", generation.id);
+        return NextResponse.json({
+          generation_id: generation.id,
+          status: "pending",
+          credits_used: cost,
+          balance: newBalance,
+        });
+      }
+
+      // ── Qwen Image (PiAPI, assíncrono) — modelo real (txt2img / image-edit) ──
+      if (aiModel.model_id === "qwen-image") {
+        const qd = (aspect_ratio && QWEN_DIMS[aspect_ratio]) || { w: 1024, h: 1024 };
+        const task = await submitQwenImageTask({
+          prompt: promptEn,
+          imageUrls: refs,
+          negativePrompt: negative_prompt,
+          width: qd.w,
+          height: qd.h,
         });
         await supabase
           .from("generations")
