@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import Image from "next/image";
 import { Download, Heart, ImageIcon, Loader2, Music, Play, Sparkles, X } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useStudioStore } from "@/stores/use-studio-store";
@@ -38,10 +39,13 @@ function aspectStyle(gen: Generation): React.CSSProperties {
   return { aspectRatio: `${w}/${h}` };
 }
 
-function generationTypeLabel(type: Generation["type"]): string {
-  if (type === "video") return "Vídeo";
-  if (type === "audio") return "Áudio";
-  return "Imagem";
+function generationTypeLabel(
+  type: Generation["type"],
+  t: (k: string) => string
+): string {
+  if (type === "video") return t("typeVideo");
+  if (type === "audio") return t("typeAudio");
+  return t("typeImage");
 }
 
 function durationLabel(gen: Generation): string | null {
@@ -52,6 +56,7 @@ function durationLabel(gen: Generation): string | null {
 }
 
 export function StudioFeed() {
+  const t = useTranslations("studio");
   const [generations, setGenerations] = useState<Generation[]>([]);
   const [loading, setLoading] = useState(true);
   const [lightboxId, setLightboxId] = useState<string | null>(null);
@@ -203,9 +208,9 @@ export function StudioFeed() {
         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
           <Sparkles className="h-6 w-6 text-primary" />
         </div>
-        <h2 className="text-lg font-semibold text-foreground">Sua galeria está vazia</h2>
+        <h2 className="text-lg font-semibold text-foreground">{t("emptyTitle")}</h2>
         <p className="max-w-sm text-sm text-muted-foreground">
-          Escreva um prompt no painel abaixo e clique em Gerar. Suas criações aparecerão aqui.
+          {t("emptyDesc")}
         </p>
       </div>
     );
@@ -290,7 +295,8 @@ function GenerationCard({
   const modelText = gen.model_label || gen.model_slug || "modelo";
   const aspect = gen.params?.aspect_ratio || (gen.type === "video" ? "16:9" : "1:1");
   const style = aspectStyle(gen);
-  const typeLabel = generationTypeLabel(gen.type);
+  const t = useTranslations("studio");
+  const typeLabel = generationTypeLabel(gen.type, t);
   const duration = durationLabel(gen);
 
   if (isPending) {
@@ -303,7 +309,7 @@ function GenerationCard({
 
   const addAsReference = () => {
     setReferenceImageUrl(gen.result_url!);
-    toast.success("Adicionado como referência");
+    toast.success(t("addedAsReference"));
   };
 
   return (
@@ -370,7 +376,7 @@ function GenerationCard({
             <ActionIcon
               onClick={(event) => {
                 event.stopPropagation();
-                toast.success("Adicionado aos favoritos");
+                toast.success(t("addedToFavorites"));
               }}
             >
               <Heart className="h-3.5 w-3.5" />
@@ -417,6 +423,7 @@ function FailedCard({
   onDismiss: (id: string) => void;
 }) {
   const [deleting, setDeleting] = useState(false);
+  const tErr = useTranslations("studio");
 
   async function dismiss(event: MouseEvent<HTMLButtonElement>) {
     event.stopPropagation();
@@ -434,7 +441,7 @@ function FailedCard({
         .replace(/PiAPIError:\s*/i, "")
         .replace(/AbacusImageError:\s*/i, "")
         .slice(0, 45)
-    : "Erro desconhecido";
+    : tErr("unknownError");
 
   return (
     <article className="col-span-1 flex h-16 items-center gap-2.5 overflow-hidden rounded-2xl bg-[#141416] px-3 ring-1 ring-white/5">
@@ -442,7 +449,7 @@ function FailedCard({
         <X className="h-4 w-4" />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-xs font-medium text-[#F5F5F5]">Falha na geração</p>
+        <p className="text-xs font-medium text-[#F5F5F5]">{tErr("failed")}</p>
         <p className="truncate text-[10px] text-[#666666]">
           {gen.type} · {errShort}
         </p>
@@ -451,7 +458,7 @@ function FailedCard({
         type="button"
         onClick={dismiss}
         disabled={deleting}
-        title="Descartar"
+        title={tErr("discard")}
         className="shrink-0 rounded p-1 text-[#555555] transition-colors hover:text-[#F5F5F5] disabled:opacity-40"
       >
         {deleting ? (
@@ -505,7 +512,8 @@ function PendingCard({
   aspect: string;
   style: React.CSSProperties;
 }) {
-  const label = type === "video" ? "Gerando vídeo..." : type === "audio" ? "Gerando áudio..." : "Gerando imagem...";
+  const tp = useTranslations("studio");
+  const label = type === "video" ? tp("generatingVideo") : type === "audio" ? tp("generatingAudio") : tp("generatingImage");
 
   return (
     <article style={style} className="relative overflow-hidden rounded-2xl bg-[#141416] ring-1 ring-white/5">
@@ -519,7 +527,7 @@ function PendingCard({
 
         <div className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-black/55 px-2 py-1 text-[10px] text-[#F5F5F5] backdrop-blur">
           {type === "image" ? <ImageIcon className="h-3 w-3" /> : type === "video" ? <Play className="h-3 w-3" /> : <Music className="h-3 w-3" />}
-          {generationTypeLabel(type)}
+          {generationTypeLabel(type, tp)}
         </div>
 
         <p className="absolute bottom-3 left-2 text-[10px] text-[#888888]">

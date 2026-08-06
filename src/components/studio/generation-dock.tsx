@@ -42,6 +42,7 @@ import {
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { useStudioStore } from "@/stores/use-studio-store";
 import { ASSIST_CATEGORIES } from "@/lib/assist-presets";
@@ -363,7 +364,7 @@ async function uploadReferenceFile(file: File): Promise<string> {
   const res = await fetch("/api/upload", { method: "POST", body: formData });
   const data = (await res.json().catch(() => null)) as { url?: string; error?: string } | null;
   if (!res.ok || !data?.url) {
-    throw new Error(data?.error || "Falha no upload do arquivo.");
+    throw new Error(data?.error || "File upload failed.");
   }
   return data.url;
 }
@@ -445,6 +446,7 @@ function ModelMenu({
 }) {
   const [query, setQuery] = useState("");
   const [activeFamily, setActiveFamily] = useState<string>("");
+  const t = useTranslations("dock");
 
   function capabilityTags(model: ApiModel): string[] {
     if (model.type !== "video") return [];
@@ -488,7 +490,7 @@ function ModelMenu({
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Buscar modelo..."
+            placeholder={t("searchModel")}
             className="h-10 w-full bg-transparent text-sm text-[#F5F5F5] placeholder:text-[#666666] focus:outline-none"
           />
         </div>
@@ -548,7 +550,7 @@ function ModelMenu({
               {activeGroup.models.map((model) => {
                 const selected = model.id === selectedId;
                 const available = model.available !== false;
-                const disabledTitle = available ? undefined : "Modelo indisponível para seu plano";
+                const disabledTitle = available ? undefined : t("modelUnavailable");
                 return (
                   <button
                     key={model.id}
@@ -780,6 +782,7 @@ function VoiceSelector({
 }
 
 export function GenerationDock() {
+  const t = useTranslations("dock");
   const activeTab = useStudioStore((s) => s.activeTab);
   const setActiveTab = useStudioStore((s) => s.setActiveTab);
   const prompt = useStudioStore((s) => s.prompt);
@@ -1157,14 +1160,14 @@ export function GenerationDock() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const toastId = toast.loading("Enviando arquivo...");
+    const toastId = toast.loading(t("uploadingFile"));
     try {
       const url = await uploadReferenceFile(file);
       setter(url);
-      toast.success("Referência adicionada.", { id: toastId });
+      toast.success(t("referenceAdded"), { id: toastId });
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Não foi possível enviar o arquivo.",
+        error instanceof Error ? error.message : t("cantSendFile"),
         { id: toastId }
       );
     } finally {
@@ -1180,7 +1183,7 @@ export function GenerationDock() {
     if (files.length === 0) return;
 
     const toastId = toast.loading(
-      files.length > 1 ? `Enviando ${files.length} arquivos...` : "Enviando arquivo..."
+      files.length > 1 ? t("uploadingFiles", { count: files.length }) : t("uploadingFile")
     );
     let ok = 0;
     try {
@@ -1195,11 +1198,11 @@ export function GenerationDock() {
       }
       if (ok > 0) {
         toast.success(
-          ok > 1 ? `${ok} referências adicionadas.` : "Referência adicionada.",
+          ok > 1 ? t("refsAdded", { count: ok }) : t("referenceAdded"),
           { id: toastId }
         );
       } else {
-        toast.error("Não foi possível enviar os arquivos.", { id: toastId });
+        toast.error(t("cantSendFiles"), { id: toastId });
       }
     } finally {
       event.target.value = "";
@@ -1225,7 +1228,7 @@ export function GenerationDock() {
 
   async function handleWiseEnhance() {
     if (!prompt.trim()) {
-      toast.error("Escreva um prompt para melhorar.");
+      toast.error(t("writePromptToEnhance"));
       return;
     }
     if (enhancing) return;
@@ -1239,13 +1242,13 @@ export function GenerationDock() {
       });
       const data = await parseJsonSafe<{ error?: string; prompt?: string }>(res);
       if (!res.ok || !data?.prompt) {
-        throw new Error(data?.error || "Falha ao melhorar o prompt.");
+        throw new Error(data?.error || t("enhanceFail"));
       }
       setPrompt(data.prompt);
-      toast.success("Prompt aprimorado pelo Wise.");
+      toast.success(t("promptEnhanced"));
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Falha ao melhorar o prompt."
+        error instanceof Error ? error.message : t("enhanceFail")
       );
     } finally {
       setEnhancing(false);
@@ -1368,7 +1371,7 @@ export function GenerationDock() {
     }, performance.now() - t0);
 
     if (!res.ok) {
-      let errMsg = data?.error || "Falha ao enviar geração";
+      let errMsg = data?.error || t("sendGenFail");
       if (
         errMsg.toLowerCase().includes("insufficient credits") ||
         errMsg.toLowerCase().includes("freeze credit") ||
@@ -1413,13 +1416,13 @@ export function GenerationDock() {
 
     if (!prompt.trim()) {
       genLog("handleGenerate.bloqueado", requestId, { motivo: "prompt_vazio" }, performance.now() - t0);
-      toast.error("Escreva um prompt para gerar.");
+      toast.error(t("writePromptToGenerate"));
       return;
     }
 
     if (selectedModel && !selectedModel.available) {
       genLog("handleGenerate.bloqueado", requestId, { motivo: "modelo_indisponivel" }, performance.now() - t0);
-      toast.error("Este modelo ainda não está disponível.");
+      toast.error(t("modelNotAvailable"));
       return;
     }
 
@@ -1429,7 +1432,7 @@ export function GenerationDock() {
         totalCost,
         credits,
       }, performance.now() - t0);
-      toast.error(`Créditos insuficientes. Precisa de ${totalCost}, disponível: ${credits ?? 0}.`);
+      toast.error(t("insufficientCredits", { need: totalCost, have: credits ?? 0 }));
       return;
     }
 
@@ -1450,12 +1453,12 @@ export function GenerationDock() {
           (item) => item.status === "fulfilled"
         ).length;
 
-        if (!successCount) throw new Error("Nenhuma geração foi enviada.");
+        if (!successCount) throw new Error(t("noGenSent"));
 
-        toast.success(`${successCount} gerações enviadas.`);
+        toast.success(t("gensSent", { count: successCount }));
       } else {
         await submitSingleGeneration(requestId);
-        toast.success("Geração enviada! Acompanhe no feed.");
+        toast.success(t("genSent"));
       }
 
       setPrompt("");
@@ -1470,7 +1473,7 @@ export function GenerationDock() {
         error: error instanceof Error ? error.message : String(error),
       }, performance.now() - t0);
       toast.error(
-        error instanceof Error ? error.message : "Não foi possível gerar."
+        error instanceof Error ? error.message : t("cantGenerate")
       );
     } finally {
       setLoading(false);
@@ -1602,7 +1605,7 @@ export function GenerationDock() {
                         type="button"
                         onClick={() => {
                           addReferenceImage(asset.image_url);
-                          toast.success(`"${asset.name}" adicionado às referências.`);
+                          toast.success(t("assetAddedToRefs", { name: asset.name }));
                         }}
                         className="flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left hover:bg-white/5"
                         title={asset.name}
@@ -1714,7 +1717,7 @@ export function GenerationDock() {
             <button
               type="button"
               onClick={() => setCollapsed((value) => !value)}
-              title={collapsed ? "Expandir controles" : "Recolher controles"}
+              title={collapsed ? t("expandControls") : t("collapseControls")}
               className="absolute right-3 top-4 z-20 text-[#666666] hover:text-[#F5F5F5]"
             >
               <ChevronDown
@@ -2242,7 +2245,7 @@ export function GenerationDock() {
                                 type="button"
                                 onClick={() => {
                                   if (!seed.preview_url) {
-                                    toast.error("Este seed não possui preview.");
+                                    toast.error(t("seedNoPreview"));
                                     return;
                                   }
                                   addReferenceImage(seed.preview_url);
@@ -2673,13 +2676,13 @@ export function GenerationDock() {
                   const next = !audioEnabled;
                   setAudioEnabled(next);
                   toast.info(
-                    next ? "Áudio do vídeo ativado." : "Áudio do vídeo desativado."
+                    next ? t("audioVideoOn") : t("audioVideoOff")
                   );
                 }}
                 title={
                   audioEnabled
-                    ? "Áudio ativado — clique para desativar"
-                    : "Áudio desativado — clique para ativar"
+                    ? t("audioOnTitle")
+                    : t("audioOffTitle")
                 }
                 aria-pressed={audioEnabled}
                 className={cn(
