@@ -402,7 +402,7 @@ function ControlButton({
 /** Pill de spec exibido no submenu de variantes (resolução / duração). */
 function SpecPill({ icon, label }: { icon: ReactNode; label: string }) {
   return (
-    <span className="flex items-center gap-1 rounded-md border border-[#2A2A2A] bg-[#1F1F1F] px-1.5 py-0.5 text-[10px] text-[#888888]">
+    <span className="flex items-center gap-1 rounded-md border border-white/5 bg-white/[0.03] px-1.5 py-0.5 text-[10px] text-[#8b8b93]">
       {icon}
       {label}
     </span>
@@ -462,8 +462,8 @@ function ModelMenu({
     filteredGroups.find((g) => g.family === activeFamily) ?? filteredGroups[0] ?? null;
 
   return (
-    <div className="w-[540px] max-w-[calc(100vw-2rem)] p-2">
-      <div className="mb-2 flex items-center gap-2 rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] px-2.5">
+    <div className="w-[520px] max-w-[calc(100vw-2rem)] p-1.5">
+      <div className="mb-2 flex items-center gap-2 rounded-lg border border-white/5 bg-white/[0.03] px-2.5">
         <Search className="h-3.5 w-3.5 text-[#666666]" />
         <input
           value={query}
@@ -477,7 +477,7 @@ function ModelMenu({
         <p className="py-8 text-center text-xs text-[#777777]">Nenhum modelo encontrado.</p>
       ) : (
         <div className="flex gap-2">
-          <div className="fx-scroll max-h-[min(42vh,320px)] w-[210px] shrink-0 overflow-y-auto pr-1">
+          <div className="fx-scroll max-h-[min(42vh,320px)] w-[196px] shrink-0 overflow-y-auto pr-1.5">
             {filteredGroups.map((group) => {
               const active = group.family === activeGroup.family;
               return (
@@ -487,23 +487,23 @@ function ModelMenu({
                   onClick={() => setActiveFamily(group.family)}
                   onMouseEnter={() => setActiveFamily(group.family)}
                   className={cn(
-                    "mb-1 flex w-full items-center gap-3 rounded-xl p-2 text-left transition duration-150",
-                    active ? "bg-white/5" : "hover:bg-white/5"
+                    "mb-0.5 flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors duration-150",
+                    active ? "bg-white/[0.06]" : "hover:bg-white/[0.03]"
                   )}
                 >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#2A2A2A] text-sm font-semibold text-[#F5F5F5]">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/[0.05] text-[11px] font-semibold text-[#9a9aa3] ring-1 ring-white/10">
                     {(group.family || "M").charAt(0)}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-[#F5F5F5]">{group.family}</span>
+                    <span className="block truncate text-[13px] font-medium text-[#ededed]">{group.family}</span>
                     {group.description ? (
-                      <span className="block truncate text-[11px] leading-snug text-[#8b8b93]">
+                      <span className="block truncate text-[10.5px] leading-snug text-[#6a6a72]">
                         {group.description}
                       </span>
                     ) : null}
                   </span>
                   <ChevronRight
-                    className={cn("h-4 w-4 shrink-0", active ? "text-[#A78BFA]" : "text-[#555555]")}
+                    className={cn("h-3.5 w-3.5 shrink-0 transition-colors", active ? "text-[#A78BFA]" : "text-[#4a4a52]")}
                   />
                 </button>
               );
@@ -524,15 +524,14 @@ function ModelMenu({
                     disabled={!available}
                     onClick={() => onSelect(model)}
                     className={cn(
-                      "flex w-full flex-col gap-1.5 rounded-xl p-2.5 text-left transition duration-150",
-                      "hover:bg-white/5",
-                      selected &&
-                        "bg-[#7C3AED]/5 ring-2 ring-[#7C3AED] shadow-[0_0_15px_rgba(124,58,237,0.2)]",
+                      "flex w-full flex-col gap-1.5 rounded-lg px-2.5 py-2 text-left transition-colors duration-150",
+                      "hover:bg-white/[0.03]",
+                      selected && "bg-[#7C3AED]/[0.08] ring-1 ring-[#7C3AED]/60",
                       !available && "pointer-events-none opacity-50"
                     )}
                   >
                     <span className="flex items-center gap-2">
-                      <span className="truncate text-sm font-medium text-[#F5F5F5]">{model.name}</span>
+                      <span className="truncate text-[13px] font-medium text-[#F5F5F5]">{model.name}</span>
                       {model.has_audio ? <Volume2 className="h-3 w-3 text-[#888888]" /> : null}
                       {capabilityTags(model).map((tag) => (
                         <span
