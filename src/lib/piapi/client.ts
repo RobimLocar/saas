@@ -337,6 +337,79 @@ export async function generateImageGptSync(
   throw new PiAPIError("Resposta do gpt-image sem imagem", res.status, data);
 }
 
+// GPT Image 2 — EDIÇÃO com 1+ imagens de referência (multi-imagem / fusão).
+// Doc oficial PiAPI: POST /v1/images/edits, multipart/form-data, campo image[]
+// repetido (até 16 imagens; a 1ª é o sujeito/base, as demais são referências).
+// gpt-image-2 aceita SOMENTE quality "medium". response_format=url → URL hospedada.
+export async function generateImageGptEdits(args: {
+  prompt: string;
+  imageUrls: string[];
+  aspect_ratio?: string;
+  outputFormat?: string;
+}): Promise<string> {
+  const apiKey = process.env.PIAPI_API_KEY;
+  if (!apiKey) throw new PiAPIError("PIAPI_API_KEY não configurada");
+
+  const ar = args.aspect_ratio || "1:1";
+  const [w, h] = ar.split(":").map(Number);
+  const size =
+    !w || !h || w === h ? "1024x1024" : w > h ? "1536x1024" : "1024x1536";
+
+  const form = new FormData();
+  form.append("model", "gpt-image-2");
+  form.append("prompt", args.prompt);
+  form.append("quality", "medium"); // gpt-image-2: só medium
+  form.append("n", "1");
+  form.append("size", size);
+  form.append("response_format", "url");
+  if (args.outputFormat) form.append("output_format", args.outputFormat);
+
+  let idx = 0;
+  for (const url of args.imageUrls.slice(0, 16)) {
+    const r = await fetch(url);
+    if (!r.ok) continue;
+    const blob = await r.blob();
+    const ext = (blob.type.split("/")[1] || "png").replace("jpeg", "jpg");
+    form.append("image[]", blob, `ref_${idx++}.${ext}`);
+  }
+  if (idx === 0) throw new PiAPIError("Nenhuma referência acessível para edição");
+
+  const res = await fetch(`${PIAPI_OPENAI_BASE}/images/edits`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}` }, // sem Content-Type: fetch define o boundary
+    body: form,
+  });
+
+  const text = await res.text();
+  let data: {
+    data?: Array<{ url?: string; b64_json?: string }>;
+    error?: { message?: string };
+  } | null;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new PiAPIError(
+      `Resposta inválida do gpt-image edits (${res.status})`,
+      res.status
+    );
+  }
+  if (!res.ok || data?.error || !data?.data?.length) {
+    let msg = data?.error?.message || `PiAPI gpt-image edits ${res.status}`;
+    const m = msg.match(/upstream returned \d+: (\{.*\})/);
+    if (m) {
+      try {
+        const inner = JSON.parse(m[1]) as { error?: { message?: string } };
+        if (inner.error?.message) msg = inner.error.message;
+      } catch {}
+    }
+    throw new PiAPIError(msg, res.status, data);
+  }
+  const first = data.data[0];
+  if (first.url) return first.url;
+  if (first.b64_json) return `data:image/png;base64,${first.b64_json}`;
+  throw new PiAPIError("gpt-image edits sem imagem", res.status, data);
+}
+
 // ─── Vídeo ───────────────────────────────────────────────────────────────────
 // Roteamento completo por backend conforme docs oficiais da PiAPI (2026-07).
 // Cada modelo do catálogo (ai_models.params) traz: backend, task_type,

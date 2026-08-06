@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { generateImage, generateImageGptSync, submitGeminiImageTask } from "@/lib/piapi/client";
+import { generateImage, generateImageGptSync, generateImageGptEdits, submitGeminiImageTask } from "@/lib/piapi/client";
 
 // Modelos da família Gemini / Nano Banana → API oficial Gemini da PiAPI
 // (assíncrona, com fusão multi-imagem via input.image_urls). É o caminho certo
 // para "trocar avatar" / combinar pessoa + produto numa imagem nova.
+export const maxDuration = 300;
+
 const GEMINI_TASK: Record<string, { taskType: string; resolution?: boolean }> = {
   "nano-banana-pro": { taskType: "nano-banana-pro", resolution: true },
   "nano-banana": { taskType: "gemini-2.5-flash-image" },
@@ -244,14 +246,7 @@ export async function POST(req: NextRequest) {
       // ── Nano Banana / Nano Banana Pro (API Gemini da PiAPI, assíncrono) ─────
       // Funde TODAS as referências (input.image_urls): troca de avatar, pessoa +
       // produto, edição multi-imagem. O polling (status route) lê output.image_urls.
-      //
-      // Regra: com 2+ referências, o objetivo é COMBINAR/trocar — só a família
-      // Nano Banana faz isso bem. Então forçamos o Nano Banana Pro mesmo que o
-      // usuário tenha escolhido outro modelo (GPT Image/Flux só editam 1 imagem).
-      const geminiCfg =
-        refs.length >= 2
-          ? { taskType: "nano-banana-pro", resolution: true }
-          : GEMINI_TASK[aiModel.model_id];
+      const geminiCfg = GEMINI_TASK[aiModel.model_id];
       if (geminiCfg) {
         const task = await submitGeminiImageTask({
           taskType: geminiCfg.taskType,
@@ -285,16 +280,26 @@ export async function POST(req: NextRequest) {
       // Premium: usa GPT Image 2 sempre (suporta referência via campo "image").
       // Não-premium com qualidade alta e sem referência: também usa GPT.
       // Não-premium com referência: usa Flux img2img.
-      const useGptSync = isPremium || (refs.length === 0 && qualityLevel === "high");
+      // Com referência(s), qualquer modelo premium (GPT Image/Ideogram) ou
+      // 2+ referências em qualquer modelo → EDIÇÃO multi-imagem do GPT Image 2
+      // (combina/troca pessoa+produto, igual concorrente). Sem referência e
+      // qualidade alta → GPT Image 2 texto->imagem.
+      const useGptEdits = refs.length >= 1 && (isPremium || refs.length >= 2);
+      const useGptSync =
+        useGptEdits || isPremium || (refs.length === 0 && qualityLevel === "high");
       if (useGptSync) {
-        // GPT Image 2 / Ideogram (síncrono) — texto renderizado perfeito. Usa a
-        // 1ª referência como edição. (Fusão multi-imagem fica na família Gemini.)
-        const imageUrl = await generateImageGptSync({
-          prompt: promptEn,
-          aspect_ratio,
-          quality: qualityLevel,
-          reference_image_url: refs[0] || undefined,
-        });
+        const imageUrl = useGptEdits
+          ? await generateImageGptEdits({
+              prompt: promptEn,
+              imageUrls: refs,
+              aspect_ratio,
+            })
+          : await generateImageGptSync({
+              prompt: promptEn,
+              aspect_ratio,
+              quality: qualityLevel,
+              reference_image_url: refs[0] || undefined,
+            });
 
         let finalUrl = imageUrl;
         try {
