@@ -341,6 +341,24 @@ function formatDate(iso: string): string {
   }).format(new Date(iso));
 }
 
+function formatDateLong(iso: string): string {
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(iso));
+}
+
+function projectCover(project: UgcProject): string | null {
+  const clips = normalizeBroll(project.broll);
+  const withProduct = clips.find(
+    (c) => typeof c.product_image_url === "string" && c.product_image_url.trim().length > 0
+  );
+  if (withProduct?.product_image_url) return withProduct.product_image_url;
+  if (project.avatar_image_url) return project.avatar_image_url;
+  return null;
+}
+
 function statusLabel(status: string | null): string {
   const s = (status || "draft").toLowerCase();
   if (s === "ready") return "Pronto";
@@ -1837,79 +1855,75 @@ export default function UGCPage() {
             </div>
 
             <div>
-              <div className="mb-3">
-                <h2 className="text-lg font-semibold text-[#F5F5F5]">My projects</h2>
-                <p className="text-sm text-[#888888]">Seus projetos de UGC criados.</p>
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-[#F5F5F5]">Meus projetos</h2>
+                  <p className="text-sm text-[#888888]">Seus projetos de UGC criados.</p>
+                </div>
+                <span className="text-sm text-[#888888]">Veja tudo</span>
               </div>
 
               {projectsLoading ? (
-                <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
-                      <Skeleton className="mb-2 h-4 w-2/3 bg-[#232323]" />
-                      <Skeleton className="h-3 w-1/2 bg-[#232323]" />
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i}>
+                      <Skeleton className="aspect-[3/4] w-full rounded-2xl bg-[#1A1A1A]" />
+                      <Skeleton className="mt-2 h-4 w-2/3 bg-[#1A1A1A]" />
                     </div>
                   ))}
                 </div>
-              ) : sortedProjects.length === 0 ? (
-                <div className="mt-3 flex min-h-[340px] flex-col items-center justify-center rounded-2xl border border-[#242428] bg-[#0f0f11] p-8 text-center">
-                  <div className="relative mb-6 h-28 w-36">
-                    <div className="absolute left-1/2 top-2 h-24 w-[72px] -translate-x-1/2 -rotate-12 rounded-lg border-4 border-white/90 bg-gradient-to-br from-[#2a2036] to-[#15121c] shadow-lg" />
-                    <div className="absolute left-1/2 top-0 h-24 w-[72px] -translate-x-1/2 rotate-[10deg] rounded-lg border-4 border-white/90 bg-gradient-to-br from-[#2a2036] to-[#15121c] shadow-lg" />
-                    <div className="absolute left-1/2 top-1 flex h-24 w-[72px] -translate-x-1/2 items-center justify-center rounded-lg border-4 border-white/90 bg-gradient-to-br from-[#3a2a4a] to-[#1a1522] shadow-xl">
-                      <User className="h-6 w-6 text-white/40" />
-                    </div>
-                  </div>
-                  <h3 className="text-lg font-semibold text-[#F5F5F5]">Nenhum projeto ainda</h3>
-                  <p className="mt-1 max-w-sm text-sm text-[#888888]">
-                    Crie seu primeiro projeto de UGC e comece a gerar conteúdo incrível.
-                  </p>
-                  <Button
-                    onClick={() => setProjectCreateOpen(true)}
-                    className="mt-6 bg-white text-black hover:bg-white/90"
-                  >
-                    <Plus className="mr-2 h-4 w-4" />
-                    New UGC Project
-                  </Button>
-                </div>
               ) : (
-                <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                  {sortedProjects.map((project) => {
-                    const rawStatus = (project.status || "draft").toLowerCase();
-                    const selected = selectedProjectId === project.id;
-                    const statusClass =
-                      rawStatus === "processing"
-                        ? "bg-blue-500/15 text-blue-300"
-                        : rawStatus === "ready" || rawStatus === "published" || rawStatus === "active"
-                          ? "bg-[#7C3AED]/15 text-[#A78BFA]"
-                          : "bg-amber-500/15 text-amber-300";
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setProjectCreateOpen(true)}
+                      className="flex aspect-[3/4] w-full items-center justify-center rounded-2xl border border-[#242428] bg-[#141416] text-[#666666] transition-colors hover:border-[#7C3AED]/40 hover:text-[#A78BFA]"
+                    >
+                      <Plus className="h-8 w-8" />
+                    </button>
+                    <p className="mt-2 text-sm font-medium text-[#F5F5F5]">Novo projeto</p>
+                  </div>
 
+                  {sortedProjects.map((project) => {
+                    const cover = projectCover(project);
+                    const selected = selectedProjectId === project.id;
                     return (
-                      <button
-                        key={project.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedProjectId(project.id);
-                          setView("project");
-                          setActiveTab("broll");
-                        }}
-                        className={`group relative overflow-hidden rounded-2xl bg-[#141416] p-3 text-left ring-1 ring-white/5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(124,58,237,0.15)] hover:ring-[#7C3AED]/25 ${
-                          selected ? "ring-2 ring-[#7C3AED] shadow-[0_0_20px_rgba(124,58,237,0.2)]" : ""
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="line-clamp-1 text-sm font-semibold text-[#F5F5F5]">
-                            {project.name}
-                          </p>
-                          <ChevronRight className="h-4 w-4 text-[#777777] transition-transform group-hover:translate-x-0.5" />
-                        </div>
-                        <div className="mt-2 flex items-center justify-between">
-                          <Badge className={statusClass}>{statusLabel(project.status)}</Badge>
-                          <span className="text-xs text-[#777777]">
-                            {formatDate(project.updated_at || project.created_at)}
+                      <div key={project.id} className="min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedProjectId(project.id);
+                            setView("project");
+                            setActiveTab("broll");
+                          }}
+                          className={`group relative block aspect-[3/4] w-full overflow-hidden rounded-2xl bg-[#141416] ring-1 ring-white/5 transition-all duration-200 hover:-translate-y-0.5 hover:ring-[#7C3AED]/25 ${
+                            selected ? "ring-2 ring-[#7C3AED]" : ""
+                          }`}
+                        >
+                          {cover ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={cover}
+                              alt={project.name}
+                              className="absolute inset-0 h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-[#1c1c20] to-[#0f0f11]">
+                              <Clapperboard className="h-7 w-7 text-[#555555]" />
+                            </div>
+                          )}
+                          <span className="absolute left-2 top-2 rounded-full border border-[#F97316]/40 bg-black/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#F97316] backdrop-blur">
+                            Premium
                           </span>
-                        </div>
-                      </button>
+                        </button>
+                        <p className="mt-2 line-clamp-1 text-sm font-medium text-[#F5F5F5]">
+                          {project.name}
+                        </p>
+                        <p className="text-xs text-[#888888]">
+                          Atualizado em {formatDateLong(project.updated_at || project.created_at)}
+                        </p>
+                      </div>
                     );
                   })}
                 </div>
