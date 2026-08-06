@@ -52,13 +52,14 @@ const TYPE_META: Record<PromptType, { label: string; color: string; Icon: typeof
 };
 
 function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(iso));
+  const d = new Date(iso);
+  const diff = Date.now() - d.getTime();
+  const day = 86400000;
+  if (diff < 60000) return "agora";
+  if (diff < 3600000) return `${Math.floor(diff / 60000)} min`;
+  if (diff < day) return `${Math.floor(diff / 3600000)} h`;
+  if (diff < 7 * day) return `${Math.floor(diff / day)} d`;
+  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit" }).format(d);
 }
 
 function emptyForm(): PromptFormState {
@@ -389,7 +390,7 @@ export default function MyPromptsPage() {
                       className="flex min-w-0 flex-col rounded-2xl border border-[#242424] bg-[#121212] p-4"
                     >
                       <div className="mb-3 flex items-center gap-2">
-                        <div className="flex min-w-0 items-center gap-1.5 text-xs text-[#8b8b93]">
+                        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden pr-1 text-xs text-[#8b8b93]">
                           {meta ? (
                             <>
                               <meta.Icon className="h-3.5 w-3.5 shrink-0" style={{ color: meta.color }} />
