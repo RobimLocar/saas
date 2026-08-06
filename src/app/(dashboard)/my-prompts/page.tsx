@@ -325,7 +325,7 @@ export default function MyPromptsPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6 px-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-[#F5F5F5]">My Prompts</h1>
@@ -382,7 +382,7 @@ export default function MyPromptsPage() {
                   return (
                     <div
                       key={item.id}
-                      className="flex flex-col rounded-xl border border-[#2A2A2A] bg-[#141414] p-3.5"
+                      className="flex min-w-0 flex-col rounded-xl border border-[#2A2A2A] bg-[#141414] p-3.5"
                     >
                       <div className="mb-2 flex items-center gap-2 text-[11px] text-[#8b8b93]">
                         {item.type ? (
