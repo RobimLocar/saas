@@ -67,6 +67,7 @@ interface ApiModel {
   backend?: string | null;
   task_type?: string;
   less_restriction?: boolean;
+  thumbnail_url?: string | null;
 }
 
 interface UserAsset {
@@ -412,6 +413,7 @@ function SpecPill({ icon, label }: { icon: ReactNode; label: string }) {
 interface FamilyGroup {
   family: string;
   description: string;
+  logo?: string | null;
   models: ApiModel[];
 }
 
@@ -491,8 +493,15 @@ function ModelMenu({
                     active ? "bg-white/[0.06]" : "hover:bg-white/[0.03]"
                   )}
                 >
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/[0.05] text-[11px] font-semibold text-[#9a9aa3] ring-1 ring-white/10">
-                    {(group.family || "M").charAt(0)}
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white/[0.06] ring-1 ring-white/10">
+                    {group.logo ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={group.logo} alt={group.family} className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="text-[11px] font-semibold text-[#9a9aa3]">
+                        {(group.family || "M").charAt(0)}
+                      </span>
+                    )}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[13px] font-medium text-[#ededed]">{group.family}</span>
@@ -931,10 +940,12 @@ export function GenerationDock() {
         group = {
           family,
           description: model.family_description || "",
+          logo: model.thumbnail_url || null,
           models: [],
         };
         groups.push(group);
       }
+      if (!group.logo && model.thumbnail_url) group.logo = model.thumbnail_url;
       if (!group.description && model.family_description) {
         group.description = model.family_description;
       }
