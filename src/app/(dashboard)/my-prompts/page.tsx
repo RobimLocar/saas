@@ -354,7 +354,7 @@ export default function MyPromptsPage() {
         {(["all", "image", "video", "audio"] as PromptFilter[]).map((tab) => (
           <TabsContent key={tab} value={tab}>
             {loading ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {Array.from({ length: 6 }).map((_, idx) => (
                   <div
                     key={idx}
@@ -377,86 +377,66 @@ export default function MyPromptsPage() {
                 />
               </div>
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {filteredPrompts.map((item) => {
-                  const title = item.title?.trim() || item.prompt.slice(0, 48);
                   return (
                     <div
                       key={item.id}
-                      className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-4"
+                      className="flex flex-col rounded-xl border border-[#2A2A2A] bg-[#141414] p-3.5"
                     >
-                      <div className="mb-2 flex items-start justify-between gap-2">
-                        <h3 className="line-clamp-1 text-sm font-semibold text-[#F5F5F5]">
-                          {title}
-                        </h3>
-                        {item.type && (
-                          <Badge
-                            variant="outline"
-                            className="border-[#2A2A2A] text-[#BDBDBD]"
-                          >
+                      <div className="mb-2 flex items-center gap-2 text-[11px] text-[#8b8b93]">
+                        {item.type ? (
+                          <Badge variant="outline" className="border-[#2A2A2A] text-[#BDBDBD]">
                             {TYPE_LABEL[item.type]}
                           </Badge>
-                        )}
+                        ) : null}
+                        {item.model ? <span className="min-w-0 truncate">{item.model}</span> : null}
+                        <span className="ml-auto shrink-0">{formatDate(item.created_at)}</span>
                       </div>
 
                       <p className="line-clamp-3 text-sm leading-relaxed text-[#A3A3A3]">
                         {item.prompt}
                       </p>
 
-                      <div className="mt-3 flex flex-wrap gap-1">
-                        {(item.tags || []).map((tag) => (
-                          <Badge
-                            key={tag}
-                            variant="ghost"
-                            className="border border-[#2A2A2A] text-[#8E8E8E]"
-                          >
-                            #{tag}
-                          </Badge>
-                        ))}
-                      </div>
-
-                      <div className="mt-3 flex items-center justify-between text-xs text-[#777777]">
-                        <span>{item.use_count || 0} usos</span>
-                        <span>{formatDate(item.created_at)}</span>
-                      </div>
-
-                      <div className="mt-3 grid grid-cols-4 gap-2">
+                      <div className="mt-3 flex items-center gap-1.5">
                         <Button
-                          variant="outline"
-                          className="border-[#2A2A2A] text-[#F5F5F5]"
+                          className="flex-1 bg-[#7C3AED] text-white hover:bg-[#6D28D9] disabled:opacity-50"
                           disabled={workingId === item.id}
                           onClick={() => void handleUse(item)}
                         >
-                          Usar no Studio
+                          Usar
                         </Button>
                         <Button
                           variant="outline"
-                          className="border-[#2A2A2A] text-[#F5F5F5]"
+                          className="border-[#2A2A2A] px-2.5 text-[#F5F5F5]"
+                          title="Copiar"
+                          aria-label="Copiar"
                           disabled={workingId === item.id}
                           onClick={() => void handleCopy(item)}
                         >
-                          <Copy className="mr-1 h-3.5 w-3.5" />
-                          Copiar
+                          <Copy className="h-3.5 w-3.5" />
                         </Button>
                         {item.source !== "generation" ? (
                           <Button
                             variant="outline"
-                            className="border-[#2A2A2A] text-[#F5F5F5]"
+                            className="border-[#2A2A2A] px-2.5 text-[#F5F5F5]"
+                            title="Editar"
+                            aria-label="Editar"
                             disabled={workingId === item.id}
                             onClick={() => openEditModal(item)}
                           >
-                            <Pencil className="mr-1 h-3.5 w-3.5" />
-                            Editar
+                            <Pencil className="h-3.5 w-3.5" />
                           </Button>
                         ) : null}
                         <Button
                           variant="outline"
-                          className="border-[#3A1F1F] text-[#FCA5A5] hover:bg-[#2A1313]"
+                          className="border-[#3A1F1F] px-2.5 text-[#FCA5A5] hover:bg-[#2A1313]"
+                          title="Excluir"
+                          aria-label="Excluir"
                           disabled={workingId === item.id}
                           onClick={() => void handleDelete(item.id)}
                         >
-                          <Trash2 className="mr-1 h-3.5 w-3.5" />
-                          Excluir
+                          <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </div>
