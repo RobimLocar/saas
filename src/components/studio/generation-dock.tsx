@@ -464,24 +464,24 @@ function ModelMenu({
     filteredGroups.find((g) => g.family === activeFamily) ?? filteredGroups[0] ?? null;
 
   return (
-    <div className="w-[520px] max-w-[calc(100vw-2rem)] p-1.5">
-      <div className="mb-2 flex items-center gap-2 rounded-lg border border-white/5 bg-white/[0.03] px-2.5">
-        <Search className="h-3.5 w-3.5 text-[#666666]" />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Buscar modelo..."
-          className="h-9 w-full bg-transparent text-sm text-[#F5F5F5] placeholder:text-[#666666] focus:outline-none"
-        />
-      </div>
-
-      {filteredGroups.length === 0 || !activeGroup ? (
-        <p className="py-8 text-center text-xs text-[#777777]">Nenhum modelo encontrado.</p>
-      ) : (
-        <div className="flex gap-2">
-          <div className="fx-scroll max-h-[min(42vh,320px)] w-[196px] shrink-0 overflow-y-auto pr-1.5">
-            {filteredGroups.map((group) => {
-              const active = group.family === activeGroup.family;
+    <div className="flex items-start gap-2.5">
+      {/* Card — famílias */}
+      <div className="w-[296px] shrink-0 rounded-2xl border border-[#242428] bg-[#141416] p-2 shadow-2xl">
+        <div className="mb-2 flex items-center gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-3">
+          <Search className="h-4 w-4 text-[#666666]" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar modelo..."
+            className="h-10 w-full bg-transparent text-sm text-[#F5F5F5] placeholder:text-[#666666] focus:outline-none"
+          />
+        </div>
+        <div className="fx-scroll max-h-[min(46vh,360px)] overflow-y-auto pr-0.5">
+          {filteredGroups.length === 0 ? (
+            <p className="py-8 text-center text-xs text-[#777777]">Nenhum modelo encontrado.</p>
+          ) : (
+            filteredGroups.map((group) => {
+              const active = Boolean(activeGroup && group.family === activeGroup.family);
               return (
                 <button
                   key={group.family}
@@ -489,38 +489,45 @@ function ModelMenu({
                   onClick={() => setActiveFamily(group.family)}
                   onMouseEnter={() => setActiveFamily(group.family)}
                   className={cn(
-                    "mb-0.5 flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors duration-150",
+                    "mb-0.5 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors duration-150",
                     active ? "bg-white/[0.06]" : "hover:bg-white/[0.03]"
                   )}
                 >
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white/[0.06] ring-1 ring-white/10">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#26262b] ring-1 ring-white/[0.06]">
                     {group.logo ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={group.logo} alt={group.family} className="h-full w-full object-cover" />
                     ) : (
-                      <span className="text-[11px] font-semibold text-[#9a9aa3]">
+                      <span className="text-[13px] font-semibold text-[#c9c9d1]">
                         {(group.family || "M").charAt(0)}
                       </span>
                     )}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] font-medium text-[#ededed]">{group.family}</span>
+                    <span className="block truncate text-[14px] font-semibold text-[#f5f5f5]">
+                      {group.family}
+                    </span>
                     {group.description ? (
-                      <span className="block truncate text-[10.5px] leading-snug text-[#6a6a72]">
+                      <span className="block truncate text-[12px] leading-snug text-[#8b8b93]">
                         {group.description}
                       </span>
                     ) : null}
                   </span>
                   <ChevronRight
-                    className={cn("h-3.5 w-3.5 shrink-0 transition-colors", active ? "text-[#A78BFA]" : "text-[#4a4a52]")}
+                    className={cn("h-4 w-4 shrink-0 transition-colors", active ? "text-[#A78BFA]" : "text-[#555555]")}
                   />
                 </button>
               );
-            })}
-          </div>
+            })
+          )}
+        </div>
+      </div>
 
-          <div className="fx-scroll max-h-[min(42vh,320px)] flex-1 overflow-y-auto border-l border-[#242428] pl-2">
-            <div className="space-y-1.5">
+      {/* Card — modelos da família ativa */}
+      {activeGroup ? (
+        <div className="w-[296px] shrink-0 rounded-2xl border border-[#242428] bg-[#141416] p-2 shadow-2xl">
+          <div className="fx-scroll max-h-[min(46vh,428px)] overflow-y-auto pr-0.5">
+            <div className="space-y-1">
               {activeGroup.models.map((model) => {
                 const selected = model.id === selectedId;
                 const available = model.available !== false;
@@ -533,32 +540,32 @@ function ModelMenu({
                     disabled={!available}
                     onClick={() => onSelect(model)}
                     className={cn(
-                      "flex w-full flex-col gap-1.5 rounded-lg px-2.5 py-2 text-left transition-colors duration-150",
+                      "flex w-full flex-col gap-2 rounded-xl px-3 py-2.5 text-left transition-colors duration-150",
                       "hover:bg-white/[0.03]",
-                      selected && "bg-[#7C3AED]/[0.08] ring-1 ring-[#7C3AED]/60",
+                      selected && "bg-[#7C3AED]/[0.08] ring-1 ring-[#7C3AED]/70",
                       !available && "pointer-events-none opacity-50"
                     )}
                   >
                     <span className="flex items-center gap-2">
-                      <span className="truncate text-[13px] font-medium text-[#F5F5F5]">{model.name}</span>
-                      {model.has_audio ? <Volume2 className="h-3 w-3 text-[#888888]" /> : null}
+                      <span className="truncate text-[14px] font-semibold text-[#F5F5F5]">{model.name}</span>
+                      {model.has_audio ? <Volume2 className="h-3.5 w-3.5 text-[#888888]" /> : null}
                       {capabilityTags(model).map((tag) => (
                         <span
                           key={tag}
-                          className="rounded border border-[#2E2E33] bg-white/5 px-1 py-px text-[9px] font-semibold tracking-wide text-[#9a9aa3]"
+                          className="rounded border border-[#2E2E33] bg-white/5 px-1.5 py-px text-[9px] font-semibold tracking-wide text-[#9a9aa3]"
                         >
                           {tag}
                         </span>
                       ))}
-                      {!available ? <Lock className="ml-auto h-3.5 w-3.5 text-[#888888]" /> : null}
+                      {!available ? <Lock className="ml-auto h-4 w-4 text-[#888888]" /> : null}
                       {selected ? <Check className="ml-auto h-4 w-4 text-[#A78BFA]" /> : null}
                     </span>
-                    <span className="flex items-center gap-1.5">
+                    <span className="flex items-center gap-2">
                       {model.resolution ? (
-                        <SpecPill icon={<Monitor className="h-2.5 w-2.5" />} label={model.resolution} />
+                        <SpecPill icon={<Monitor className="h-3 w-3" />} label={model.resolution} />
                       ) : null}
                       {model.duration_range ? (
-                        <SpecPill icon={<Clock className="h-2.5 w-2.5" />} label={model.duration_range} />
+                        <SpecPill icon={<Clock className="h-3 w-3" />} label={model.duration_range} />
                       ) : null}
                     </span>
                   </button>
@@ -567,7 +574,7 @@ function ModelMenu({
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -2409,7 +2416,7 @@ export function GenerationDock() {
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 xl:flex-nowrap">
             {/* Modelo — menu hierárquico */}
             <Popover
-              panelClassName="overflow-visible"
+              panelClassName="overflow-visible border-0 bg-transparent p-0 shadow-none"
               trigger={() => (
                 <>
                   <span className="flex h-5 w-5 items-center justify-center rounded bg-[#2A2A2A] text-[10px] font-semibold text-[#F5F5F5]">
