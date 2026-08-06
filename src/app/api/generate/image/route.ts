@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { generateImage, generateImageGptSync } from "@/lib/piapi/client";
+import { generateImageAbacus } from "@/lib/abacus/client";
+
+// Cada modelo premium do catálogo → seu nome REAL no RouteLLM (Abacus).
+// É por aqui que "Nano Banana Pro" volta a ser Nano Banana Pro de verdade
+// (fusão multi-imagem), em vez de cair tudo no gpt-image-2.
+const ABACUS_IMAGE_MODEL: Record<string, string> = {
+  "gpt-image-2": "gpt_image2",
+  "nano-banana": "nano_banana",
+  "nano-banana-pro": "nano_banana_pro",
+  "ideogram-v4-turbo": "ideogram",
+};
 import { planAllows } from "@/lib/plans";
 import { debitCredits, effectiveCost, refundCredits } from "@/lib/credits";
 import { HIGH_COST_THRESHOLD_CREDITS, HIGH_COST_COOLDOWN_SECONDS } from "@/lib/constants";
@@ -68,7 +79,14 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { prompt, model_uuid, negative_prompt, aspect_ratio, width, height, reference_image_url, resolution, quality } = body;
+    const { prompt, model_uuid, negative_prompt, aspect_ratio, width, height, reference_image_url, reference_images, resolution, quality } = body;
+    // Todas as referências anexadas (o dock pode mandar várias). Compat com o
+    // campo singular antigo.
+    const refs: string[] = Array.isArray(reference_images)
+      ? reference_images.filter((u: unknown): u is string => typeof u === "string" && u.length > 0)
+      : reference_image_url
+        ? [reference_image_url as string]
+        : [];
     const qualityLevel: "low" | "medium" | "high" =
       quality === "low" || quality === "medium" ? quality : "high";
 
@@ -76,6 +94,7 @@ export async function POST(req: NextRequest) {
     const inputValidation = validateGenerationInput({
       aspect_ratio,
       reference_image_url,
+      reference_images,
     });
     if (!inputValidation.ok) {
       auditLog("api.generate.image", "validacao_local_400", requestId, {
@@ -178,7 +197,7 @@ export async function POST(req: NextRequest) {
         negative_prompt,
         // resolution (1K/2K/4K) é salvo apenas como rótulo para exibição;
         // as dimensões reais respeitam o limite de ~1MP do Flux (AR_DIMS).
-        params: { aspect_ratio, width, height, reference_image_url, resolution: resolution || null, quality: qualityLevel },
+        params: { aspect_ratio, width, height, reference_image_url, reference_images: refs, resolution: resolution || null, quality: qualityLevel },
         status: "pending",
         credits_used: cost,
       })
@@ -234,14 +253,33 @@ export async function POST(req: NextRequest) {
       // Premium: usa GPT Image 2 sempre (suporta referência via campo "image").
       // Não-premium com qualidade alta e sem referência: também usa GPT.
       // Não-premium com referência: usa Flux img2img.
-      const useGptSync = isPremium || (!reference_image_url && qualityLevel === "high");
+      const useGptSync = isPremium || (refs.length === 0 && qualityLevel === "high");
       if (useGptSync) {
-        const imageUrl = await generateImageGptSync({
-          prompt: promptEn,
-          aspect_ratio,
-          quality: qualityLevel,
-          reference_image_url: reference_image_url || undefined,
-        });
+        // Provider real por modelo (Nano Banana Pro / Nano Banana / Ideogram /
+        // GPT Image 2) via RouteLLM — funde TODAS as referências. Se o RouteLLM
+        // não estiver disponível, cai no gpt-image-2 da PiAPI (1 referência).
+        const abacusModel = ABACUS_IMAGE_MODEL[aiModel.model_id] || "gpt_image2";
+        let imageUrl: string;
+        try {
+          imageUrl = await generateImageAbacus({
+            model: abacusModel,
+            prompt: promptEn,
+            aspect_ratio,
+            quality: qualityLevel,
+            reference_image_urls: refs,
+          });
+        } catch (abacusErr) {
+          console.warn(
+            "[generate/image] RouteLLM falhou, fallback gpt-image-2:",
+            abacusErr
+          );
+          imageUrl = await generateImageGptSync({
+            prompt: promptEn,
+            aspect_ratio,
+            quality: qualityLevel,
+            reference_image_url: refs[0] || undefined,
+          });
+        }
 
         let finalUrl = imageUrl;
         try {
@@ -292,7 +330,7 @@ export async function POST(req: NextRequest) {
         aspect_ratio,
         width: width || dims?.w,
         height: height || dims?.h,
-        reference_image_url,
+        reference_image_url: refs[0] || undefined,
       });
 
       // Atualizar geração com task_id

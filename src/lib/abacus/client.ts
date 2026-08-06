@@ -23,7 +23,8 @@ export interface AbacusImageParams {
   prompt: string;
   aspect_ratio?: string; // "1:1" | "16:9" | ...
   quality?: "low" | "medium" | "high";
-  reference_image_url?: string;
+  reference_image_url?: string; // 1 referência (compat)
+  reference_image_urls?: string[]; // várias referências → fusão multi-imagem
 }
 
 interface ChatMessageContent {
@@ -101,11 +102,17 @@ export async function generateImageAbacus(
   const content: Array<Record<string, unknown>> = [
     { type: "text", text: params.prompt },
   ];
-  if (params.reference_image_url) {
-    content.push({
-      type: "image_url",
-      image_url: { url: params.reference_image_url },
-    });
+  // Reúne todas as referências (fusão multi-imagem: Nano Banana Pro / GPT Image
+  // aceitam várias imagens no mesmo content). Deduplica e limita a 6.
+  const refUrls = [
+    ...(params.reference_image_urls || []),
+    ...(params.reference_image_url ? [params.reference_image_url] : []),
+  ]
+    .filter((u): u is string => typeof u === "string" && u.length > 0)
+    .filter((u, i, arr) => arr.indexOf(u) === i)
+    .slice(0, 6);
+  for (const url of refUrls) {
+    content.push({ type: "image_url", image_url: { url } });
   }
 
   const res = await fetch(`${BASE_URL}/chat/completions`, {

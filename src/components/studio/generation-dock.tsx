@@ -1277,9 +1277,17 @@ export function GenerationDock() {
 
     if (activeTab === "image") {
       body.resolution = safeResolution;
-      const ref = referenceImages[0] || referenceImageUrl;
-      if (ref) {
-        body.reference_image_url = ref;
+      // Envia TODAS as referências anexadas (fusão multi-imagem no provider),
+      // não só a primeira. Mantém o campo singular por compatibilidade.
+      const refs =
+        referenceImages.length > 0
+          ? referenceImages
+          : referenceImageUrl
+            ? [referenceImageUrl]
+            : [];
+      if (refs.length > 0) {
+        body.reference_images = refs;
+        body.reference_image_url = refs[0];
       }
     }
 
