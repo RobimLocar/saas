@@ -244,7 +244,14 @@ export async function POST(req: NextRequest) {
       // ── Nano Banana / Nano Banana Pro (API Gemini da PiAPI, assíncrono) ─────
       // Funde TODAS as referências (input.image_urls): troca de avatar, pessoa +
       // produto, edição multi-imagem. O polling (status route) lê output.image_urls.
-      const geminiCfg = GEMINI_TASK[aiModel.model_id];
+      //
+      // Regra: com 2+ referências, o objetivo é COMBINAR/trocar — só a família
+      // Nano Banana faz isso bem. Então forçamos o Nano Banana Pro mesmo que o
+      // usuário tenha escolhido outro modelo (GPT Image/Flux só editam 1 imagem).
+      const geminiCfg =
+        refs.length >= 2
+          ? { taskType: "nano-banana-pro", resolution: true }
+          : GEMINI_TASK[aiModel.model_id];
       if (geminiCfg) {
         const task = await submitGeminiImageTask({
           taskType: geminiCfg.taskType,

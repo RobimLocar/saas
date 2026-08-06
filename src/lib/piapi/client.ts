@@ -241,6 +241,7 @@ export async function submitGeminiImageTask(
   const input: Record<string, unknown> = {
     prompt: args.prompt,
     output_format: args.outputFormat || "png",
+    safety_level: "high",
   };
   if (args.aspectRatio) input.aspect_ratio = args.aspectRatio;
   if (args.resolution) input.resolution = args.resolution;
