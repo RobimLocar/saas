@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Copy, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
+import { ArrowUpRight, Copy, FolderPlus, Heart, ImageIcon, Music, Pencil, Plus, Sparkles, Trash2, Video } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useStudioStore } from "@/stores/use-studio-store";
+import { cn } from "@/lib/utils";
 
 type PromptType = "image" | "video" | "audio";
 type PromptFilter = "all" | PromptType;
@@ -44,10 +45,10 @@ const FILTER_LABEL: Record<PromptFilter, string> = {
   audio: "Áudio",
 };
 
-const TYPE_LABEL: Record<PromptType, string> = {
-  image: "Imagem",
-  video: "Vídeo",
-  audio: "Áudio",
+const TYPE_META: Record<PromptType, { label: string; color: string; Icon: typeof ImageIcon }> = {
+  image: { label: "Image", color: "#F97316", Icon: ImageIcon },
+  video: { label: "Video", color: "#3B82F6", Icon: Video },
+  audio: { label: "Audio", color: "#22D3EE", Icon: Music },
 };
 
 function formatDate(iso: string): string {
@@ -379,66 +380,66 @@ export default function MyPromptsPage() {
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {filteredPrompts.map((item) => {
+                  const meta = item.type ? TYPE_META[item.type] : null;
+                  const iconBtn =
+                    "flex h-7 w-7 items-center justify-center rounded-md border border-[#2A2A2A] text-[#888888] transition-colors hover:bg-white/5 hover:text-[#e5e5e5] disabled:opacity-50";
                   return (
                     <div
                       key={item.id}
-                      className="flex min-w-0 flex-col rounded-xl border border-[#2A2A2A] bg-[#141414] p-3.5"
+                      className="flex min-w-0 flex-col rounded-2xl border border-[#242424] bg-[#121212] p-4"
                     >
-                      <div className="mb-2 flex items-center gap-2 text-[11px] text-[#8b8b93]">
-                        {item.type ? (
-                          <Badge variant="outline" className="border-[#2A2A2A] text-[#BDBDBD]">
-                            {TYPE_LABEL[item.type]}
-                          </Badge>
-                        ) : null}
-                        {item.model ? <span className="min-w-0 truncate">{item.model}</span> : null}
-                        <span className="ml-auto shrink-0">{formatDate(item.created_at)}</span>
+                      <div className="mb-3 flex items-center gap-2">
+                        <div className="flex min-w-0 items-center gap-1.5 text-xs text-[#8b8b93]">
+                          {meta ? (
+                            <>
+                              <meta.Icon className="h-3.5 w-3.5 shrink-0" style={{ color: meta.color }} />
+                              <span className="shrink-0 font-medium" style={{ color: meta.color }}>
+                                {meta.label}
+                              </span>
+                            </>
+                          ) : null}
+                          {item.model ? (
+                            <>
+                              <span className="shrink-0 text-[#555555]">·</span>
+                              <span className="truncate">{item.model}</span>
+                            </>
+                          ) : null}
+                          <span className="shrink-0 text-[#555555]">·</span>
+                          <span className="shrink-0">{formatDate(item.created_at)}</span>
+                        </div>
+                        <div className="ml-auto flex shrink-0 items-center gap-1">
+                          <button type="button" title="Copiar" aria-label="Copiar" onClick={() => void handleCopy(item)} className={iconBtn}>
+                            <Copy className="h-3.5 w-3.5" />
+                          </button>
+                          {item.source !== "generation" ? (
+                            <button type="button" title="Editar" aria-label="Editar" onClick={() => openEditModal(item)} className={iconBtn}>
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                          ) : null}
+                          <button type="button" title="Mover para pasta" aria-label="Mover para pasta" onClick={() => toast("Pastas em breve.")} className={iconBtn}>
+                            <FolderPlus className="h-3.5 w-3.5" />
+                          </button>
+                          <button type="button" title="Excluir" aria-label="Excluir" disabled={workingId === item.id} onClick={() => void handleDelete(item.id)} className={cn(iconBtn, "hover:border-[#3A1F1F] hover:bg-[#2A1313] hover:text-[#FCA5A5]")}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button type="button" title="Favoritar" aria-label="Favoritar" onClick={() => toast("Favoritos em breve.")} className={iconBtn}>
+                            <Heart className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
 
-                      <p className="line-clamp-3 text-sm leading-relaxed text-[#A3A3A3]">
+                      <p className="mb-4 line-clamp-6 flex-1 text-sm leading-relaxed text-[#A3A3A3]">
                         {item.prompt}
                       </p>
 
-                      <div className="mt-3 flex items-center gap-1.5">
-                        <Button
-                          className="flex-1 bg-[#7C3AED] text-white hover:bg-[#6D28D9] disabled:opacity-50"
-                          disabled={workingId === item.id}
-                          onClick={() => void handleUse(item)}
-                        >
-                          Usar
-                        </Button>
-                        <Button
-                          variant="outline"
-                          className="border-[#2A2A2A] px-2.5 text-[#F5F5F5]"
-                          title="Copiar"
-                          aria-label="Copiar"
-                          disabled={workingId === item.id}
-                          onClick={() => void handleCopy(item)}
-                        >
-                          <Copy className="h-3.5 w-3.5" />
-                        </Button>
-                        {item.source !== "generation" ? (
-                          <Button
-                            variant="outline"
-                            className="border-[#2A2A2A] px-2.5 text-[#F5F5F5]"
-                            title="Editar"
-                            aria-label="Editar"
-                            disabled={workingId === item.id}
-                            onClick={() => openEditModal(item)}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                        ) : null}
-                        <Button
-                          variant="outline"
-                          className="border-[#3A1F1F] px-2.5 text-[#FCA5A5] hover:bg-[#2A1313]"
-                          title="Excluir"
-                          aria-label="Excluir"
-                          disabled={workingId === item.id}
-                          onClick={() => void handleDelete(item.id)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
+                      <Button
+                        className="w-full rounded-xl bg-white text-[#0A0A0A] hover:bg-white/90 disabled:opacity-50"
+                        disabled={workingId === item.id}
+                        onClick={() => void handleUse(item)}
+                      >
+                        Use prompt
+                        <ArrowUpRight className="ml-1.5 h-4 w-4" />
+                      </Button>
                     </div>
                   );
                 })}
