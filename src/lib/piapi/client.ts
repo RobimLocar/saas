@@ -937,14 +937,36 @@ export function extractVideoUrl(
         ? (v as { url: string }).url
         : null;
 
+  // Kling Avatar e Kling classic devolvem o vídeo em output.works[].video
+  // (resource_without_watermark preferido). Doc oficial Kling Get Task.
+  const worksUrl = (): string | null => {
+    const works = o.works as
+      | Array<{ video?: { resource_without_watermark?: string; resource?: string } }>
+      | undefined;
+    const v = works?.[0]?.video;
+    return v?.resource_without_watermark || v?.resource || null;
+  };
+
   if (outputKey === "output.video") {
-    return asUrl(o.video) || (typeof o.video_url === "string" ? o.video_url : null);
+    return (
+      asUrl(o.video) ||
+      (typeof o.video_url === "string" ? o.video_url : null) ||
+      worksUrl()
+    );
   }
   if (outputKey === "output.video_url") {
-    return (typeof o.video_url === "string" ? o.video_url : null) || asUrl(o.video);
+    return (
+      (typeof o.video_url === "string" ? o.video_url : null) ||
+      asUrl(o.video) ||
+      worksUrl()
+    );
   }
-  // fallback: tenta ambos
-  return (typeof o.video_url === "string" ? o.video_url : null) || asUrl(o.video);
+  // fallback: tenta todos
+  return (
+    (typeof o.video_url === "string" ? o.video_url : null) ||
+    asUrl(o.video) ||
+    worksUrl()
+  );
 }
 
 // ─── Áudio ───────────────────────────────────────────────────────────────────
