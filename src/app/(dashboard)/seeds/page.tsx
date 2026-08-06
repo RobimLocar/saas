@@ -392,7 +392,7 @@ export default function SeedsPage() {
           {orderedSeeds.map((seed) => (
             <div
               key={seed.id}
-              className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-3"
+              className="flex min-w-0 flex-col rounded-xl border border-[#2A2A2A] bg-[#141414] p-3"
             >
               <div className="relative mb-3 overflow-hidden rounded-lg border border-[#2A2A2A] bg-[#1A1A1A]">
                 {seed.preview_url ? (
@@ -412,7 +412,7 @@ export default function SeedsPage() {
               </div>
 
               <div className="mb-1 flex items-start justify-between gap-2">
-                <h3 className="line-clamp-1 text-sm font-semibold text-[#F5F5F5]">
+                <h3 className="min-w-0 truncate text-sm font-semibold text-[#F5F5F5]">
                   {seed.name || "Seed sem nome"}
                 </h3>
                 <Badge variant="outline" className="border-[#2A2A2A] text-[#BDBDBD]">
@@ -440,32 +440,33 @@ export default function SeedsPage() {
                 Último uso: {formatDate(seed.last_used_at)}
               </p>
 
-              <div className="mt-3 grid grid-cols-3 gap-2">
+              <div className="mt-3 flex items-center gap-1.5">
                 <Button
-                  variant="outline"
-                  className="border-[#2A2A2A] text-[#F5F5F5]"
+                  className="min-w-0 flex-1 bg-[#7C3AED] text-white hover:bg-[#6D28D9] disabled:opacity-50"
                   disabled={workingId === seed.id || !seed.preview_url}
                   onClick={() => void handleUse(seed)}
                 >
-                  Usar no Studio
+                  Usar
                 </Button>
                 <Button
                   variant="outline"
-                  className="border-[#2A2A2A] text-[#F5F5F5]"
+                  className="border-[#2A2A2A] px-2.5 text-[#F5F5F5]"
+                  title="Editar"
+                  aria-label="Editar"
                   disabled={workingId === seed.id}
                   onClick={() => openEditModal(seed)}
                 >
-                  <Pencil className="mr-1 h-3.5 w-3.5" />
-                  Editar
+                  <Pencil className="h-3.5 w-3.5" />
                 </Button>
                 <Button
                   variant="outline"
-                  className="border-[#3A1F1F] text-[#FCA5A5] hover:bg-[#2A1313]"
+                  className="border-[#3A1F1F] px-2.5 text-[#FCA5A5] hover:bg-[#2A1313]"
+                  title="Excluir"
+                  aria-label="Excluir"
                   disabled={workingId === seed.id}
                   onClick={() => void handleDelete(seed)}
                 >
-                  <Trash2 className="mr-1 h-3.5 w-3.5" />
-                  Excluir
+                  <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               </div>
             </div>
