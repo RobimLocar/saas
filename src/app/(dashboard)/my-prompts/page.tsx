@@ -24,6 +24,9 @@ interface SavedPrompt {
   tags: string[] | null;
   use_count: number;
   created_at: string;
+  source?: "saved" | "generation";
+  result_url?: string | null;
+  model?: string | null;
 }
 
 interface PromptFormState {
@@ -101,7 +104,51 @@ export default function MyPromptsPage() {
           throw new Error(data?.error || "Falha ao carregar prompts.");
         }
 
-        setPrompts(Array.isArray(data?.prompts) ? data.prompts : []);
+        const saved: SavedPrompt[] = (Array.isArray(data?.prompts) ? data.prompts : []).map(
+          (p: SavedPrompt) => ({ ...p, source: "saved" as const })
+        );
+        let gens: SavedPrompt[] = [];
+        try {
+          const gType = targetFilter === "all" ? "all" : targetFilter;
+          const gres = await fetch(
+            `/api/generations?type=${encodeURIComponent(gType)}&limit=100`,
+            { cache: "no-store" }
+          );
+          const gdata = await gres.json().catch(() => null);
+          const list = Array.isArray(gdata?.generations) ? gdata.generations : [];
+          const savedTexts = new Set(saved.map((x) => x.prompt.trim()));
+          gens = list
+            .filter(
+              (g: { prompt?: string }) =>
+                typeof g.prompt === "string" &&
+                g.prompt.trim().length > 0 &&
+                !savedTexts.has(g.prompt.trim())
+            )
+            .map((g: Record<string, unknown>) => {
+              const model =
+                (g.model as string) ||
+                (g.model_id as string) ||
+                ((g.ai_models as { name?: string } | null)?.name ?? null);
+              return {
+                id: `gen:${String(g.id)}`,
+                title: null,
+                prompt: String(g.prompt),
+                type: (g.type as PromptType) ?? null,
+                tags: model ? [model] : [],
+                use_count: 0,
+                created_at: String(g.created_at ?? new Date().toISOString()),
+                source: "generation" as const,
+                result_url: (g.result_url as string) ?? null,
+                model: model ?? null,
+              } as SavedPrompt;
+            });
+        } catch {
+          // sem histórico — segue só com os salvos
+        }
+        const merged = [...saved, ...gens].sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+        setPrompts(merged);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Erro ao carregar prompts.");
       } finally {
@@ -207,6 +254,11 @@ export default function MyPromptsPage() {
   }
 
   async function handleDelete(id: string) {
+    if (id.startsWith("gen:")) {
+      setPrompts((prev) => prev.filter((p) => p.id !== id));
+      toast.success("Removido da biblioteca.");
+      return;
+    }
     setWorkingId(id);
     try {
       const res = await fetch(`/api/prompts/${id}`, { method: "DELETE" });
@@ -242,6 +294,12 @@ export default function MyPromptsPage() {
         promptItem.type === "audio"
       ) {
         setActiveTab(promptItem.type);
+      }
+
+      if (promptItem.source === "generation") {
+        toast.success("Abrindo no Studio…");
+        router.push("/studio");
+        return;
       }
 
       const res = await fetch(`/api/prompts/${promptItem.id}`, {
@@ -341,7 +399,15 @@ export default function MyPromptsPage() {
                         )}
                       </div>
 
-                      <p className="line-clamp-4 min-h-[78px] text-sm leading-relaxed text-[#A3A3A3]">
+                      {item.result_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={item.result_url}
+                          alt=""
+                          className="mb-2 h-28 w-full rounded-lg object-cover ring-1 ring-white/5"
+                        />
+                      ) : null}
+                      <p className={`text-sm leading-relaxed text-[#A3A3A3] ${item.result_url ? "line-clamp-2" : "line-clamp-4 min-h-[78px]"}`}>
                         {item.prompt}
                       </p>
 
@@ -380,15 +446,17 @@ export default function MyPromptsPage() {
                           <Copy className="mr-1 h-3.5 w-3.5" />
                           Copiar
                         </Button>
-                        <Button
-                          variant="outline"
-                          className="border-[#2A2A2A] text-[#F5F5F5]"
-                          disabled={workingId === item.id}
-                          onClick={() => openEditModal(item)}
-                        >
-                          <Pencil className="mr-1 h-3.5 w-3.5" />
-                          Editar
-                        </Button>
+                        {item.source !== "generation" ? (
+                          <Button
+                            variant="outline"
+                            className="border-[#2A2A2A] text-[#F5F5F5]"
+                            disabled={workingId === item.id}
+                            onClick={() => openEditModal(item)}
+                          >
+                            <Pencil className="mr-1 h-3.5 w-3.5" />
+                            Editar
+                          </Button>
+                        ) : null}
                         <Button
                           variant="outline"
                           className="border-[#3A1F1F] text-[#FCA5A5] hover:bg-[#2A1313]"
