@@ -426,18 +426,8 @@ function ModelMenu({
   onSelect: (model: ApiModel) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [activeFamily, setActiveFamily] = useState<string>("");
 
-  function tierBadge(model: ApiModel): { label: string; className: string } {
-    const source = `${model.provider} ${model.family} ${model.type} ${model.badge || ""}`.toLowerCase();
-    if (source.includes("gpt")) return { label: "GPT", className: "bg-emerald-500/10 text-emerald-400" };
-    if (source.includes("video")) return { label: "Video", className: "bg-blue-500/10 text-blue-400" };
-    if (source.includes("audio") || source.includes("tts")) {
-      return { label: "Audio", className: "bg-cyan-500/10 text-cyan-400" };
-    }
-    return { label: model.family || "Model", className: "bg-violet-500/10 text-violet-300" };
-  }
-
-  /** Tags de capacidade (visual): REF = suporta referência de personagem; BATCH = multi-shot. */
   function capabilityTags(model: ApiModel): string[] {
     if (model.type !== "video") return [];
     const src = `${model.name} ${model.family} ${model.backend || ""}`.toLowerCase();
@@ -459,8 +449,20 @@ function ModelMenu({
     }))
     .filter((group) => group.models.length > 0);
 
+  useEffect(() => {
+    if (filteredGroups.length === 0) return;
+    const stillValid = filteredGroups.some((g) => g.family === activeFamily);
+    if (!stillValid) {
+      const sel = filteredGroups.find((g) => g.models.some((m) => m.id === selectedId));
+      setActiveFamily((sel ?? filteredGroups[0]).family);
+    }
+  }, [filteredGroups, activeFamily, selectedId]);
+
+  const activeGroup =
+    filteredGroups.find((g) => g.family === activeFamily) ?? filteredGroups[0] ?? null;
+
   return (
-    <div className="w-[360px] p-2">
+    <div className="w-[540px] max-w-[calc(100vw-2rem)] p-2">
       <div className="mb-2 flex items-center gap-2 rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] px-2.5">
         <Search className="h-3.5 w-3.5 text-[#666666]" />
         <input
@@ -471,83 +473,93 @@ function ModelMenu({
         />
       </div>
 
-      <div className="fx-scroll max-h-[min(40vh,300px)] overflow-y-auto pr-1">
-        {filteredGroups.length === 0 ? (
-          <p className="py-8 text-center text-xs text-[#777777]">Nenhum modelo encontrado.</p>
-        ) : (
-          filteredGroups.map((group) => (
-            <div key={group.family} className="mb-3">
-              <p className="px-2 pt-1 text-xs font-semibold uppercase tracking-wider text-[#888888]">
-                {group.family}
-              </p>
-              {group.description ? (
-                <p className="px-2 pb-1 text-[11px] leading-snug text-[#8b8b93]">{group.description}</p>
-              ) : null}
-
-              <div className="space-y-1.5">
-                {group.models.map((model) => {
-                  const selected = model.id === selectedId;
-                  const available = model.available !== false;
-                  const badge = tierBadge(model);
-                  const disabledTitle = available ? undefined : "Modelo indisponível para seu plano";
-
-                  return (
-                    <button
-                      key={model.id}
-                      type="button"
-                      title={disabledTitle}
-                      disabled={!available}
-                      onClick={() => onSelect(model)}
-                      className={cn(
-                        "flex w-full items-center gap-3 rounded-xl p-2 text-left transition duration-150",
-                        "hover:bg-white/5",
-                        selected &&
-                          "bg-[#7C3AED]/5 ring-2 ring-[#7C3AED] shadow-[0_0_15px_rgba(124,58,237,0.2)]",
-                        !available && "pointer-events-none opacity-50"
-                      )}
-                    >
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#2A2A2A] text-xs font-semibold text-[#F5F5F5]">
-                        {(model.family || model.name || "M").charAt(0)}
+      {filteredGroups.length === 0 || !activeGroup ? (
+        <p className="py-8 text-center text-xs text-[#777777]">Nenhum modelo encontrado.</p>
+      ) : (
+        <div className="flex gap-2">
+          <div className="fx-scroll max-h-[min(42vh,320px)] w-[210px] shrink-0 overflow-y-auto pr-1">
+            {filteredGroups.map((group) => {
+              const active = group.family === activeGroup.family;
+              return (
+                <button
+                  key={group.family}
+                  type="button"
+                  onClick={() => setActiveFamily(group.family)}
+                  onMouseEnter={() => setActiveFamily(group.family)}
+                  className={cn(
+                    "mb-1 flex w-full items-center gap-3 rounded-xl p-2 text-left transition duration-150",
+                    active ? "bg-white/5" : "hover:bg-white/5"
+                  )}
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#2A2A2A] text-sm font-semibold text-[#F5F5F5]">
+                    {(group.family || "M").charAt(0)}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-[#F5F5F5]">{group.family}</span>
+                    {group.description ? (
+                      <span className="block truncate text-[11px] leading-snug text-[#8b8b93]">
+                        {group.description}
                       </span>
+                    ) : null}
+                  </span>
+                  <ChevronRight
+                    className={cn("h-4 w-4 shrink-0", active ? "text-[#A78BFA]" : "text-[#555555]")}
+                  />
+                </button>
+              );
+            })}
+          </div>
 
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-2">
-                          <span className="truncate text-sm font-medium text-[#F5F5F5]">{model.name}</span>
-                          <span className={cn("rounded-full px-1.5 py-0.5 text-[10px]", badge.className)}>
-                            {badge.label}
-                          </span>
-                          {capabilityTags(model).map((tag) => (
-                            <span
-                              key={tag}
-                              className="rounded border border-[#2E2E33] bg-white/5 px-1 py-px text-[9px] font-semibold tracking-wide text-[#9a9aa3]"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                          {model.has_audio ? <Volume2 className="h-3 w-3 text-[#888888]" /> : null}
-                          {!available ? <Lock className="ml-auto h-3.5 w-3.5 text-[#888888]" /> : null}
-                          {selected ? <Check className="ml-auto h-3.5 w-3.5 text-[#A78BFA]" /> : null}
+          <div className="fx-scroll max-h-[min(42vh,320px)] flex-1 overflow-y-auto border-l border-[#242428] pl-2">
+            <div className="space-y-1.5">
+              {activeGroup.models.map((model) => {
+                const selected = model.id === selectedId;
+                const available = model.available !== false;
+                const disabledTitle = available ? undefined : "Modelo indisponível para seu plano";
+                return (
+                  <button
+                    key={model.id}
+                    type="button"
+                    title={disabledTitle}
+                    disabled={!available}
+                    onClick={() => onSelect(model)}
+                    className={cn(
+                      "flex w-full flex-col gap-1.5 rounded-xl p-2.5 text-left transition duration-150",
+                      "hover:bg-white/5",
+                      selected &&
+                        "bg-[#7C3AED]/5 ring-2 ring-[#7C3AED] shadow-[0_0_15px_rgba(124,58,237,0.2)]",
+                      !available && "pointer-events-none opacity-50"
+                    )}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className="truncate text-sm font-medium text-[#F5F5F5]">{model.name}</span>
+                      {model.has_audio ? <Volume2 className="h-3 w-3 text-[#888888]" /> : null}
+                      {capabilityTags(model).map((tag) => (
+                        <span
+                          key={tag}
+                          className="rounded border border-[#2E2E33] bg-white/5 px-1 py-px text-[9px] font-semibold tracking-wide text-[#9a9aa3]"
+                        >
+                          {tag}
                         </span>
-
-                        <span className="mt-1 flex items-center gap-1.5">
-                          {model.resolution ? (
-                            <SpecPill icon={<Monitor className="h-2.5 w-2.5" />} label={model.resolution} />
-                          ) : null}
-                          {model.duration_range ? (
-                            <SpecPill icon={<Clock className="h-2.5 w-2.5" />} label={model.duration_range} />
-                          ) : null}
-                        </span>
-                      </span>
-
-                      <span className="shrink-0 text-xs text-[#888888]">⚡ {model.credit_cost}</span>
-                    </button>
-                  );
-                })}
-              </div>
+                      ))}
+                      {!available ? <Lock className="ml-auto h-3.5 w-3.5 text-[#888888]" /> : null}
+                      {selected ? <Check className="ml-auto h-4 w-4 text-[#A78BFA]" /> : null}
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      {model.resolution ? (
+                        <SpecPill icon={<Monitor className="h-2.5 w-2.5" />} label={model.resolution} />
+                      ) : null}
+                      {model.duration_range ? (
+                        <SpecPill icon={<Clock className="h-2.5 w-2.5" />} label={model.duration_range} />
+                      ) : null}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
-          ))
-        )}
-      </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
