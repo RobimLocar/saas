@@ -100,7 +100,7 @@ export default function SeedsPage() {
   const [form, setForm] = useState<SeedFormState>(emptyForm());
   const [saving, setSaving] = useState(false);
   const [seedType, setSeedType] = useState<SeedType>("character");
-  const [seedFiles, setSeedFiles] = useState<File[]>([]);
+  const [seedFiles, setSeedFiles] = useState<{ file: File; url: string }[]>([]);
 
   const loadSeeds = useCallback(async () => {
     setLoading(true);
@@ -164,11 +164,26 @@ export default function SeedsPage() {
     setModalOpen(true);
   }
 
+  function addSeedFiles(files: FileList | null) {
+    if (!files) return;
+    const added = Array.from(files).map((file) => ({ file, url: URL.createObjectURL(file) }));
+    setSeedFiles((prev) => [...prev, ...added]);
+  }
+
+  function removeSeedFile(idx: number) {
+    setSeedFiles((prev) => {
+      const target = prev[idx];
+      if (target) URL.revokeObjectURL(target.url);
+      return prev.filter((_, i) => i !== idx);
+    });
+  }
+
   function closeModal() {
     if (saving) return;
     setModalOpen(false);
     setEditing(null);
     setForm(emptyForm());
+    seedFiles.forEach((f) => URL.revokeObjectURL(f.url));
     setSeedFiles([]);
   }
 
@@ -205,6 +220,18 @@ export default function SeedsPage() {
         setSeeds((prev) => prev.map((s) => (s.id === editing.id ? data.seed : s)));
         toast.success("Seed atualizada com sucesso.");
       } else {
+        let previewUrl: string | null = null;
+        if (seedFiles.length > 0) {
+          try {
+            const fd = new FormData();
+            fd.append("file", seedFiles[0].file);
+            const ures = await fetch("/api/upload", { method: "POST", body: fd });
+            const udata = await ures.json().catch(() => null);
+            if (ures.ok && udata?.url) previewUrl = udata.url;
+          } catch {
+            // sem upload — cria sem capa
+          }
+        }
         const res = await fetch("/api/seeds", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -212,6 +239,7 @@ export default function SeedsPage() {
             name,
             description: form.description.trim() || null,
             tags,
+            preview_url: previewUrl,
           }),
         });
         const data = await res.json().catch(() => null);
@@ -530,36 +558,81 @@ export default function SeedsPage() {
                   />
                 </div>
                 <div>
-                  <label
-                    htmlFor="seed-refs"
-                    className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-[#2A2A2A] bg-[#1A1A1A]/60 p-4 transition-colors hover:border-[#7C3AED]/50"
-                  >
-                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10">
-                      <Upload className="h-5 w-5 text-[#888888]" />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium text-[#F5F5F5]">Upload de referências</span>
-                      <span className="block text-xs text-[#888888]">Arraste ou clique — 4 a 8 fotos</span>
-                    </span>
-                  </label>
+                  {seedFiles.length === 0 ? (
+                    <label
+                      htmlFor="seed-refs"
+                      className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-[#2A2A2A] bg-[#1A1A1A]/60 p-4 transition-colors hover:border-[#7C3AED]/50"
+                    >
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10">
+                        <Upload className="h-5 w-5 text-[#888888]" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium text-[#F5F5F5]">Upload de referências</span>
+                        <span className="block text-xs text-[#888888]">Arraste ou clique — 4 a 8 fotos</span>
+                      </span>
+                    </label>
+                  ) : (
+                    <div className="rounded-xl border border-[#2A2A2A] bg-[#1A1A1A]/60 p-3">
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        {seedFiles.map((f, i) => (
+                          <div
+                            key={i}
+                            className="group relative h-[76px] w-[76px] shrink-0 overflow-hidden rounded-lg ring-1 ring-white/10"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={f.url} alt="" className="h-full w-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => removeSeedFile(i)}
+                              aria-label="Remover foto"
+                              className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                        <label
+                          htmlFor="seed-refs"
+                          className="flex h-[76px] w-[76px] shrink-0 cursor-pointer items-center justify-center rounded-lg border border-dashed border-[#2A2A2A] text-[#888888] transition-colors hover:border-[#7C3AED]/50 hover:text-[#F5F5F5]"
+                        >
+                          <Plus className="h-5 w-5" />
+                        </label>
+                      </div>
+                      {seedFiles.length < 4 ? (
+                        <p className="mt-2 text-right text-xs text-[#FCA5A5]">
+                          Adicione mais {4 - seedFiles.length} (pelo menos 4 necessárias)
+                        </p>
+                      ) : (
+                        <p className="mt-2 text-right text-xs text-[#4ADE80]">
+                          {seedFiles.length} fotos prontas
+                        </p>
+                      )}
+                    </div>
+                  )}
                   <input
                     id="seed-refs"
                     type="file"
                     accept="image/*"
                     multiple
                     className="hidden"
-                    onChange={(e) => setSeedFiles(Array.from(e.target.files ?? []))}
+                    onChange={(e) => {
+                      addSeedFiles(e.target.files);
+                      e.target.value = "";
+                    }}
                   />
-                  {seedFiles.length > 0 ? (
-                    <p className="mt-2 text-xs text-[#A78BFA]">
-                      {seedFiles.length} foto(s) selecionada(s)
-                    </p>
-                  ) : null}
                 </div>
               </div>
 
               <div className="mt-5 flex items-center justify-between border-t border-[#242428] pt-4">
-                <span className="text-xs text-[#777777]">Preencha os detalhes para criar</span>
+                <span className="text-xs text-[#777777]">
+                  {editing
+                    ? "Edite os detalhes do seed."
+                    : !form.name.trim()
+                    ? "Dê um nome ao seed."
+                    : seedFiles.length < 4
+                    ? `Adicione mais ${4 - seedFiles.length} foto(s) de referência.`
+                    : "Tudo pronto para criar."}
+                </span>
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
@@ -572,7 +645,11 @@ export default function SeedsPage() {
                   <Button
                     className="bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
                     onClick={() => void handleSave()}
-                    disabled={saving}
+                    disabled={
+                      saving ||
+                      !form.name.trim() ||
+                      (!editing && seedFiles.length < 4)
+                    }
                   >
                     {saving ? "Salvando..." : editing ? "Salvar" : "Criar Seed"}
                   </Button>
