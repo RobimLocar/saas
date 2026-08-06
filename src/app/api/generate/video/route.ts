@@ -9,6 +9,7 @@ import { HIGH_COST_THRESHOLD_CREDITS, HIGH_COST_COOLDOWN_SECONDS } from "@/lib/c
 import { validateVideoRequest } from "@/lib/generation-validation";
 import { validateGenerationInput } from "@/lib/validate-generation";
 import { auditLog, newRequestId, truncate } from "@/lib/audit-log";
+import { translateToEnglish } from "@/lib/translate";
 
 export async function POST(req: NextRequest) {
   const requestId = newRequestId();
@@ -100,6 +101,11 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Prompt sempre em inglês para a IA (best-effort; devolve o original se falhar).
+    const promptEn = await translateToEnglish(
+      typeof prompt === "string" ? prompt : ""
+    );
 
     // Buscar modelo pelo identificador do provider (ai_models.model_id)
     const { data: aiModel } = await supabase
@@ -265,7 +271,7 @@ export async function POST(req: NextRequest) {
         user_id: user.id,
         model_id: aiModel.id,
         type: "video",
-        prompt,
+        prompt: promptEn,
         negative_prompt,
         params: {
           aspect_ratio,
@@ -342,7 +348,7 @@ export async function POST(req: NextRequest) {
       // hailuo/veo3/veo3.1) conforme os docs oficiais da PiAPI.
       const payload = buildVideoPayload({
         params: modelParams,
-        prompt,
+        prompt: promptEn,
         quality: qualityLevel,
         duration: typeof duration === "number" ? duration : undefined,
         resolution: typeof resolution === "string" ? resolution : undefined,

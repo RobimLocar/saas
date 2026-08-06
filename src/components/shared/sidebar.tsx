@@ -15,6 +15,7 @@ import {
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTranslations } from "next-intl";
 import {
   DesktopSidebar,
   MobileSidebar,
@@ -25,23 +26,23 @@ import {
 
 type NavItem = {
   href: string;
-  label: string;
+  labelKey: string;
   icon: typeof LayoutGrid;
   badge?: string;
 };
 
 const mainNav: NavItem[] = [
-  { href: "/studio", label: "Studio", icon: LayoutGrid },
-  { href: "/flows", label: "Flows", icon: Workflow },
-  { href: "/wise", label: "Wise", icon: WandSparkles, badge: "BETA" },
+  { href: "/studio", labelKey: "studio", icon: LayoutGrid },
+  { href: "/flows", labelKey: "flows", icon: Workflow },
+  { href: "/wise", labelKey: "wise", icon: WandSparkles, badge: "BETA" },
 ];
 
 const appsNav: NavItem[] = [
-  { href: "/influencer", label: "Influencer Studio", icon: Users },
-  { href: "/ugc", label: "UGC Factory", icon: Clapperboard },
-  { href: "/seeds", label: "Seeds", icon: Sprout },
-  { href: "/assets", label: "Assets", icon: Folder },
-  { href: "/my-prompts", label: "My Prompts", icon: Copy },
+  { href: "/influencer", labelKey: "influencer", icon: Users },
+  { href: "/ugc", labelKey: "ugc", icon: Clapperboard },
+  { href: "/seeds", labelKey: "seeds", icon: Sprout },
+  { href: "/assets", labelKey: "assets", icon: Folder },
+  { href: "/my-prompts", labelKey: "myPrompts", icon: Copy },
 ];
 
 interface SidebarProps {
@@ -51,6 +52,7 @@ interface SidebarProps {
 
 function SidebarContent({ credits, initials }: { credits: number; initials: string }) {
   const pathname = usePathname();
+  const t = useTranslations("nav");
   const { open, animate } = useSidebar();
 
   const isExpanded = animate ? open : true;
@@ -85,7 +87,7 @@ function SidebarContent({ credits, initials }: { credits: number; initials: stri
             }}
             className="items-center gap-1.5 whitespace-pre text-sm"
           >
-            <span className={cn("transition duration-150 group-hover/sidebar:translate-x-1", active && "font-medium")}>{item.label}</span>
+            <span className={cn("transition duration-150 group-hover/sidebar:translate-x-1", active && "font-medium")}>{t(item.labelKey)}</span>
             <span className="rounded bg-[#2A2A2A] px-1.5 py-0.5 text-[9px] font-semibold text-[#A3A3A3]">
               {item.badge}
             </span>
@@ -99,7 +101,7 @@ function SidebarContent({ credits, initials }: { credits: number; initials: stri
         key={item.href}
         link={{
           href: item.href,
-          label: item.label,
+          label: t(item.labelKey),
           icon: <item.icon className={iconClass} />,
         }}
         className={cn(
@@ -126,7 +128,7 @@ function SidebarContent({ credits, initials }: { credits: number; initials: stri
           }}
           className="px-3 pb-2 pt-5 text-[10px] font-semibold tracking-widest text-neutral-500"
         >
-          TODOS OS APPS
+          {t("allApps")}
         </motion.p>
 
         {appsNav.map(renderItem)}

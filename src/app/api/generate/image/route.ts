@@ -7,6 +7,7 @@ import { debitCredits, effectiveCost, refundCredits } from "@/lib/credits";
 import { HIGH_COST_THRESHOLD_CREDITS, HIGH_COST_COOLDOWN_SECONDS } from "@/lib/constants";
 import { auditLog, newRequestId } from "@/lib/audit-log";
 import { validateGenerationInput } from "@/lib/validate-generation";
+import { translateToEnglish } from "@/lib/translate";
 
 // Heurística: o prompt pede TEXTO renderizado na imagem?
 // (aspas, ou palavras típicas de tipografia/rótulos)
@@ -90,6 +91,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Prompt sempre em inglês para a IA (best-effort).
+    const promptEn = await translateToEnglish(
+      typeof prompt === "string" ? prompt : ""
+    );
+
     // Buscar modelo pelo identificador do provider (ai_models.model_id)
     const { data: aiModel, error: modelError } = await supabase
       .from("ai_models")
@@ -168,7 +174,7 @@ export async function POST(req: NextRequest) {
         user_id: user.id,
         model_id: aiModel.id,
         type: "image",
-        prompt,
+        prompt: promptEn,
         negative_prompt,
         // resolution (1K/2K/4K) é salvo apenas como rótulo para exibição;
         // as dimensões reais respeitam o limite de ~1MP do Flux (AR_DIMS).
@@ -231,7 +237,7 @@ export async function POST(req: NextRequest) {
       const useGptSync = isPremium || (!reference_image_url && qualityLevel === "high");
       if (useGptSync) {
         const imageUrl = await generateImageGptSync({
-          prompt,
+          prompt: promptEn,
           aspect_ratio,
           quality: qualityLevel,
           reference_image_url: reference_image_url || undefined,
@@ -277,7 +283,7 @@ export async function POST(req: NextRequest) {
       // Reforço tipográfico: Flux renderiza texto mal — reforçar quando o
       // prompt pede texto (é o que dá o acabamento "alto nível")
       const effectivePrompt =
-        isFluxBackend && promptWantsText(prompt) ? prompt + TYPO_BOOST : prompt;
+        isFluxBackend && promptWantsText(promptEn) ? promptEn + TYPO_BOOST : promptEn;
 
       const task = await generateImage({
         model: effectiveBackend,

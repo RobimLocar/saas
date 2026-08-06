@@ -4,6 +4,9 @@ import "./globals.css";
 import { QueryProvider } from "@/components/shared/query-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale } from "next-intl/server";
+import { htmlLang, type Locale } from "@/i18n/config";
 
 const inter = Inter({
   variable: "--font-sans",
@@ -17,22 +20,25 @@ export const metadata: Metadata = {
     "Plataforma multimodal de geração de mídia com IA para o criador brasileiro. Imagem, vídeo e áudio em uma assinatura só — Pix, BRL e NF-e.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale = (await getLocale()) as Locale;
   return (
     <html
-      lang="pt-BR"
+      lang={htmlLang[locale] ?? "pt-BR"}
       className={`dark ${inter.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
-        <QueryProvider>
-          <TooltipProvider>{children}</TooltipProvider>
-          <Toaster position="top-center" richColors />
-        </QueryProvider>
+        <NextIntlClientProvider>
+          <QueryProvider>
+            <TooltipProvider>{children}</TooltipProvider>
+            <Toaster position="top-center" richColors />
+          </QueryProvider>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

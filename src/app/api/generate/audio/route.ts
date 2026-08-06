@@ -9,6 +9,7 @@ import { debitCredits, effectiveCost, refundCredits } from "@/lib/credits";
 import { HIGH_COST_THRESHOLD_CREDITS, HIGH_COST_COOLDOWN_SECONDS } from "@/lib/constants";
 import { auditLog, newRequestId } from "@/lib/audit-log";
 import { validateGenerationInput } from "@/lib/validate-generation";
+import { translateToEnglish } from "@/lib/translate";
 
 // Persiste um áudio (Buffer) no Supabase Storage e retorna a URL pública.
 async function persistAudio(
@@ -254,9 +255,14 @@ export async function POST(req: NextRequest) {
       }
 
       // ── Música / SFX — PiAPI, assíncrono (polling) ────────────────────────
+      // Descrição de música/efeito → traduz para inglês (o TTS acima mantém o
+      // idioma do usuário, pois lá o "prompt" é o texto que será FALADO).
+      const promptEn = await translateToEnglish(
+        typeof prompt === "string" ? prompt : ""
+      );
       const task = await generateAudio({
         model: backend,
-        prompt,
+        prompt: promptEn,
         duration,
         quality: qualityLevel,
       });

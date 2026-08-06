@@ -6,14 +6,16 @@ import { LogoMark } from "@/components/shared/logo";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { useStudioStore } from "@/stores/use-studio-store";
+import { useTranslations } from "next-intl";
+import { LanguageSwitcher } from "@/components/shared/language-switcher";
 
 type ViewFilter = "all" | "image" | "video" | "audio";
 
-const VIEW_OPTIONS: { value: ViewFilter; label: string; icon: typeof LayoutDashboard }[] = [
-  { value: "all", label: "Tudo", icon: LayoutDashboard },
-  { value: "image", label: "Imagem", icon: ImageIcon },
-  { value: "video", label: "Vídeo", icon: Video },
-  { value: "audio", label: "Áudio", icon: Music },
+const VIEW_OPTIONS: { value: ViewFilter; labelKey: string; icon: typeof LayoutDashboard }[] = [
+  { value: "all", labelKey: "filterAll", icon: LayoutDashboard },
+  { value: "image", labelKey: "filterImage", icon: ImageIcon },
+  { value: "video", labelKey: "filterVideo", icon: Video },
+  { value: "audio", labelKey: "filterAudio", icon: Music },
 ];
 
 function Popover({
@@ -67,6 +69,7 @@ function Popover({
 }
 
 export function Topbar() {
+  const t = useTranslations("topbar");
   const viewFilter = useStudioStore((s) => s.viewFilter);
   const setViewFilter = useStudioStore((s) => s.setViewFilter);
 
@@ -82,19 +85,20 @@ export function Topbar() {
         </div>
       </Link>
 
+      <div className="flex items-center gap-2">
       <Popover
         trigger={(open) => (
           <>
             <Eye className="h-4 w-4 text-[#888888]" />
-            <span className="text-[#888888]">View:</span>
-            <span className="font-medium text-[#F5F5F5]">{selected.label}</span>
+            <span className="text-[#888888]">{t("viewLabel")}</span>
+            <span className="font-medium text-[#F5F5F5]">{t(selected.labelKey)}</span>
             <ChevronDown className={cn("h-3.5 w-3.5 text-[#666666] transition", open && "rotate-180")} />
           </>
         )}
       >
         {(close) => (
           <div className="space-y-1">
-            {VIEW_OPTIONS.map(({ value, label, icon: Icon }) => {
+            {VIEW_OPTIONS.map(({ value, labelKey, icon: Icon }) => {
               const active = value === viewFilter;
               return (
                 <button
@@ -110,13 +114,15 @@ export function Topbar() {
                   )}
                 >
                   <Icon className="h-4 w-4" />
-                  <span>{label}</span>
+                  <span>{t(labelKey)}</span>
                 </button>
               );
             })}
           </div>
         )}
       </Popover>
+      <LanguageSwitcher />
+      </div>
     </header>
   );
 }

@@ -1,0 +1,49 @@
+{
+  "nav": {
+    "studio": "Studio",
+    "flows": "Flows",
+    "wise": "Wise",
+    "influencer": "Influencer Studio",
+    "ugc": "Fábrica UGC",
+    "seeds": "Seeds",
+    "assets": "Assets",
+    "myPrompts": "Mis Prompts",
+    "sectionCreate": "Crear",
+    "sectionLibrary": "Biblioteca",
+    "upgrade": "Mejorar plan",
+    "credits": "créditos",
+    "allApps": "TODAS LAS APPS"
+  },
+  "topbar": {
+    "search": "Buscar",
+    "account": "Cuenta",
+    "settings": "Ajustes",
+    "billing": "Suscripción",
+    "logout": "Salir",
+    "language": "Idioma",
+    "viewLabel": "View:",
+    "filterAll": "Todo",
+    "filterImage": "Imagen",
+    "filterVideo": "Vídeo",
+    "filterAudio": "Audio"
+  },
+  "common": {
+    "generate": "Generar",
+    "generating": "Generando…",
+    "cancel": "Cancelar",
+    "save": "Guardar",
+    "delete": "Eliminar",
+    "create": "Crear",
+    "edit": "Editar",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "use": "Usar",
+    "close": "Cerrar",
+    "back": "Volver",
+    "next": "Siguiente",
+    "loading": "Cargando…",
+    "viewAll": "Ver todo",
+    "creditsLeft": "{count} créditos",
+    "noCredits": "Sin créditos."
+  }
+}

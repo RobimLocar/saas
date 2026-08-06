@@ -80,9 +80,9 @@ interface InfluencerAvatarItem {
 type AvatarFormat = "9:16" | "1:1" | "16:9";
 
 const VIDEO_TYPES = [
-  { id: "talking-broll", title: "UGC Talking + B-Roll", subtitle: "High-converting", image: "", prompt: "Pessoa real segurando o produto e falando direto para a câmera em tom animado, intercalado com cortes de b-roll do produto em uso. Luz natural, estilo UGC gravado no celular, vertical 9:16." },
-  { id: "fast-broll", title: "Fast-Cut B-Roll", subtitle: "ASMR / Visual Hook", image: "", prompt: "Sequência rápida de closes do produto em estilo ASMR, cortes secos no ritmo, foco em textura e detalhe, sem rosto, fundo limpo e iluminação suave." },
-  { id: "normal-broll", title: "Normal-Cut B-Roll", subtitle: "ASMR / Visual Hook", image: "", prompt: "Closes suaves do produto sendo usado, ritmo calmo, luz natural, transições limpas e foco nos detalhes, estilo ASMR." },
+  { id: "talking-broll", title: "UGC Talking + B-Roll", subtitle: "High-converting", image: "", prompt: "Real person holding the product and talking straight to the camera in an upbeat tone, intercut with b-roll of the product in use. Natural light, phone-shot UGC style, vertical 9:16." },
+  { id: "fast-broll", title: "Fast-Cut B-Roll", subtitle: "ASMR / Visual Hook", image: "", prompt: "Fast sequence of product close-ups in ASMR style, snappy on-beat cuts, focus on texture and detail, no face, clean background and soft lighting." },
+  { id: "normal-broll", title: "Normal-Cut B-Roll", subtitle: "ASMR / Visual Hook", image: "", prompt: "Smooth close-ups of the product being used, calm pace, natural light, clean transitions and focus on the details, ASMR style." },
   { id: "avatar-product", title: "Avatar Talking with Product", subtitle: "Holds / shows product", image: "", prompt: "Avatar segurando e mostrando o produto enquanto fala os benefícios, gestos naturais, ambiente de casa aconchegante, vertical 9:16." },
   { id: "avatar-no-product", title: "Avatar Talking No Product", subtitle: "Just the avatar talking", image: "", prompt: "Avatar falando direto para a câmera sobre o produto, sem segurá-lo, expressão confiante e amigável, fundo neutro e desfocado." },
   { id: "problem-solution", title: "Problem to Solution", subtitle: "Story-based", image: "", prompt: "Começa mostrando um problema do dia a dia, depois apresenta o produto como a solução, tom de alívio e storytelling, cortes claros entre as duas partes." },
@@ -128,13 +128,13 @@ function buildUgcPrompt(
   if (sc) parts.push(sc);
   if (opts?.sameAsRef) {
     parts.push(
-      "Mantenha exatamente a mesma pessoa das imagens de referência: mesmo rosto, cabelo, roupa e ambiente."
+      "Keep exactly the same person as in the reference images: same face, hair, outfit and environment."
     );
   }
   const sp = speech.trim();
   if (sp) {
     parts.push(
-      `A pessoa olha para a câmera e fala diretamente (lip sync, sincronia labial perfeita, fala na câmera — não é narração em off) em português: "${sp}".`
+      `The person looks at the camera and speaks directly to it (perfect lip sync, talking to camera — not an off-screen voice-over), saying, in the same language as the quoted line: "${sp}".`
     );
   }
   return parts.join("\n\n");
