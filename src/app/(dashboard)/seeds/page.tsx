@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Pencil, Plus, Sprout, Trash2 } from "lucide-react";
+import { Package, Pencil, Plus, Sparkles, Sprout, Trash2, Upload, User, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useStudioStore } from "@/stores/use-studio-store";
+import { cn } from "@/lib/utils";
 
 interface SeedItem {
   id: string;
@@ -50,6 +51,41 @@ function formatDate(iso: string | null): string {
   }).format(new Date(iso));
 }
 
+const SEED_TYPES = [
+  { id: "character", label: "Character", desc: "Uma pessoa ou persona", Icon: User },
+  { id: "product", label: "Product", desc: "Um objeto ou item", Icon: Package },
+  { id: "custom", label: "Custom", desc: "Um estilo ou cena", Icon: Sparkles },
+] as const;
+type SeedType = (typeof SEED_TYPES)[number]["id"];
+
+const SEED_TYPE_COPY: Record<SeedType, { title: string; sub: string; ph: string; details: string }> = {
+  character: {
+    title: "Criar personagem",
+    sub: "Adicione fotos de referência para a IA saber como a pessoa é.",
+    ph: "ex.: Sarah, CyberNova, Capitão Rex",
+    details: "Detalhes extras: roupas, acessórios, tatuagens, maquiagem, vibe...",
+  },
+  product: {
+    title: "Criar produto",
+    sub: "Adicione fotos de referência para a IA saber como o produto é.",
+    ph: "ex.: LuxyBottle, GlowSerum, SkyPod",
+    details: "Detalhes extras: materiais, cores, acabamento, tamanho, features...",
+  },
+  custom: {
+    title: "Criar asset custom",
+    sub: "Adicione fotos de referência para a IA saber como é.",
+    ph: "ex.: Buddy, MinhaLogo, CasaDosSonhos",
+    details: "Detalhes extras: forma, marcas, traços característicos, vibe...",
+  },
+};
+
+// Capas mockadas — cole a URL da imagem depois; "" mostra o placeholder.
+const PRESET_TEMPLATES: { id: SeedType; title: string; desc: string; image: string }[] = [
+  { id: "character", title: "Influencer", desc: "Treine uma pessoa de IA consistente — influencer, porta-voz ou modelo.", image: "" },
+  { id: "product", title: "Produto", desc: "Treine seu produto para a IA renderizá-lo com precisão toda vez.", image: "" },
+  { id: "custom", title: "Custom", desc: "Treine qualquer coisa: pets, logos, veículos, estilos de arte e mais.", image: "" },
+];
+
 export default function SeedsPage() {
   const router = useRouter();
   const setReferenceImageUrl = useStudioStore((s) => s.setReferenceImageUrl);
@@ -63,6 +99,8 @@ export default function SeedsPage() {
   const [editing, setEditing] = useState<SeedItem | null>(null);
   const [form, setForm] = useState<SeedFormState>(emptyForm());
   const [saving, setSaving] = useState(false);
+  const [seedType, setSeedType] = useState<SeedType>("character");
+  const [seedFiles, setSeedFiles] = useState<File[]>([]);
 
   const loadSeeds = useCallback(async () => {
     setLoading(true);
@@ -103,6 +141,16 @@ export default function SeedsPage() {
   function openCreateModal() {
     setEditing(null);
     setForm(emptyForm());
+    setSeedType("character");
+    setSeedFiles([]);
+    setModalOpen(true);
+  }
+
+  function openCreateWithType(type: SeedType) {
+    setEditing(null);
+    setForm(emptyForm());
+    setSeedType(type);
+    setSeedFiles([]);
     setModalOpen(true);
   }
 
@@ -121,6 +169,7 @@ export default function SeedsPage() {
     setModalOpen(false);
     setEditing(null);
     setForm(emptyForm());
+    setSeedFiles([]);
   }
 
   async function handleSave() {
@@ -234,7 +283,7 @@ export default function SeedsPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6 px-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-[#F5F5F5]">Seeds</h1>
@@ -251,6 +300,42 @@ export default function SeedsPage() {
           Novo Seed
         </Button>
       </div>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-lg font-semibold text-[#F5F5F5]">Preset templates</h2>
+          <p className="text-sm text-[#888888]">Comece com um seed pronto e personalize.</p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          {PRESET_TEMPLATES.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => openCreateWithType(t.id)}
+              className="group relative flex h-[240px] flex-col justify-end overflow-hidden rounded-2xl border border-[#242428] bg-[#1A1A1A] p-5 text-left transition-transform duration-200 hover:-translate-y-0.5"
+            >
+              {t.image ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={t.image} alt={t.title} className="absolute inset-0 h-full w-full object-cover" />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-[#2a1f45] via-[#171326] to-[#0f0d16]">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10">
+                    <Sprout className="h-6 w-6 text-[#A78BFA]" />
+                  </span>
+                </div>
+              )}
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/85 to-transparent" />
+              <div className="relative">
+                <h3 className="text-lg font-semibold text-white">{t.title}</h3>
+                <p className="mt-1 line-clamp-2 text-sm text-white/70">{t.desc}</p>
+                <span className="mt-3 inline-flex items-center rounded-full bg-white px-3.5 py-1.5 text-xs font-semibold text-[#0A0A0A]">
+                  Iniciar treino
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </section>
 
       {loading ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -362,66 +447,137 @@ export default function SeedsPage() {
 
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-lg rounded-xl border border-[#2A2A2A] bg-[#131313] p-5">
-            <h2 className="text-lg font-semibold text-[#F5F5F5]">
-              {editing ? "Editar seed" : "Novo seed"}
-            </h2>
-            <p className="mt-1 text-sm text-[#888888]">
-              {editing
-                ? "Atualize nome, descrição e tags deste seed."
-                : "Crie um seed para reutilizar referências no Studio."}
-            </p>
-
-            <div className="mt-4 space-y-3">
-              <div>
-                <label className="mb-1 block text-xs text-[#A3A3A3]">Nome *</label>
-                <Input
-                  value={form.name}
-                  onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-                  placeholder="Ex.: Personagem principal - camp. X"
-                  className="border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
-                />
+          <div className="flex max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-2xl border border-[#242428] bg-[#141416]">
+            <div className="hidden w-[236px] shrink-0 flex-col border-r border-[#242428] bg-[#101012] p-5 sm:flex">
+              <div className="mb-5 flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#7C3AED]/15 ring-1 ring-[#7C3AED]/30">
+                  <Sprout className="h-4 w-4 text-[#A78BFA]" />
+                </span>
+                <span className="text-sm font-semibold text-[#F5F5F5]">Novo Seed</span>
               </div>
-
-              <div>
-                <label className="mb-1 block text-xs text-[#A3A3A3]">Descrição</label>
-                <Textarea
-                  value={form.description}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, description: e.target.value }))
-                  }
-                  placeholder="Notas sobre estilo, personagem, iluminação..."
-                  className="min-h-24 border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs text-[#A3A3A3]">Tags (vírgula)</label>
-                <Input
-                  value={form.tags}
-                  onChange={(e) => setForm((prev) => ({ ...prev, tags: e.target.value }))}
-                  placeholder="ex.: personagem, hero, closeup"
-                  className="border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
-                />
-              </div>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-[#666666]">Tipo</p>
+              {SEED_TYPES.map((t) => {
+                const active = seedType === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    disabled={Boolean(editing)}
+                    onClick={() => setSeedType(t.id)}
+                    className={cn(
+                      "mb-2 flex items-center gap-3 rounded-xl border p-2.5 text-left transition-colors disabled:opacity-50",
+                      active ? "border-[#7C3AED] bg-[#7C3AED]/10" : "border-[#242428] hover:bg-white/5"
+                    )}
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#26262b] ring-1 ring-white/10">
+                      <t.Icon className="h-4 w-4 text-[#c9c9d1]" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-[#F5F5F5]">{t.label}</span>
+                      <span className="block truncate text-[11px] text-[#8b8b93]">{t.desc}</span>
+                    </span>
+                    <span
+                      className={cn(
+                        "flex h-4 w-4 shrink-0 items-center justify-center rounded-full border",
+                        active ? "border-[#7C3AED]" : "border-[#555555]"
+                      )}
+                    >
+                      {active ? <span className="h-2 w-2 rounded-full bg-[#7C3AED]" /> : null}
+                    </span>
+                  </button>
+                );
+              })}
+              <p className="mt-auto pt-4 text-[11px] leading-relaxed text-[#777777]">
+                Seeds mantêm as gerações da IA consistentes no Fluxyra.
+              </p>
             </div>
 
-            <div className="mt-5 flex justify-end gap-2">
-              <Button
-                variant="outline"
-                className="border-[#2A2A2A] text-[#E5E5E5]"
-                onClick={closeModal}
-                disabled={saving}
-              >
-                Cancelar
-              </Button>
-              <Button
-                className="bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
-                onClick={() => void handleSave()}
-                disabled={saving}
-              >
-                {saving ? "Salvando..." : editing ? "Salvar alterações" : "Criar seed"}
-              </Button>
+            <div className="flex min-w-0 flex-1 flex-col overflow-y-auto p-5">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-[#F5F5F5]">
+                    {editing ? "Editar seed" : SEED_TYPE_COPY[seedType].title}
+                  </h2>
+                  <p className="mt-1 text-sm text-[#888888]">{SEED_TYPE_COPY[seedType].sub}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="text-[#888888] transition-colors hover:text-[#F5F5F5]"
+                  aria-label="Fechar"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-[#E5E5E5]">Nome</label>
+                  <Input
+                    value={form.name}
+                    onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                    placeholder={SEED_TYPE_COPY[seedType].ph}
+                    className="border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-[#E5E5E5]">Detalhes adicionais</label>
+                  <Textarea
+                    value={form.description}
+                    onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
+                    placeholder={SEED_TYPE_COPY[seedType].details}
+                    className="min-h-28 resize-none border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
+                  />
+                </div>
+                <div>
+                  <label
+                    htmlFor="seed-refs"
+                    className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-[#2A2A2A] bg-[#1A1A1A]/60 p-4 transition-colors hover:border-[#7C3AED]/50"
+                  >
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10">
+                      <Upload className="h-5 w-5 text-[#888888]" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-[#F5F5F5]">Upload de referências</span>
+                      <span className="block text-xs text-[#888888]">Arraste ou clique — 4 a 8 fotos</span>
+                    </span>
+                  </label>
+                  <input
+                    id="seed-refs"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => setSeedFiles(Array.from(e.target.files ?? []))}
+                  />
+                  {seedFiles.length > 0 ? (
+                    <p className="mt-2 text-xs text-[#A78BFA]">
+                      {seedFiles.length} foto(s) selecionada(s)
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="mt-5 flex items-center justify-between border-t border-[#242428] pt-4">
+                <span className="text-xs text-[#777777]">Preencha os detalhes para criar</span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="border-[#2A2A2A] text-[#E5E5E5]"
+                    onClick={closeModal}
+                    disabled={saving}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    className="bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
+                    onClick={() => void handleSave()}
+                    disabled={saving}
+                  >
+                    {saving ? "Salvando..." : editing ? "Salvar" : "Criar Seed"}
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
