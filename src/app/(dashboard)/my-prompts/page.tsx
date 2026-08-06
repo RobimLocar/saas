@@ -399,15 +399,7 @@ export default function MyPromptsPage() {
                         )}
                       </div>
 
-                      {item.result_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={item.result_url}
-                          alt=""
-                          className="mb-2 h-28 w-full rounded-lg object-cover ring-1 ring-white/5"
-                        />
-                      ) : null}
-                      <p className={`text-sm leading-relaxed text-[#A3A3A3] ${item.result_url ? "line-clamp-2" : "line-clamp-4 min-h-[78px]"}`}>
+                      <p className="line-clamp-3 text-sm leading-relaxed text-[#A3A3A3]">
                         {item.prompt}
                       </p>
 
