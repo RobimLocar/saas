@@ -647,8 +647,8 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
     // Coleta todas as imagens de referência (start/end frames ou omni-reference).
     const imgUrls: string[] = [];
     if (referenceImages && referenceImages.length > 0) {
-      // Omni Reference: usa todas as imagens (até 9) diretamente.
-      imgUrls.push(...referenceImages.slice(0, 9));
+      // Omni Reference: usa todas as imagens (até 12) diretamente.
+      imgUrls.push(...referenceImages.slice(0, 12));
     } else {
       // Start / End Frame: 1 ou 2 imagens.
       if (imageUrl) imgUrls.push(imageUrl);
@@ -661,6 +661,11 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
     // sem tier). Só 480p/720p (1080p é rejeitado). Suporta image_urls (até 9),
     // video_urls (até 3) e audio_urls (até 3; exigem ao menos 1 imagem/vídeo).
     if ((params.task_type || "").includes("2.5")) {
+      // Rosto real: usa a variante "-less-restriction" sempre que houver imagem
+      // de referência (ou quando o catálogo forçar via params.less_restriction).
+      // Texto puro (sem imagem) permanece na variante padrão "seedance-2.5".
+      const useLR25 = args.lessRestriction === true || imgUrls.length > 0;
+      const task25 = useLR25 ? "seedance-2.5-less-restriction" : "seedance-2.5";
       let res25 = args.resolution || (quality === "low" ? "480p" : "720p");
       if (res25 !== "480p" && res25 !== "720p") res25 = "720p";
       const input25: Record<string, unknown> = {
@@ -669,21 +674,31 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
         resolution: res25,
         aspect_ratio: aspect,
       };
-      if (imgUrls.length > 0) input25.image_urls = imgUrls.slice(0, 9);
+      // Omni Reference: até 12 imagens (doc oficial). 1-2 imagens = first/last frame;
+      // a primeira imagem define o aspect ratio de saída.
+      if (imgUrls.length > 0) input25.image_urls = imgUrls.slice(0, 12);
+      // video_urls: máx 1 (mp4/mov). audio_urls: máx 1 (mp3/wav, ≤15s) e exige
+      // ao menos uma imagem ou vídeo de referência.
       if (referenceVideos && referenceVideos.length > 0) {
-        input25.video_urls = referenceVideos.slice(0, 3);
+        input25.video_urls = referenceVideos.slice(0, 1);
       }
       if (
         referenceAudios &&
         referenceAudios.length > 0 &&
         (imgUrls.length > 0 || (referenceVideos && referenceVideos.length > 0))
       ) {
-        input25.audio_urls = referenceAudios.slice(0, 3);
+        input25.audio_urls = referenceAudios.slice(0, 1);
       }
       if (negativePrompt) input25.negative_prompt = negativePrompt;
+      // auto_upload_assets: exigido pelo pipeline less-restriction quando há
+      // imagens (habilita rosto real). asset_retention_hours limita a retenção.
+      if (useLR25 && imgUrls.length > 0) {
+        input25.auto_upload_assets = true;
+        input25.asset_retention_hours = 3;
+      }
       return {
         model: "seedance",
-        task_type: "seedance-2.5",
+        task_type: task25,
         input: input25,
         config,
       };
@@ -726,7 +741,7 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
     };
     // image_urls: 1 imagem = first frame; 2 imagens = first+last frame;
     // com video_urls/audio_urls = omni_reference. O modo é inferido pela PiAPI.
-    if (imgUrls.length > 0) input.image_urls = imgUrls;
+    if (imgUrls.length > 0) input.image_urls = imgUrls.slice(0, 9);
     if (referenceVideos && referenceVideos.length > 0) {
       input.video_urls = referenceVideos;
     }
