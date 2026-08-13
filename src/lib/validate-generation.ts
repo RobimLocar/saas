@@ -54,7 +54,7 @@ export interface GenerationValidationResult {
 /**
  * Valida campos de entrada antes do débito.
  * - aspect_ratio (se presente): deve estar na lista suportada.
- * - duration (se presente): número finito entre 1 e 20.
+ * - duration (se presente): número finito entre 1 e 30.
  * - TODA URL de referência deve passar em isSafeMediaUrl.
  */
 export function validateGenerationInput(
@@ -95,10 +95,10 @@ export function validateGenerationInput(
   // 3) duration
   if (input.duration != null && input.duration !== "") {
     const dur = Number(input.duration);
-    if (!Number.isFinite(dur) || dur < 1 || dur > 20) {
+    if (!Number.isFinite(dur) || dur < 1 || dur > 30) {
       return {
         ok: false,
-        error: `Duração inválida: "${input.duration}". Deve ser número entre 1 e 20.`,
+        error: `Duração inválida: "${input.duration}". Deve ser número entre 1 e 30.`,
       };
     }
   }
