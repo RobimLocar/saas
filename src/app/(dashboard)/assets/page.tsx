@@ -2,23 +2,24 @@
 
 import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 import { Download, Folder, ImageIcon, Music, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MediaLightbox, type LightboxItem } from "@/components/studio/media-lightbox";
 
 type Filter = "all" | "image" | "video" | "audio";
 
-const FILTERS: { id: Filter; label: string }[] = [
-  { id: "all", label: "Tudo" },
-  { id: "image", label: "Imagem" },
-  { id: "video", label: "Vídeo" },
-  { id: "audio", label: "Áudio" },
+const FILTERS: { id: Filter; key: "filterAll" | "filterImage" | "filterVideo" | "filterAudio" }[] = [
+  { id: "all", key: "filterAll" },
+  { id: "image", key: "filterImage" },
+  { id: "video", key: "filterVideo" },
+  { id: "audio", key: "filterAudio" },
 ];
 
-function typeLabel(t: string): string {
-  if (t === "video") return "Vídeo";
-  if (t === "audio") return "Áudio";
-  return "Imagem";
+function typeKey(t: string): "filterImage" | "filterVideo" | "filterAudio" {
+  if (t === "video") return "filterVideo";
+  if (t === "audio") return "filterAudio";
+  return "filterImage";
 }
 
 function aspectStyle(item: LightboxItem): CSSProperties {
@@ -31,6 +32,7 @@ function aspectStyle(item: LightboxItem): CSSProperties {
 }
 
 export default function AssetsPage() {
+  const t = useTranslations("assets");
   const [items, setItems] = useState<LightboxItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>("all");
@@ -99,10 +101,8 @@ export default function AssetsPage() {
             <Folder className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-[#F5F5F5]">Assets</h1>
-            <p className="text-sm text-[#888888]">
-              Toda a mídia que você gerou, pronta para baixar.
-            </p>
+            <h1 className="text-lg font-semibold text-[#F5F5F5]">{t("title")}</h1>
+            <p className="text-sm text-[#888888]">{t("subtitle")}</p>
           </div>
         </div>
 
@@ -121,7 +121,7 @@ export default function AssetsPage() {
                     : "text-[#8b8b93] hover:text-white"
                 )}
               >
-                {f.label}
+                {t(f.key)}
                 <span className="ml-1.5 text-[11px] text-[#5a5a63]">{counts[f.id]}</span>
               </button>
             );
@@ -140,10 +140,8 @@ export default function AssetsPage() {
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#7C3AED]/10">
             <Folder className="h-6 w-6 text-[#7C3AED]" />
           </div>
-          <h2 className="text-lg font-semibold text-[#F5F5F5]">Nenhum asset ainda</h2>
-          <p className="max-w-sm text-sm text-[#888888]">
-            Suas imagens, vídeos e áudios gerados no Studio aparecem aqui automaticamente.
-          </p>
+          <h2 className="text-lg font-semibold text-[#F5F5F5]">{t("emptyTitle")}</h2>
+          <p className="max-w-sm text-sm text-[#888888]">{t("emptyDesc")}</p>
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
@@ -171,7 +169,8 @@ export default function AssetsPage() {
 }
 
 function AssetCard({ item, onOpen }: { item: LightboxItem; onOpen: () => void }) {
-  const label = typeLabel(item.type);
+  const t = useTranslations("assets");
+  const label = t(typeKey(item.type));
   return (
     <article
       onClick={onOpen}
@@ -229,7 +228,7 @@ function AssetCard({ item, onOpen }: { item: LightboxItem; onOpen: () => void })
             href={item.result_url!}
             download
             onClick={(e) => e.stopPropagation()}
-            title="Baixar"
+            title={t("download")}
             className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-lg bg-black/50 text-white opacity-0 backdrop-blur-sm transition-opacity duration-200 hover:bg-black/70 group-hover:opacity-100"
           >
             <Download className="h-3.5 w-3.5" />
