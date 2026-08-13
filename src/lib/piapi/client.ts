@@ -596,6 +596,8 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
     };
   }
   const aspect = aspectRatio || "16:9";
+  // Kling só aceita 16:9 / 9:16 / 1:1 — fora disso a PiAPI rejeita.
+  const klingAspect = ["16:9", "9:16", "1:1"].includes(aspect) ? aspect : "16:9";
   const durMin = params.dur_min ?? 5;
   const durMax = params.dur_max ?? 10;
   const userDur = clampInt(args.duration ?? durMin, durMin, durMax);
@@ -854,7 +856,7 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
       version: klingVersion,  // "2.5" — sem o sufixo "-turbo"
       mode: "turbo",           // mode=turbo é o correto para este modelo
       duration,
-      aspect_ratio: aspect,
+      aspect_ratio: klingAspect,
     };
     if (imageUrl) input.start_image_url = imageUrl;
     if (endImageUrl) input.end_image_url = endImageUrl;
@@ -882,7 +884,7 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
       version: omniVersion,
       duration: clampInt(userDur, 3, 15),
       resolution,
-      aspect_ratio: aspect,
+      aspect_ratio: klingAspect,
       enable_audio: args.withAudio ?? false,
     };
     // Kling Omni usa images[] com @image_N no prompt.
@@ -917,7 +919,7 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
       version,
       mode,
       duration: clampInt(userDur, 3, 15),
-      aspect_ratio: aspect,
+      aspect_ratio: klingAspect,
     };
     if (imageUrl) input.image_url = imageUrl;
     if (endImageUrl) input.image_tail_url = endImageUrl;
@@ -960,7 +962,7 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
     version,
     mode,
     duration,
-    aspect_ratio: aspect,
+    aspect_ratio: klingAspect,
   };
   if (imageUrl) input.image_url = imageUrl;
   if (endImageUrl) input.image_tail_url = endImageUrl;
