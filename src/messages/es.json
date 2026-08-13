@@ -91,5 +91,16 @@
     "insufficientCredits": "Créditos insuficientes. Necesitas {need}, disponible: {have}.",
     "assetAddedToRefs": "\"{name}\" añadido a las referencias.",
     "uploadingFiles": "Subiendo {count} archivos..."
+  },
+  "assets": {
+    "title": "Assets",
+    "subtitle": "Todo el contenido que generaste, listo para descargar.",
+    "filterAll": "Todo",
+    "filterImage": "Imagen",
+    "filterVideo": "Vídeo",
+    "filterAudio": "Audio",
+    "emptyTitle": "Aún no hay assets",
+    "emptyDesc": "Tus imágenes, vídeos y audios generados en el Studio aparecen aquí automáticamente.",
+    "download": "Descargar"
   }
 }
