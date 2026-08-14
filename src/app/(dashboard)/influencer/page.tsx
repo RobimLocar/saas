@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Sparkles, Upload, User, Users } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { GenerationCard } from "@/components/ui/generation-card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -255,6 +256,7 @@ function Dropzone({
   label: string;
   uploading?: boolean;
 }) {
+  const t = useTranslations("influencer");
   const [dragging, setDragging] = useState(false);
 
   return (
@@ -292,13 +294,13 @@ function Dropzone({
       {uploading ? (
         <div className="flex flex-col items-center gap-2">
           <Sparkles className="h-6 w-6 animate-spin text-[#A78BFA]" />
-          <p className="text-sm text-[#888888]">Enviando…</p>
+          <p className="text-sm text-[#888888]">{t("uploading")}</p>
         </div>
       ) : (
         <div className="flex flex-col items-center gap-2">
           <Upload className={`h-8 w-8 ${dragging ? "text-[#7C3AED]" : "text-[#888888]"}`} />
           <p className="text-sm font-medium text-[#F5F5F5]">{label}</p>
-          <p className="text-xs text-[#888888]">Arraste e solte ou clique para selecionar</p>
+          <p className="text-xs text-[#888888]">{t("dropHint")}</p>
         </div>
       )}
     </label>
@@ -306,6 +308,7 @@ function Dropzone({
 }
 
 export default function InfluencerPage() {
+  const t = useTranslations("influencer");
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [influencers, setInfluencers] = useState<InfluencerItem[]>([]);
@@ -388,14 +391,14 @@ export default function InfluencerPage() {
     try {
       const res = await fetch("/api/influencers", { cache: "no-store" });
       const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error || "Falha ao carregar personas.");
+      if (!res.ok) throw new Error(data?.error || t("toastLoadPersonasFail"));
       const list = Array.isArray(data?.influencers) ? data.influencers : [];
       setInfluencers(list);
       if (!selectedInfluencerId && list[0]?.id) {
         setSelectedInfluencerId(list[0].id);
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao carregar personas.");
+      toast.error(err instanceof Error ? err.message : t("toastLoadPersonasError"));
     } finally {
       setLoading(false);
     }
@@ -481,18 +484,18 @@ export default function InfluencerPage() {
   async function handleQuickGenerate() {
     if (!selectedInfluencer) return;
     if (selectedCategories.length === 0) {
-      toast.error("Selecione ao menos 1 categoria.");
+      toast.error(t("toastSelectCategory"));
       return;
     }
 
     const estimated = quickUnitCost * quickCount;
     if (estimated > userCredits) {
-      toast.error("Créditos insuficientes para gerar este pack.");
+      toast.error(t("toastInsufficientPack"));
       return;
     }
 
     if (!selectedInfluencer.avatar_image_url) {
-      toast.error("Influencer draft — selecione avatar antes de gerar conteúdo.");
+      toast.error(t("toastDraftSelectAvatar"));
       return;
     }
 
@@ -545,7 +548,7 @@ export default function InfluencerPage() {
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "Falha ao salvar seed.");
-      toast.success("Seed salva com sucesso.");
+      toast.success(t("toastSeedSaved"));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao salvar seed.");
     } finally {
@@ -556,9 +559,9 @@ export default function InfluencerPage() {
   async function handleCopyPromptForStudio(prompt: string) {
     try {
       await navigator.clipboard.writeText(prompt);
-      toast.success("Prompt copiado.");
+      toast.success(t("toastPromptCopied"));
     } catch {
-      toast.error("Não foi possível copiar o prompt.");
+      toast.error(t("toastPromptCopyFail"));
     }
   }
 
@@ -572,7 +575,7 @@ export default function InfluencerPage() {
   async function handleGenerateCaptions() {
     if (!selectedInfluencer) return;
     if (!captionTargetId && !captionFreePrompt.trim()) {
-      toast.error("Selecione um item do feed ou informe um prompt livre.");
+      toast.error(t("toastSelectFeedOrPrompt"));
       return;
     }
 
@@ -595,7 +598,7 @@ export default function InfluencerPage() {
       const captions = Array.isArray(data?.captions) ? data.captions : [];
       setCaptionOptions(captions);
       setChosenCaption(captions[0] || "");
-      toast.success("Legendas geradas.", { id: toastId });
+      toast.success(t("toastCaptionsGenerated"), { id: toastId });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao gerar legendas.", { id: toastId });
     } finally {
@@ -607,16 +610,16 @@ export default function InfluencerPage() {
     setChosenCaption(caption);
     try {
       await navigator.clipboard.writeText(caption);
-      toast.success("Legenda copiada.");
+      toast.success(t("toastCaptionCopied"));
     } catch {
-      toast.error("Não foi possível copiar a legenda.");
+      toast.error(t("toastCaptionCopyFail"));
     }
   }
 
   async function handleSaveCaption(captionOverride?: string) {
     const captionToSave = (captionOverride ?? chosenCaption).trim();
     if (!selectedInfluencer || !captionTargetId || !captionToSave) {
-      toast.error("Selecione um item do feed e uma legenda para salvar.");
+      toast.error(t("toastSelectFeedAndCaption"));
       return;
     }
 
@@ -637,7 +640,7 @@ export default function InfluencerPage() {
       setContentItems((prev) =>
         prev.map((item) => (item.id === captionTargetId ? { ...item, caption: captionToSave } : item))
       );
-      toast.success("Legenda salva no item.", { id: toastId });
+      toast.success(t("toastCaptionSaved"), { id: toastId });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao salvar legenda.", { id: toastId });
     } finally {
@@ -714,7 +717,7 @@ export default function InfluencerPage() {
   async function uploadReferences(files: File[]) {
     if (files.length === 0) return;
     if (referenceImageUrls.length >= 8) {
-      toast.error("Limite de 8 imagens de referência atingido.");
+      toast.error(t("toastRefLimit"));
       return;
     }
 
@@ -735,7 +738,7 @@ export default function InfluencerPage() {
       }
 
       setReferenceImageUrls(nextUrls);
-      toast.success("Referências enviadas.");
+      toast.success(t("toastRefsUploaded"));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro no upload de referência.");
     } finally {
@@ -777,7 +780,7 @@ export default function InfluencerPage() {
 
       const vars = Array.isArray(data?.variations) ? data.variations : [];
       if (vars.length === 0) {
-        throw new Error("Nenhum candidato foi gerado com sucesso.");
+        throw new Error(t("errNoCandidates"));
       }
 
       setGenProgress(4);
@@ -790,11 +793,11 @@ export default function InfluencerPage() {
       const failedCount = Number(data?.failed_count || 0);
       if (failedCount > 0) {
         toast.success(
-          `Candidatos gerados com falha parcial (${vars.length} sucesso, ${failedCount} falha). Escolha seu avatar.`,
+          t("toastCandidatesPartial", { ok: vars.length, fail: failedCount }),
           { id: toastId }
         );
       } else {
-        toast.success("Candidatos gerados! Escolha seu avatar.", { id: toastId });
+        toast.success(t("toastCandidatesGenerated"), { id: toastId });
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao gerar influencer.", {
@@ -808,7 +811,7 @@ export default function InfluencerPage() {
 
   async function handleConfirmCreate() {
     if (!draftInfluencerId || !selectedVariation) {
-      toast.error("Selecione um avatar antes de confirmar.");
+      toast.error(t("toastSelectAvatarConfirm"));
       return;
     }
 
@@ -828,7 +831,7 @@ export default function InfluencerPage() {
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || "Falha ao confirmar influencer.");
 
-      toast.success("Influencer criado com sucesso!", { id: toastId });
+      toast.success(t("toastInfluencerCreated"), { id: toastId });
       setCreateOpen(false);
       resetCreateState();
       await loadInfluencers();
@@ -844,7 +847,7 @@ export default function InfluencerPage() {
 
   async function handleRegenerate() {
     if (!draftInfluencerId) {
-      toast.error("Influencer draft não encontrado para regenerar.");
+      toast.error(t("toastDraftNotFound"));
       return;
     }
     setVariations([]);
@@ -866,7 +869,7 @@ export default function InfluencerPage() {
       if (selectedInfluencerId === id) {
         setSelectedInfluencerId(next[0]?.id || null);
       }
-      toast.success("Persona removida.");
+      toast.success(t("toastPersonaRemoved"));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao remover persona.");
     }
@@ -879,10 +882,8 @@ export default function InfluencerPage() {
         <div className="pointer-events-none absolute -right-16 -top-24 -z-10 h-72 w-72 rounded-full bg-[#7C3AED]/25 blur-[110px]" />
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="max-w-xl">
-            <h1 className="text-2xl font-bold text-white sm:text-3xl">Your very own influencer studio</h1>
-            <p className="mt-2 text-sm text-[#b8b8c0]">
-              Crie personas de IA consistentes, gere conteúdo ilimitado e veja o engajamento explodir.
-            </p>
+            <h1 className="text-2xl font-bold text-white sm:text-3xl">{t("heroTitle")}</h1>
+            <p className="mt-2 text-sm text-[#b8b8c0]">{t("heroSubtitle")}</p>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -892,14 +893,14 @@ export default function InfluencerPage() {
               onClick={() => setPremadeOpen(true)}
             >
               <Users className="mr-2 h-4 w-4" />
-              Choose Premade
+              {t("choosePremade")}
             </Button>
             <Button
               className="bg-white text-black hover:bg-white/90"
               onClick={openCreateModal}
             >
               <Sparkles className="mr-2 h-4 w-4" />
-              Create Influencer
+              {t("createInfluencer")}
             </Button>
           </div>
         </div>
@@ -908,26 +909,26 @@ export default function InfluencerPage() {
       <section className="space-y-4">
         <div className="flex items-end justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-[#F5F5F5]">My Influencers</h2>
+            <h2 className="text-lg font-semibold text-[#F5F5F5]">{t("myInfluencers")}</h2>
             <p className="text-sm text-[#888888]">
               {influencers.length > 0
-                ? `${influencers.length} persona${influencers.length === 1 ? "" : "s"} criada${influencers.length === 1 ? "" : "s"}`
-                : "Suas personas criadas"}
+                ? t("personasCount", { count: influencers.length })
+                : t("personasSubtitle")}
             </p>
           </div>
         </div>
 
         {loading ? (
           <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-5 text-sm text-[#888888]">
-            Carregando personas...
+            {t("loadingPersonas")}
           </div>
         ) : influencers.length === 0 ? (
           <div className="rounded-xl border border-dashed border-[#2A2A2A] bg-[#141414] px-4">
             <EmptyState
               icon={Users}
-              title="Nenhuma persona ainda"
-              description="Comece com um premade ou crie do zero para ativar seu estúdio de conteúdo."
-              action={{ label: "Create Influencer", onClick: openCreateModal }}
+              title={t("emptyPersonaTitle")}
+              description={t("emptyPersonaDesc")}
+              action={{ label: t("createInfluencer"), onClick: openCreateModal }}
             />
           </div>
         ) : (
@@ -972,7 +973,7 @@ export default function InfluencerPage() {
                       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#7C3AED]/10">
                         <User className="h-6 w-6 text-[#7C3AED]" />
                       </div>
-                      <p className="text-xs text-[#8b8b93]">Escolha um avatar</p>
+                      <p className="text-xs text-[#8b8b93]">{t("chooseAvatar")}</p>
                       <button
                         type="button"
                         onClick={(event) => {
@@ -981,7 +982,7 @@ export default function InfluencerPage() {
                         }}
                         className="text-xs text-[#7C3AED] underline transition-colors hover:text-[#8B5CF6]"
                       >
-                        Finalizar
+                        {t("finish")}
                       </button>
                     </div>
                   )}
@@ -994,7 +995,7 @@ export default function InfluencerPage() {
                       void handleDeleteInfluencer(inf.id);
                     }}
                   >
-                    Excluir
+                    {t("delete")}
                   </button>
 
                   {inf.avatar_image_url && (
@@ -1022,15 +1023,15 @@ export default function InfluencerPage() {
       <section className="space-y-4">
         <div className="flex items-end justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-[#F5F5F5]">Preset templates</h2>
-            <p className="text-sm text-[#888888]">Comece com uma persona pronta e personalize.</p>
+            <h2 className="text-lg font-semibold text-[#F5F5F5]">{t("presetTemplates")}</h2>
+            <p className="text-sm text-[#888888]">{t("presetSubtitle")}</p>
           </div>
           <button
             type="button"
             onClick={() => setPremadeOpen(true)}
             className="text-sm text-[#8b8b93] transition-colors hover:text-white"
           >
-            See all
+            {t("seeAll")}
           </button>
         </div>
         <div className="fx-scroll flex gap-4 overflow-x-auto pb-2">
@@ -1077,9 +1078,9 @@ export default function InfluencerPage() {
         <section className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-5">
           <div className="mb-4 flex flex-wrap gap-2">
             {([
-              ["feed", "Feed"],
-              ["presets", "Presets"],
-              ["captions", "Captions"],
+              ["feed", "tabFeed"],
+              ["presets", "tabPresets"],
+              ["captions", "tabCaptions"],
             ] as const).map(([key, label]) => (
               <button
                 key={key}
@@ -1091,7 +1092,7 @@ export default function InfluencerPage() {
                     : "border-[#2A2A2A] bg-[#1A1A1A] text-[#BDBDBD]"
                 }`}
               >
-                {label}
+                {t(label)}
               </button>
             ))}
           </div>
@@ -1108,9 +1109,9 @@ export default function InfluencerPage() {
                 <div className="rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] px-4">
                   <EmptyState
                     icon={Sparkles}
-                    title="Nenhum conteúdo gerado ainda"
-                    description="Vá para Presets para criar seu primeiro pack da persona selecionada."
-                    action={{ label: "Abrir Presets", onClick: () => setActivePersonaTab("presets") }}
+                    title={t("emptyFeedTitle")}
+                    description={t("emptyFeedDesc")}
+                    action={{ label: t("openPresets"), onClick: () => setActivePersonaTab("presets") }}
                   />
                 </div>
               ) : (
@@ -1127,7 +1128,7 @@ export default function InfluencerPage() {
                         <img src={item.image_url} alt={item.category} className="h-56 w-full rounded-lg object-cover" />
                       ) : (
                         <div className="flex h-56 items-center justify-center rounded-lg border border-dashed border-[#2A2A2A] text-xs text-[#888888]">
-                          Sem imagem
+                          {t("noImage")}
                         </div>
                       )}
 
@@ -1143,7 +1144,7 @@ export default function InfluencerPage() {
                           rel="noreferrer"
                           className="inline-flex items-center justify-center rounded-md border border-[#2A2A2A] px-3 py-2 text-xs text-[#F5F5F5] hover:bg-[#202020]"
                         >
-                          Download
+                          {t("download")}
                         </a>
                         <Button
                           type="button"
@@ -1154,7 +1155,7 @@ export default function InfluencerPage() {
                             void handleSaveAsSeed(item);
                           }}
                         >
-                          {saveSeedLoadingId === item.id ? "Salvando..." : "Salvar como Seed"}
+                          {saveSeedLoadingId === item.id ? t("saving") : t("saveAsSeed")}
                         </Button>
                       </div>
                     </div>
@@ -1167,7 +1168,7 @@ export default function InfluencerPage() {
           {activePersonaTab === "presets" && (
             <div className="space-y-4">
               <div className="rounded-xl border border-[#242428] bg-[#101012] p-4">
-                <h3 className="text-sm font-semibold text-[#F5F5F5]">Quick Generate</h3>
+                <h3 className="text-sm font-semibold text-[#F5F5F5]">{t("quickGenerate")}</h3>
 
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   {CONTENT_PRESETS.map((preset) => {
@@ -1186,7 +1187,7 @@ export default function InfluencerPage() {
                         <p className="text-sm font-medium text-[#F5F5F5]">
                           {preset.icon} {preset.label}
                         </p>
-                        <p className="mt-1 text-[11px] text-[#888888]">{preset.scenes.length} cenas</p>
+                        <p className="mt-1 text-[11px] text-[#888888]">{t("scenes", { count: preset.scenes.length })}</p>
                       </button>
                     );
                   })}
@@ -1194,7 +1195,7 @@ export default function InfluencerPage() {
 
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
                   <div>
-                    <label className="mb-1 block text-xs text-[#A3A3A3]">Quantidade: {quickCount}</label>
+                    <label className="mb-1 block text-xs text-[#A3A3A3]">{t("quantityLabel", { count: quickCount })}</label>
                     <input
                       type="range"
                       min={1}
@@ -1207,7 +1208,7 @@ export default function InfluencerPage() {
                   </div>
 
                   <div>
-                    <label className="mb-1 block text-xs text-[#A3A3A3]">Formato</label>
+                    <label className="mb-1 block text-xs text-[#A3A3A3]">{t("formatLabel")}</label>
                     <div className="flex gap-2">
                       {(["9:16", "1:1", "16:9"] as const).map((fmt) => (
                         <button
@@ -1242,17 +1243,17 @@ export default function InfluencerPage() {
                     }}
                   >
                     {quickGenerating
-                      ? "Gerando..."
-                      : `Generate ${quickCount} Images — ~${quickTotalCost} créditos (only ${userCredits} available)`}
+                      ? t("generating")
+                      : t("generateImages", { count: quickCount, cost: quickTotalCost, available: userCredits })}
                   </Button>
                   {quickBlockedByCredits && (
-                    <p className="mt-1 text-xs text-[#FCA5A5]">Créditos insuficientes para este pack.</p>
+                    <p className="mt-1 text-xs text-[#FCA5A5]">{t("insufficientCreditsPack")}</p>
                   )}
                 </div>
               </div>
 
               <div className="rounded-xl border border-[#242428] bg-[#101012] p-4">
-                <h3 className="text-sm font-semibold text-[#F5F5F5]">Prompt Library</h3>
+                <h3 className="text-sm font-semibold text-[#F5F5F5]">{t("promptLibrary")}</h3>
                 <div className="mt-4 space-y-2">
                   {CONTENT_PRESETS.map((preset) => {
                     const open = openLibrary === preset.key;
@@ -1270,7 +1271,7 @@ export default function InfluencerPage() {
                             <span>{preset.icon}</span>
                             {preset.label}
                             <span className="text-[11px] font-normal text-[#666666]">
-                              {preset.scenes.length} cenas
+                              {t("scenes", { count: preset.scenes.length })}
                             </span>
                           </span>
                           <ChevronDown
@@ -1298,14 +1299,14 @@ export default function InfluencerPage() {
                                       }}
                                       className="rounded-md border border-[#2A2A2A] bg-white/5 px-2.5 py-1 text-[11px] text-[#d0d0d0] transition-colors hover:bg-white/10"
                                     >
-                                      Copy
+                                      {t("copy")}
                                     </button>
                                     <button
                                       type="button"
                                       onClick={() => handleUseSceneInStudio(scene)}
                                       className="rounded-md bg-[#7C3AED]/15 px-2.5 py-1 text-[11px] font-medium text-[#A78BFA] transition-colors hover:bg-[#7C3AED]/25"
                                     >
-                                      Usar no Studio
+                                      {t("useInStudio")}
                                     </button>
                                   </div>
                                 </div>
@@ -1324,17 +1325,17 @@ export default function InfluencerPage() {
           {activePersonaTab === "captions" && (
             <div className="space-y-4">
               <div className="rounded-xl border border-[#242428] bg-[#101012] p-4">
-                <h3 className="text-sm font-semibold text-[#F5F5F5]">Gerar legendas</h3>
+                <h3 className="text-sm font-semibold text-[#F5F5F5]">{t("generateCaptions")}</h3>
 
                 <div className="mt-3 space-y-3">
                   <div>
-                    <label className="mb-1 block text-xs text-[#A3A3A3]">Gerar para item do feed</label>
+                    <label className="mb-1 block text-xs text-[#A3A3A3]">{t("generateForFeedItem")}</label>
                     <select
                       value={captionTargetId}
                       onChange={(e) => setCaptionTargetId(e.target.value)}
                       className="h-10 w-full rounded-lg border border-[#2A2A2A] bg-[#151515] px-2 text-sm text-[#F5F5F5]"
                     >
-                      <option value="">Nenhum (usar prompt livre)</option>
+                      <option value="">{t("noneUseFree")}</option>
                       {contentItems.map((item) => (
                         <option key={item.id} value={item.id}>
                           {item.category} • {new Date(item.created_at).toLocaleDateString("pt-BR")}
@@ -1344,11 +1345,11 @@ export default function InfluencerPage() {
                   </div>
 
                   <div>
-                    <label className="mb-1 block text-xs text-[#A3A3A3]">Prompt livre</label>
+                    <label className="mb-1 block text-xs text-[#A3A3A3]">{t("freePrompt")}</label>
                     <Textarea
                       value={captionFreePrompt}
                       onChange={(e) => setCaptionFreePrompt(e.target.value)}
-                      placeholder="Descreva o conteúdo para gerar legendas..."
+                      placeholder={t("captionPlaceholder")}
                       className="min-h-20 border-[#2A2A2A] bg-[#151515] text-[#F5F5F5]"
                     />
                   </div>
@@ -1358,7 +1359,7 @@ export default function InfluencerPage() {
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={selectedContentForCaptions.image_url}
-                        alt="Prévia do conteúdo"
+                        alt={t("contentPreview")}
                         className="h-40 w-full rounded object-cover"
                       />
                     </div>
@@ -1372,14 +1373,14 @@ export default function InfluencerPage() {
                       void handleGenerateCaptions();
                     }}
                   >
-                    {captionLoading ? "Gerando legendas..." : "Gerar legendas"}
+                    {captionLoading ? t("generatingCaptions") : t("generateCaptions")}
                   </Button>
                 </div>
               </div>
 
               {captionOptions.length > 0 && (
                 <div className="rounded-xl border border-[#242428] bg-[#101012] p-4">
-                  <h3 className="text-sm font-semibold text-[#F5F5F5]">Opções</h3>
+                  <h3 className="text-sm font-semibold text-[#F5F5F5]">{t("options")}</h3>
                   <div className="mt-3 space-y-3">
                     {captionOptions.map((caption, idx) => (
                       <div
@@ -1400,7 +1401,7 @@ export default function InfluencerPage() {
                               void handleUseCaption(caption);
                             }}
                           >
-                            Usar
+                            {t("use")}
                           </Button>
                           <Button
                             type="button"
@@ -1412,7 +1413,7 @@ export default function InfluencerPage() {
                               void handleSaveCaption(caption);
                             }}
                           >
-                            {savingCaption ? "Salvando..." : "Salvar"}
+                            {savingCaption ? t("saving") : t("save")}
                           </Button>
                         </div>
                       </div>
@@ -1431,10 +1432,8 @@ export default function InfluencerPage() {
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-[#7C3AED]/15">
               <Sparkles className="h-6 w-6 text-[#A78BFA]" />
             </div>
-            <h2 className="text-xl font-semibold text-white">Influencer Studio</h2>
-            <p className="mt-2 text-sm leading-relaxed text-[#9a9aa3]">
-              Crie influenciadores de IA com rostos consistentes. Suba fotos de referência, gere conteúdo ilimitado com presets e monte um feed social completo.
-            </p>
+            <h2 className="text-xl font-semibold text-white">{t("onboardTitle")}</h2>
+            <p className="mt-2 text-sm leading-relaxed text-[#9a9aa3]">{t("onboardDesc")}</p>
             <button
               type="button"
               onClick={() => {
@@ -1445,7 +1444,7 @@ export default function InfluencerPage() {
               }}
               className="mt-6 w-full rounded-xl bg-white py-3 text-sm font-semibold text-black transition-colors hover:bg-white/90"
             >
-              Got it
+              {t("gotIt")}
             </button>
           </div>
         </div>
@@ -1454,8 +1453,8 @@ export default function InfluencerPage() {
       {premadeOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-2xl rounded-xl border border-[#2A2A2A] bg-[#131313] p-5">
-            <h3 className="text-lg font-semibold text-[#F5F5F5]">Choose Premade Influencer</h3>
-            <p className="mt-1 text-sm text-[#888888]">Selecione um avatar para criar um perfil de influencer.</p>
+            <h3 className="text-lg font-semibold text-[#F5F5F5]">{t("choosePremadeTitle")}</h3>
+            <p className="mt-1 text-sm text-[#888888]">{t("choosePremadeSub")}</p>
 
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
               {PREMADES.map((preset, index) => (
@@ -1492,7 +1491,7 @@ export default function InfluencerPage() {
                 className="border-[#2A2A2A] text-[#E5E5E5]"
                 onClick={() => setPremadeOpen(false)}
               >
-                Fechar
+                {t("close")}
               </Button>
             </div>
           </div>
@@ -1502,8 +1501,8 @@ export default function InfluencerPage() {
       {createOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-4xl rounded-xl border border-[#2A2A2A] bg-[#131313] p-5 max-h-[92vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold text-[#F5F5F5]">Create New Influencer</h3>
-            <p className="mt-1 text-sm text-[#888888]">Defina atributos e gere 4 candidatos de rosto.</p>
+            <h3 className="text-lg font-semibold text-[#F5F5F5]">{t("createNewInfluencer")}</h3>
+            <p className="mt-1 text-sm text-[#888888]">{t("createSub")}</p>
 
             {generating ? (
               <div className="mt-6 space-y-3">
@@ -1512,15 +1511,15 @@ export default function InfluencerPage() {
                     <GenerationCard
                       key={`candidate-processing-${idx}`}
                       status="processing"
-                      label={`Candidato ${Math.max(genProgress, idx + 1)}/4`}
-                      estimatedTime="~1–3 min"
+                      label={t("candidateLabel", { n: Math.max(genProgress, idx + 1) })}
+                      estimatedTime={t("estimatedTime")}
                     />
                   ))}
                 </div>
               </div>
             ) : variations.length > 0 ? (
               <div className="mt-5 space-y-4">
-                <h4 className="text-base font-semibold text-[#F5F5F5]">Choose Your Avatar</h4>
+                <h4 className="text-base font-semibold text-[#F5F5F5]">{t("chooseYourAvatar")}</h4>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {variations.map((url) => {
                     const active = selectedVariation === url;
@@ -1535,7 +1534,7 @@ export default function InfluencerPage() {
                       >
                         <GenerationCard
                           status="completed"
-                          label="Variação"
+                          label={t("variation")}
                           result_url={url}
                           mediaType="image"
                           className="h-56 rounded-none border-0 ring-0"
@@ -1552,74 +1551,74 @@ export default function InfluencerPage() {
                     onClick={() => void handleRegenerate()}
                     disabled={generating}
                   >
-                    Regenerate
+                    {t("regenerate")}
                   </Button>
                   <Button
                     className="bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
                     onClick={() => void handleConfirmCreate()}
                     disabled={!selectedVariation || confirming}
                   >
-                    {confirming ? "Confirmando..." : "Confirm & Create"}
+                    {confirming ? t("confirming") : t("confirmCreate")}
                   </Button>
                 </div>
               </div>
             ) : (
               <div className="mt-4 space-y-4">
                 <div>
-                  <label className="mb-1 block text-xs text-[#A3A3A3]">Name *</label>
+                  <label className="mb-1 block text-xs text-[#A3A3A3]">{t("nameLabel")}</label>
                   <Input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Ex.: Luna Parker"
+                    placeholder={t("namePlaceholder")}
                     className="border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-xs text-[#A3A3A3]">Gender *</label>
+                  <label className="mb-1 block text-xs text-[#A3A3A3]">{t("genderLabel")}</label>
                   <PillGroup options={GENDERS} value={gender} onChange={(v) => setGender(v)} />
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-xs text-[#A3A3A3]">Age Range *</label>
+                  <label className="mb-1 block text-xs text-[#A3A3A3]">{t("ageLabel")}</label>
                   <PillGroup options={AGES} value={ageRange} onChange={(v) => setAgeRange(v)} />
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-xs text-[#A3A3A3]">Style & Aesthetic *</label>
+                  <label className="mb-1 block text-xs text-[#A3A3A3]">{t("styleLabel")}</label>
                   <MultiSelectChips options={STYLES} values={styles} onToggle={toggleStyle} />
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-2">
                   <div>
-                    <label className="mb-1 block text-xs text-[#A3A3A3]">Hair Color *</label>
+                    <label className="mb-1 block text-xs text-[#A3A3A3]">{t("hairLabel")}</label>
                     <PillGroup options={HAIR_COLORS} value={hairColor} onChange={(v) => setHairColor(v)} />
                   </div>
 
                   <div>
-                    <label className="mb-1 block text-xs text-[#A3A3A3]">Eye Color *</label>
+                    <label className="mb-1 block text-xs text-[#A3A3A3]">{t("eyeLabel")}</label>
                     <PillGroup options={EYE_COLORS} value={eyeColor} onChange={(v) => setEyeColor(v)} />
                   </div>
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-xs text-[#A3A3A3]">Additional Details</label>
+                  <label className="mb-1 block text-xs text-[#A3A3A3]">{t("additionalLabel")}</label>
                   <Textarea
                     value={additionalDetails}
                     onChange={(e) => setAdditionalDetails(e.target.value)}
-                    placeholder="Ex.: with freckles, natural makeup"
+                    placeholder={t("additionalPlaceholder")}
                     className="min-h-20 border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
                   />
                 </div>
 
                 <div>
                   <label className="mb-1 block text-xs text-[#A3A3A3]">
-                    Upload Reference Images (até 8)
+                    {t("uploadRefsLabel")}
                   </label>
                   <Dropzone
                     disabled={uploadingRefs}
                     uploading={uploadingRefs}
-                    label={uploadingRefs ? "Enviando referências..." : "Referências de estilo/rosto"}
+                    label={uploadingRefs ? t("uploadingRefs") : t("refsLabel")}
                     onFiles={(files) => {
                       void uploadReferences(files);
                     }}
@@ -1638,13 +1637,13 @@ export default function InfluencerPage() {
                 </div>
 
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs text-[#888888]">Saldo atual: {userCredits} créditos</span>
+                  <span className="text-xs text-[#888888]">{t("currentBalance", { credits: userCredits })}</span>
                   <Button
                     className="bg-[#7C3AED] text-white hover:bg-[#6D28D9] disabled:opacity-50"
                     disabled={!canGenerate || generating}
                     onClick={() => void handleGenerate()}
                   >
-                    Generate Avatar — ~{estimatedCost} créditos
+                    {t("generateAvatar", { cost: estimatedCost })}
                   </Button>
                 </div>
               </div>
@@ -1661,7 +1660,7 @@ export default function InfluencerPage() {
                 }}
                 disabled={generating || confirming}
               >
-                Fechar
+                {t("close")}
               </Button>
             </div>
           </div>
