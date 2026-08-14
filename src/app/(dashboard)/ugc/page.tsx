@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Package, Pencil, Plus, Trash2, ChevronRight, Sparkles, Loader2, Upload, X, Clapperboard, Check, User } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -232,6 +233,7 @@ function ImageDropzone({
   uploading?: boolean;
   onRemovePreview?: () => void;
 }) {
+  const t = useTranslations("ugc");
   const [dragging, setDragging] = useState(false);
 
   return (
@@ -281,7 +283,7 @@ function ImageDropzone({
                 onRemovePreview();
               }}
               className="absolute right-2 top-2 rounded-full border border-[#2A2A2A] bg-black/70 p-1 text-white"
-              aria-label="Remover preview"
+              aria-label={t("removePreview")}
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -290,14 +292,14 @@ function ImageDropzone({
       ) : uploading ? (
         <div className="flex flex-col items-center gap-2">
           <Loader2 className="h-6 w-6 animate-spin text-[#A78BFA]" />
-          <p className="text-sm text-[#888888]">Enviando…</p>
+          <p className="text-sm text-[#888888]">{t("uploading")}</p>
         </div>
       ) : (
         <div className="flex flex-col items-center gap-2">
           <Upload className={`h-8 w-8 ${dragging ? "text-[#7C3AED]" : "text-[#888888]"}`} />
           <p className="text-sm font-medium text-[#E5E5E5]">{title}</p>
           <p className="text-xs text-[#888888]">
-            {subtitle || "Arraste e solte ou clique para selecionar"}
+            {subtitle || t("dropDefault")}
           </p>
           {cta ? <span className="text-xs text-[#A78BFA]">{cta}</span> : null}
         </div>
@@ -361,11 +363,11 @@ function projectCover(project: UgcProject): string | null {
 
 function statusLabel(status: string | null): string {
   const s = (status || "draft").toLowerCase();
-  if (s === "ready") return "Pronto";
-  if (s === "processing") return "Processando";
-  if (s === "published") return "Publicado";
-  if (s === "failed") return "Falhou";
-  return "Rascunho";
+  if (s === "ready") return "statusReady";
+  if (s === "processing") return "statusProcessing";
+  if (s === "published") return "statusPublished";
+  if (s === "failed") return "statusFailed";
+  return "statusDraft";
 }
 
 function avatarSegmentCost(
@@ -403,6 +405,7 @@ function normalizeBroll(raw: unknown): BrollClip[] {
 
 
 export default function UGCPage() {
+  const t = useTranslations("ugc");
   const [view, setView] = useState<ViewMode>("list");
   const [selectedVideoType, setSelectedVideoType] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<UgcTab>("broll");
@@ -500,7 +503,7 @@ export default function UGCPage() {
 
       const sourceRes = await fetch(avatarUrl);
       if (!sourceRes.ok) {
-        throw new Error("Falha ao baixar retrato para aplicar formato.");
+        throw new Error(t("errDownloadPortrait"));
       }
 
       const sourceBlob = await sourceRes.blob();
@@ -521,7 +524,7 @@ export default function UGCPage() {
         canvas.width = targetW;
         canvas.height = targetH;
         const ctx = canvas.getContext("2d");
-        if (!ctx) throw new Error("Canvas indisponível para recorte.");
+        if (!ctx) throw new Error(t("errCanvasCrop"));
 
         const srcW = loaded.naturalWidth;
         const srcH = loaded.naturalHeight;
@@ -588,7 +591,7 @@ export default function UGCPage() {
       if (!res.ok) {
         if (res.status === 401) {
           setProducts([]);
-          toast.error("Faça login para ver seus produtos.");
+          toast.error(t("toastLoginProducts"));
           return;
         }
         throw new Error(data?.error || "Falha ao carregar produtos.");
@@ -878,7 +881,7 @@ export default function UGCPage() {
 
   async function handleUploadImage(file: File) {
     setUploading(true);
-    const toastId = toast.loading("Enviando imagem...");
+    const toastId = toast.loading(t("toastUploadingImage"));
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -894,9 +897,9 @@ export default function UGCPage() {
       }
 
       setForm((prev) => ({ ...prev, imageUrl: data.url }));
-      toast.success("Imagem enviada com sucesso.", { id: toastId });
+      toast.success(t("toastImageUploaded"), { id: toastId });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Falha ao enviar imagem.", {
+      toast.error(err instanceof Error ? err.message : t("errUploadImage"), {
         id: toastId,
       });
     } finally {
@@ -909,7 +912,7 @@ export default function UGCPage() {
     const imageUrl = form.imageUrl.trim();
 
     if (!title || !imageUrl) {
-      toast.error("Título e imagem são obrigatórios.");
+      toast.error(t("toastTitleImageRequired"));
       return;
     }
 
@@ -932,7 +935,7 @@ export default function UGCPage() {
         }
 
         setProducts((prev) => prev.map((p) => (p.id === editing.id ? data.product : p)));
-        toast.success("Produto atualizado.");
+        toast.success(t("toastProductUpdated"));
       } else {
         const res = await fetch("/api/products", {
           method: "POST",
@@ -950,12 +953,12 @@ export default function UGCPage() {
         }
 
         setProducts((prev) => [data.product, ...prev]);
-        toast.success("Produto criado.");
+        toast.success(t("toastProductCreated"));
       }
 
       closeEditor();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Falha ao salvar produto.");
+      toast.error(err instanceof Error ? err.message : t("errSaveProduct"));
     } finally {
       setSaving(false);
     }
@@ -976,10 +979,10 @@ export default function UGCPage() {
       }
 
       setProducts((prev) => prev.filter((p) => p.id !== pendingDelete.id));
-      toast.success("Produto excluído.");
+      toast.success(t("toastProductDeleted"));
       closeDeleteDialog();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Falha ao excluir produto.");
+      toast.error(err instanceof Error ? err.message : t("errDeleteProduct"));
     } finally {
       setWorkingId(null);
     }
@@ -988,7 +991,7 @@ export default function UGCPage() {
   async function handleCreateProject() {
     const name = projectForm.name.trim();
     if (!name) {
-      toast.error("O nome do projeto é obrigatório.");
+      toast.error(t("toastProjectNameRequired"));
       return;
     }
 
@@ -1016,7 +1019,7 @@ export default function UGCPage() {
       setProjectProductId("");
       setSelectedProjectId(created.id);
       setView("tier");
-      toast.success("Projeto criado.");
+      toast.success(t("toastProjectCreated"));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Falha ao criar projeto.");
     } finally {
@@ -1028,7 +1031,7 @@ export default function UGCPage() {
     if (!selectedProject) return;
     const name = nameDraft.trim();
     if (!name) {
-      toast.error("O nome do projeto não pode ficar vazio.");
+      toast.error(t("toastProjectNameEmpty"));
       return;
     }
 
@@ -1040,7 +1043,7 @@ export default function UGCPage() {
     const data = await res.json().catch(() => null);
 
     if (!res.ok) {
-      toast.error(data?.error || "Falha ao atualizar nome do projeto.");
+      toast.error(data?.error || t("errRenameProject"));
       return;
     }
 
@@ -1048,14 +1051,14 @@ export default function UGCPage() {
     setSelectedProject(updated);
     setProjects((prev) => prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
     setNameEditing(false);
-    toast.success("Nome do projeto atualizado.");
+    toast.success(t("toastProjectRenamed"));
   }
 
   async function handleDeleteProject() {
     if (!selectedProject) return;
 
     const confirmed = window.confirm(
-      `Tem certeza que deseja excluir o projeto "${selectedProject.name}"?`
+      t("confirmDeleteProjectName", { name: selectedProject.name })
     );
     if (!confirmed) return;
 
@@ -1074,9 +1077,9 @@ export default function UGCPage() {
       setSelectedProjectId(null);
       setSelectedProject(null);
       setView("list");
-      toast.success("Projeto excluído.");
+      toast.success(t("toastProjectDeleted"));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Falha ao excluir projeto.");
+      toast.error(err instanceof Error ? err.message : t("errDeleteProject"));
     } finally {
       setProjectDeleting(false);
     }
@@ -1087,7 +1090,7 @@ export default function UGCPage() {
 
     const description = scriptDescription.trim();
     if (!description) {
-      toast.error("Descreva seu produto ou serviço antes de gerar o roteiro.");
+      toast.error(t("toastDescribeBeforeScript"));
       return;
     }
 
@@ -1104,7 +1107,7 @@ export default function UGCPage() {
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        throw new Error(data?.error || "Falha ao gerar roteiro com IA.");
+        throw new Error(data?.error || t("errGenScript"));
       }
 
       const script = normalizeScript(data?.script);
@@ -1117,7 +1120,7 @@ export default function UGCPage() {
             : p
         )
       );
-      toast.success("Roteiro gerado com sucesso.");
+      toast.success(t("toastScriptGenerated"));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao gerar roteiro.");
     } finally {
@@ -1138,13 +1141,13 @@ export default function UGCPage() {
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        throw new Error(data?.error || "Falha ao salvar roteiro.");
+        throw new Error(data?.error || t("errSaveScript"));
       }
 
       const updated = data?.project as UgcProject;
       setSelectedProject(updated);
       setProjects((prev) => prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
-      toast.success("Roteiro salvo ✓");
+      toast.success(t("toastScriptSaved"));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao salvar roteiro.");
     } finally {
@@ -1180,7 +1183,7 @@ export default function UGCPage() {
     try {
       const res = await fetch("/api/influencers", { cache: "no-store" });
       const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.error || "Falha ao carregar influencers.");
+      if (!res.ok) throw new Error(data?.error || t("errLoadInfluencers"));
 
       const list = Array.isArray(data?.influencers) ? (data.influencers as InfluencerAvatarItem[]) : [];
       const activeOnly = list.filter(
@@ -1198,15 +1201,15 @@ export default function UGCPage() {
   async function handleSelectInfluencerAvatar(influencer: InfluencerAvatarItem) {
     if (!influencer.avatar_image_url) return;
     setAvatarPickerSavingId(influencer.id);
-    const toastId = toast.loading("Aplicando avatar do influencer...");
+    const toastId = toast.loading(t("toastApplyingAvatar"));
     try {
       await applyAvatarImageToProject(influencer.avatar_image_url, {
-        successMessage: "Avatar aplicado a partir do Influencer Studio.",
+        successMessage: t("avatarAppliedFromStudio"),
         toastId,
       });
       setAvatarPickerOpen(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Falha ao aplicar avatar.", { id: toastId });
+      toast.error(err instanceof Error ? err.message : t("errApplyAvatar"), { id: toastId });
     } finally {
       setAvatarPickerSavingId(null);
     }
@@ -1220,7 +1223,7 @@ export default function UGCPage() {
   async function handleAvatarPortraitUpload(file: File) {
     if (!selectedProject) return;
     setAvatarUploading(true);
-    const toastId = toast.loading("Enviando retrato...");
+    const toastId = toast.loading(t("toastUploadingPortrait"));
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -1233,7 +1236,7 @@ export default function UGCPage() {
         toastId,
       });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Falha ao enviar retrato.", { id: toastId });
+      toast.error(err instanceof Error ? err.message : t("errUploadPortrait"), { id: toastId });
     } finally {
       setAvatarUploading(false);
     }
@@ -1241,7 +1244,7 @@ export default function UGCPage() {
 
   async function handleProductImageUpload(file: File) {
     setAvatarForm((prev) => ({ ...prev, productImageUploading: true }));
-    const toastId = toast.loading("Enviando imagem do produto...");
+    const toastId = toast.loading(t("toastUploadingProductImage"));
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -1249,9 +1252,9 @@ export default function UGCPage() {
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.url) throw new Error(data?.error || "Erro no upload.");
       setAvatarForm((prev) => ({ ...prev, productImageUrl: data.url }));
-      toast.success("Imagem do produto enviada.", { id: toastId });
+      toast.success(t("toastProductImageUploaded"), { id: toastId });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Falha ao enviar imagem.", { id: toastId });
+      toast.error(err instanceof Error ? err.message : t("errUploadImage"), { id: toastId });
     } finally {
       setAvatarForm((prev) => ({ ...prev, productImageUploading: false }));
     }
@@ -1298,7 +1301,7 @@ export default function UGCPage() {
 
   async function handleBrollProductImageUpload(file: File) {
     setBrollProductUploading(true);
-    const toastId = toast.loading("Enviando imagem do produto...");
+    const toastId = toast.loading(t("toastUploadingProductImage"));
     try {
       const fd = new FormData();
       fd.append("file", file);
@@ -1308,7 +1311,7 @@ export default function UGCPage() {
         throw new Error(data?.error || "Falha no upload da imagem do produto.");
       }
       setBrollProductImageUrl(data.url);
-      toast.success("Imagem do produto enviada.", { id: toastId });
+      toast.success(t("toastProductImageUploaded"), { id: toastId });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Falha no upload.", { id: toastId });
     } finally {
@@ -1323,17 +1326,17 @@ export default function UGCPage() {
     labelName: string
   ) {
     setUploading(true);
-    const toastId = toast.loading(`Enviando ${labelName}...`);
+    const toastId = toast.loading(t("uploadingNamed", { name: labelName }));
     try {
       const fd = new FormData();
       fd.append("file", file);
       const res = await fetch("/api/upload", { method: "POST", body: fd });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.url) {
-        throw new Error(data?.error || `Falha no upload (${labelName}).`);
+        throw new Error(data?.error || t("errUploadNamed", { name: labelName }));
       }
       setUrl(data.url);
-      toast.success(`${labelName} enviada.`, { id: toastId });
+      toast.success(t("uploadedNamed", { name: labelName }), { id: toastId });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Falha no upload.", { id: toastId });
     } finally {
@@ -1357,7 +1360,7 @@ export default function UGCPage() {
             canvas.width = video.videoWidth || 720;
             canvas.height = video.videoHeight || 1280;
             const ctx = canvas.getContext("2d");
-            if (!ctx) throw new Error("Canvas não suportado neste navegador.");
+            if (!ctx) throw new Error(t("errCanvasUnsupported"));
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             canvas.toBlob(
               (blob) => {
@@ -1386,7 +1389,7 @@ export default function UGCPage() {
   async function handleExtendVideoSelect(file: File) {
     setExtendExtracting(true);
     setExtendAudioUrl("");
-    const toastId = toast.loading("Extraindo o último frame...");
+    const toastId = toast.loading(t("toastExtractingFrame"));
     try {
       const blob = await extractLastFrame(file);
       const frameFile = new File([blob], "last-frame.jpg", { type: "image/jpeg" });
@@ -1412,7 +1415,7 @@ export default function UGCPage() {
       } catch {
         // sem áudio de referência — segue só com o frame
       }
-      toast.success("Último frame capturado.", { id: toastId });
+      toast.success(t("toastFrameCaptured"), { id: toastId });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Falha ao extrair o frame.", { id: toastId });
     } finally {
@@ -1423,15 +1426,15 @@ export default function UGCPage() {
   async function handleExtendGenerate() {
     if (!selectedProject) return;
     if (!extendFrameUrl) {
-      toast.error("Anexe um vídeo para capturar o último frame.");
+      toast.error(t("toastAttachVideoForFrame"));
       return;
     }
     if (!extendPrompt.trim()) {
-      toast.error("Descreva como o vídeo deve continuar.");
+      toast.error(t("toastDescribeContinuation"));
       return;
     }
     setExtendGenerating(true);
-    const toastId = toast.loading("Iniciando continuação...");
+    const toastId = toast.loading(t("toastStartingContinuation"));
     try {
       const res = await fetch(`/api/ugc/projects/${selectedProject.id}/broll`, {
         method: "POST",
@@ -1449,11 +1452,11 @@ export default function UGCPage() {
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        throw new Error(data?.error || "Falha ao iniciar a continuação.");
+        throw new Error(data?.error || t("errStartContinuation"));
       }
       const clips = Array.isArray(data?.clips) ? (data.clips as BrollClip[]) : [];
       if (clips.length === 0) {
-        throw new Error("Nenhum clipe foi iniciado.");
+        throw new Error(t("errNoClipStarted"));
       }
       setSelectedProject((prev) => {
         if (!prev) return prev;
@@ -1473,9 +1476,9 @@ export default function UGCPage() {
         void loadMe();
       }
       setActiveTab("generations");
-      toast.success("Continuação em processamento. Veja em Project generations.", { id: toastId });
+      toast.success(t("toastContinuationProcessing"), { id: toastId });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao estender o vídeo.", { id: toastId });
+      toast.error(err instanceof Error ? err.message : t("errExtendVideo"), { id: toastId });
     } finally {
       setExtendGenerating(false);
     }
@@ -1485,22 +1488,22 @@ export default function UGCPage() {
     if (!selectedProject) return;
 
     if (!brollProductImageUrl) {
-      toast.error("Envie a imagem do produto antes de gerar B-Roll.");
+      toast.error(t("toastSendProductForBroll"));
       return;
     }
 
     if (!brollAvatarImageUrl) {
-      toast.error("Suba uma imagem de avatar para travar a mesma pessoa no vídeo.");
+      toast.error(t("toastUploadAvatarLock"));
       return;
     }
 
     if (!brollDescription.trim()) {
-      toast.error("Descreva seu vídeo (Describe) antes de gerar.");
+      toast.error(t("toastDescribeVideoBeforeGen"));
       return;
     }
 
     setBrollGenerating(true);
-    const toastId = toast.loading("Iniciando geração de B-Roll...");
+    const toastId = toast.loading(t("toastStartingBroll"));
 
     try {
       const res = await fetch(`/api/ugc/projects/${selectedProject.id}/broll`, {
@@ -1521,12 +1524,12 @@ export default function UGCPage() {
 
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        throw new Error(data?.error || "Falha ao iniciar B-Roll.");
+        throw new Error(data?.error || t("errStartBroll"));
       }
 
       const clips = Array.isArray(data?.clips) ? (data.clips as BrollClip[]) : [];
       if (clips.length === 0) {
-        throw new Error("Nenhum clipe foi iniciado.");
+        throw new Error(t("errNoClipStarted"));
       }
 
       setSelectedProject((prev) => {
@@ -1553,7 +1556,7 @@ export default function UGCPage() {
       }
 
       setActiveTab("generations");
-      toast.success("Vídeo em processamento. Veja em Project generations.", { id: toastId });
+      toast.success(t("toastVideoProcessing"), { id: toastId });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao gerar B-Roll.", { id: toastId });
     } finally {
@@ -1568,7 +1571,7 @@ export default function UGCPage() {
     try {
       const avatarSource = selectedProject.avatar_image_url;
       if (!avatarSource) {
-        throw new Error("Envie um retrato antes de gerar o segmento.");
+        throw new Error(t("errSendPortraitFirst"));
       }
 
       const formattedAvatarUrl = await getProcessedAvatarForFormat(
@@ -1594,7 +1597,7 @@ export default function UGCPage() {
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        throw new Error(data?.error || "Falha ao gerar segmento.");
+        throw new Error(data?.error || t("errGenSegment"));
       }
 
       const generationId: string = data.generation_id;
@@ -1693,12 +1696,12 @@ export default function UGCPage() {
               }
 
               if (data?.status === "completed") {
-                toast.success("Clipe de B-Roll concluído!");
+                toast.success(t("toastBrollDone"));
                 void loadMe();
               }
 
               if (data?.status === "failed") {
-                toast.error("Clipe de B-Roll falhou. Tente novamente.");
+                toast.error(t("toastBrollFailed"));
                 void loadMe();
               }
             } else {
@@ -1838,10 +1841,10 @@ export default function UGCPage() {
               <div className="absolute inset-x-0 bottom-0 flex flex-col gap-4 p-6 sm:flex-row sm:items-end sm:justify-between sm:p-8">
                 <div className="max-w-xl">
                   <h1 className="text-2xl font-bold text-white sm:text-3xl">
-                    Crie anúncios UGC com cara de gente
+                    {t("heroTitle")}
                   </h1>
                   <p className="mt-2 text-sm text-white/70">
-                    Lipsync perfeito, realismo cinematográfico e B-roll — tudo pra produzir UGC que prende o scroll.
+                    {t("heroSubtitle")}
                   </p>
                 </div>
                 <Button
@@ -1849,7 +1852,7 @@ export default function UGCPage() {
                   className="shrink-0 bg-white text-black hover:bg-white/90"
                 >
                   <Plus className="mr-2 h-4 w-4" />
-                  New UGC Project
+                  {t("newUgcProject")}
                 </Button>
               </div>
             </div>
@@ -1857,10 +1860,10 @@ export default function UGCPage() {
             <div>
               <div className="mb-4 flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-[#F5F5F5]">Meus projetos</h2>
-                  <p className="text-sm text-[#888888]">Seus projetos de UGC criados.</p>
+                  <h2 className="text-lg font-semibold text-[#F5F5F5]">{t("myProjects")}</h2>
+                  <p className="text-sm text-[#888888]">{t("myProjectsSub")}</p>
                 </div>
-                <span className="text-sm text-[#888888]">Veja tudo</span>
+                <span className="text-sm text-[#888888]">{t("seeAll")}</span>
               </div>
 
               {projectsLoading ? (
@@ -1882,7 +1885,7 @@ export default function UGCPage() {
                     >
                       <Plus className="h-8 w-8" />
                     </button>
-                    <p className="mt-2 text-sm font-medium text-[#F5F5F5]">Novo projeto</p>
+                    <p className="mt-2 text-sm font-medium text-[#F5F5F5]">{t("newProject")}</p>
                   </div>
 
                   {sortedProjects.map((project) => {
@@ -1913,15 +1916,13 @@ export default function UGCPage() {
                               <Clapperboard className="h-7 w-7 text-[#555555]" />
                             </div>
                           )}
-                          <span className="absolute left-2 top-2 rounded-full border border-[#F97316]/40 bg-black/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#F97316] backdrop-blur">
-                            Premium
-                          </span>
+                          <span className="absolute left-2 top-2 rounded-full border border-[#F97316]/40 bg-black/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#F97316] backdrop-blur">{t("premium")}</span>
                         </button>
                         <p className="mt-2 line-clamp-1 text-sm font-medium text-[#F5F5F5]">
                           {project.name}
                         </p>
                         <p className="text-xs text-[#888888]">
-                          Atualizado em {formatDateLong(project.updated_at || project.created_at)}
+                          {t("updatedOn", { date: formatDateLong(project.updated_at || project.created_at) })}
                         </p>
                       </div>
                     );
@@ -1935,9 +1936,9 @@ export default function UGCPage() {
           <section className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-xl font-semibold text-[#F5F5F5]">Meus Produtos</h2>
+                <h2 className="text-xl font-semibold text-[#F5F5F5]">{t("myProducts")}</h2>
                 <p className="mt-1 text-sm text-[#888888]">
-                  Organize seus produtos e prepare a base para geração em escala.
+                  {t("myProductsSub")}
                 </p>
               </div>
 
@@ -1946,7 +1947,7 @@ export default function UGCPage() {
                 className="rounded-full bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
               >
                 <Plus className="mr-1 h-4 w-4" />
-                Adicionar produto
+                {t("addProduct")}
               </Button>
             </div>
 
@@ -1968,9 +1969,9 @@ export default function UGCPage() {
               <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] px-4">
                 <EmptyState
                   icon={Package}
-                  title="Cadastre seu primeiro produto para começar"
+                  title={t("registerFirstProduct")}
                   description="Você poderá usar este catálogo no gerador automático de UGC."
-                  action={{ label: "Adicionar produto", onClick: openCreateDialog }}
+                  action={{ label: t("addProduct"), onClick: openCreateDialog }}
                 />
               </div>
             ) : (
@@ -1985,9 +1986,7 @@ export default function UGCPage() {
                       className="absolute right-2 top-2 z-10 rounded-lg bg-black/60 p-1.5 text-xs text-red-400 opacity-0 transition-opacity duration-200 hover:bg-black/80 hover:text-red-300 group-hover:opacity-100"
                       disabled={workingId === item.id}
                       onClick={() => openDeleteDialog(item)}
-                    >
-                      Excluir
-                    </button>
+                    >{t("delete")}</button>
 
                     <div className="aspect-[4/3] overflow-hidden rounded-xl border border-[#2A2A2A] bg-[#1A1A1A]">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -2015,9 +2014,7 @@ export default function UGCPage() {
                           disabled={workingId === item.id}
                           onClick={() => openEditDialog(item)}
                         >
-                          <Pencil className="mr-1 h-3.5 w-3.5" />
-                          Editar
-                        </Button>
+                          <Pencil className="mr-1 h-3.5 w-3.5" />{t("edit")}</Button>
                       </div>
                     </div>
                   </article>
@@ -2030,27 +2027,26 @@ export default function UGCPage() {
         <section className="space-y-6">
           <div className="flex items-center gap-2 text-sm text-[#888888]">
             <button type="button" onClick={() => setView("list")} className="hover:text-[#F5F5F5]">
-              UGC Factory
+              {t("factory")}
             </button>
             <span>/</span>
-            <span className="text-[#F5F5F5]">{selectedProject?.name || "Novo projeto"}</span>
+            <span className="text-[#F5F5F5]">{selectedProject?.name || t("newProject")}</span>
           </div>
           <div className="py-4 text-center">
-            <h1 className="text-3xl font-bold text-white">Create UGC Video</h1>
-            <p className="mt-2 text-[#888888]">Escolha o tier de geração</p>
+            <h1 className="text-3xl font-bold text-white">{t("createUgcVideo")}</h1>
+            <p className="mt-2 text-[#888888]">{t("chooseTier")}</p>
           </div>
           <div className="mx-auto grid max-w-4xl gap-4 md:grid-cols-2">
             <div className="flex flex-col rounded-2xl border border-[#242428] bg-[#141416] p-6">
               <span className="mb-4 inline-flex w-fit items-center gap-1.5 rounded-full border border-[#7C3AED]/40 bg-[#7C3AED]/10 px-2.5 py-1 text-xs font-semibold text-[#A78BFA]">
-                <Sparkles className="h-3 w-3" /> Premium
-              </span>
+                <Sparkles className="h-3 w-3" />{t("premium")}</span>
               <h2 className="text-2xl font-bold text-white">Seedance x Wise UGC</h2>
-              <p className="mt-1 text-sm text-[#888888]">Melhores resultados. Usa mais créditos.</p>
+              <p className="mt-1 text-sm text-[#888888]">{t("bestResultsMore")}</p>
               <ul className="mt-4 space-y-2 text-sm text-[#c9c9d1]">
-                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#7C3AED]" /> Motor de vídeo Seedance 2.0 Pro</li>
-                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#7C3AED]" /> Consistência de personagem</li>
-                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#7C3AED]" /> Suporte a Omni reference</li>
-                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#7C3AED]" /> Melhor para UGC de produto</li>
+                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#7C3AED]" /> {t("seedanceEngine")}</li>
+                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#7C3AED]" /> {t("charConsistency")}</li>
+                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#7C3AED]" /> {t("omniSupport")}</li>
+                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#7C3AED]" /> {t("bestForProductUgc")}</li>
               </ul>
               <button
                 type="button"
@@ -2060,28 +2056,27 @@ export default function UGCPage() {
                 }}
                 className="mt-6 flex items-center justify-center gap-2 rounded-xl bg-white py-3 text-sm font-semibold text-black transition-colors hover:bg-white/90"
               >
-                Continue with Premium
+                {t("continuePremium")}
                 <ChevronRight className="h-4 w-4" />
               </button>
             </div>
             <div className="flex flex-col rounded-2xl border border-[#242428] bg-[#141416] p-6">
               <span className="mb-4 inline-flex w-fit items-center gap-1.5 rounded-full border border-[#2A2A2A] bg-white/5 px-2.5 py-1 text-xs font-semibold text-[#c9c9d1]">
-                <Sparkles className="h-3 w-3" /> Standard
-              </span>
+                <Sparkles className="h-3 w-3" />{t("standard")}</span>
               <h2 className="text-2xl font-bold text-white">Veo 3.1 x Kling UGC</h2>
-              <p className="mt-1 text-sm text-[#888888]">Ótimos resultados. Usa menos créditos.</p>
+              <p className="mt-1 text-sm text-[#888888]">{t("greatResultsLess")}</p>
               <ul className="mt-4 space-y-2 text-sm text-[#c9c9d1]">
                 <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#666666]" /> Motores Veo 3.1 + Kling 3.0</li>
-                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#666666]" /> Boa qualidade de movimento</li>
-                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#666666]" /> Mais econômico</li>
-                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#666666]" /> Bom para UGC geral</li>
+                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#666666]" /> {t("goodMotion")}</li>
+                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#666666]" /> {t("mostEconomical")}</li>
+                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#666666]" /> {t("goodForUgc")}</li>
               </ul>
               <button
                 type="button"
                 onClick={() => setView("avatar")}
                 className="mt-6 flex items-center justify-center gap-2 rounded-xl border border-[#2A2A2A] bg-white/5 py-3 text-sm font-semibold text-[#F5F5F5] transition-colors hover:bg-white/10"
               >
-                Continue with Standard
+                {t("continueStandard")}
                 <ChevronRight className="h-4 w-4" />
               </button>
             </div>
@@ -2092,7 +2087,7 @@ export default function UGCPage() {
               onClick={() => setView("list")}
               className="flex items-center gap-1.5 text-sm text-[#888888] hover:text-[#F5F5F5]"
             >
-              <ChevronRight className="h-4 w-4 rotate-180" /> Back
+              <ChevronRight className="h-4 w-4 rotate-180" /> {t("back")}
             </button>
           </div>
         </section>
@@ -2100,20 +2095,20 @@ export default function UGCPage() {
         <section className="space-y-6">
           <div className="flex items-center gap-2 text-sm text-[#888888]">
             <button type="button" onClick={() => setView("tier")} className="hover:text-[#F5F5F5]">
-              UGC Factory
+              {t("factory")}
             </button>
             <span>/</span>
             <span className="text-[#F5F5F5]">Veo 3.1 x Kling UGC</span>
           </div>
           <div className="py-2 text-center">
-            <h1 className="text-3xl font-bold text-white">Choose your avatar</h1>
+            <h1 className="text-3xl font-bold text-white">{t("chooseYourAvatar")}</h1>
             <p className="mt-2 text-sm text-[#888888]">
               Esse avatar será usado no conteúdo de{" "}
               <span className="text-[#A78BFA]">{selectedProject?.name || "seu projeto"}</span>.
             </p>
           </div>
           <div>
-            <h2 className="mb-3 text-sm font-semibold text-[#F5F5F5]">Premade Avatars</h2>
+            <h2 className="mb-3 text-sm font-semibold text-[#F5F5F5]">{t("premadeAvatars")}</h2>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
               {AVATARS.map((av) => (
                 <button
@@ -2156,15 +2151,13 @@ export default function UGCPage() {
                 }}
                 className="hover:text-[#F5F5F5]"
               >
-                UGC Factory
+                {t("factory")}
               </button>
               <span>/</span>
               <span className="text-[#F5F5F5]">
                 {selectedProject?.name || "Projeto"}
               </span>
-              <span className="rounded-full border border-[#7C3AED]/40 bg-[#7C3AED]/15 px-2 py-0.5 text-[10px] font-medium text-[#A78BFA]">
-                Premium
-              </span>
+              <span className="rounded-full border border-[#7C3AED]/40 bg-[#7C3AED]/15 px-2 py-0.5 text-[10px] font-medium text-[#A78BFA]">{t("premium")}</span>
             </div>
             <div className="inline-flex items-center gap-1 rounded-lg border border-[#242428] bg-[#141416] p-1">
               <button
@@ -2176,7 +2169,7 @@ export default function UGCPage() {
                     : "text-[#888888] hover:text-white"
                 }`}
               >
-                Video generation
+                {t("videoGeneration")}
               </button>
               <button
                 type="button"
@@ -2186,9 +2179,7 @@ export default function UGCPage() {
                     ? "bg-[#7C3AED] text-white"
                     : "text-[#888888] hover:text-white"
                 }`}
-              >
-                Project generations
-              </button>
+              >{t("projectGenerationsLc")}</button>
             </div>
           </div>
 
@@ -2196,7 +2187,7 @@ export default function UGCPage() {
             <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-6">
               <div className="flex items-center gap-2 text-[#888888]">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Carregando projeto...
+                {t("loadingProject")}
               </div>
             </div>
           ) : (
@@ -2204,9 +2195,9 @@ export default function UGCPage() {
               <section className="rounded-2xl border border-[#242428] bg-[#141416] p-6">
                 <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
                   <div className="max-w-xs">
-                    <h2 className="text-base font-semibold text-[#F5F5F5]">Como funciona</h2>
+                    <h2 className="text-base font-semibold text-[#F5F5F5]">{t("howItWorks")}</h2>
                     <p className="mt-1 text-sm text-[#888888]">
-                      Suba seu produto, mostre o interno, escolha um avatar — o resto é com a gente.
+                      {t("uploadYourProduct")}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center justify-center gap-3">
@@ -2214,21 +2205,21 @@ export default function UGCPage() {
                       <div className="flex h-32 w-24 items-center justify-center overflow-hidden rounded-xl bg-[#1A1A1A] ring-1 ring-white/5">
                         <Package className="h-6 w-6 text-[#7C3AED]/40" />
                       </div>
-                      <p className="mt-1.5 text-[11px] text-[#888888]">Produto</p>
+                      <p className="mt-1.5 text-[11px] text-[#888888]">{t("product")}</p>
                     </div>
                     <span className="text-lg text-[#666666]">+</span>
                     <div className="text-center">
                       <div className="flex h-32 w-24 items-center justify-center overflow-hidden rounded-xl bg-[#1A1A1A] ring-1 ring-white/5">
                         <Package className="h-6 w-6 text-[#7C3AED]/40" />
                       </div>
-                      <p className="mt-1.5 text-[11px] text-[#888888]">Interno</p>
+                      <p className="mt-1.5 text-[11px] text-[#888888]">{t("internal")}</p>
                     </div>
                     <span className="text-lg text-[#666666]">+</span>
                     <div className="text-center">
                       <div className="flex h-32 w-24 items-center justify-center overflow-hidden rounded-xl bg-[#1A1A1A] ring-1 ring-white/5">
                         <User className="h-6 w-6 text-[#7C3AED]/40" />
                       </div>
-                      <p className="mt-1.5 text-[11px] text-[#888888]">Avatar</p>
+                      <p className="mt-1.5 text-[11px] text-[#888888]">{t("avatar")}</p>
                     </div>
                     <span className="text-lg text-[#666666]">=</span>
                     <div className="text-center">
@@ -2236,7 +2227,7 @@ export default function UGCPage() {
                         <Sparkles className="h-6 w-6 text-[#A78BFA]" />
                       </div>
                       <p className="mt-1.5 flex items-center justify-center gap-1 text-[11px] text-[#A78BFA]">
-                        <Sparkles className="h-2.5 w-2.5" /> Resultado
+                        <Sparkles className="h-2.5 w-2.5" /> {t("result")}
                       </p>
                     </div>
                   </div>
@@ -2245,9 +2236,9 @@ export default function UGCPage() {
 
               <section className="space-y-4">
                 <div>
-                  <h2 className="text-lg font-semibold text-[#F5F5F5]">Choose video type</h2>
+                  <h2 className="text-lg font-semibold text-[#F5F5F5]">{t("chooseVideoType")}</h2>
                   <p className="text-sm text-[#888888]">
-                    Comece com um tipo de vídeo e personalize.
+                    {t("startWithType")}
                   </p>
                 </div>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
@@ -2261,7 +2252,7 @@ export default function UGCPage() {
                           setSelectedVideoType(vt.id);
                           setBrollDescription(vt.prompt);
                           setActiveTab("broll");
-                          toast.success("Prompt de exemplo aplicado no Describe.");
+                          toast.success(t("toastExamplePromptApplied"));
                         }}
                         className={`group relative aspect-[9/16] overflow-hidden rounded-xl bg-[#1A1A1A] text-left ring-1 transition-all duration-200 ${
                           active
@@ -2282,7 +2273,7 @@ export default function UGCPage() {
                               <Clapperboard className="h-6 w-6 text-[#A78BFA]" />
                             </span>
                             <span className="rounded-full bg-black/30 px-2.5 py-0.5 text-[10px] font-medium text-white/45">
-                              Demo em breve
+                              {t("demoSoon")}
                             </span>
                           </div>
                         )}
@@ -2318,7 +2309,7 @@ export default function UGCPage() {
                         <h1 className="text-xl font-semibold text-[#F5F5F5]">
                           {selectedProject.name}
                         </h1>
-                        <p className="mt-1 text-xs text-[#777777]">Clique para editar o nome</p>
+                        <p className="mt-1 text-xs text-[#777777]">{t("clickToEditName")}</p>
                       </button>
                     ) : (
                       <div className="flex items-center gap-2">
@@ -2330,9 +2321,7 @@ export default function UGCPage() {
                         <Button
                           onClick={() => void handleInlineRename()}
                           className="bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
-                        >
-                          Salvar
-                        </Button>
+                        >{t("save")}</Button>
                         <Button
                           variant="outline"
                           className="border-[#2A2A2A] text-[#F5F5F5]"
@@ -2340,16 +2329,14 @@ export default function UGCPage() {
                             setNameEditing(false);
                             setNameDraft(selectedProject.name);
                           }}
-                        >
-                          Cancelar
-                        </Button>
+                        >{t("cancel")}</Button>
                       </div>
                     )}
                   </div>
 
                   <div className="flex items-center gap-2">
                     <Badge className="bg-[#2A2A2A] text-[#BDBDBD]">
-                      {statusLabel(selectedProject.status)}
+                      {t(statusLabel(selectedProject.status))}
                     </Badge>
                     <Button
                       variant="outline"
@@ -2358,7 +2345,7 @@ export default function UGCPage() {
                       onClick={() => void handleDeleteProject()}
                     >
                       <Trash2 className="mr-1 h-3.5 w-3.5" />
-                      Excluir projeto
+                      {t("deleteProject")}
                     </Button>
                   </div>
                 </div>
@@ -2366,29 +2353,29 @@ export default function UGCPage() {
 
               {activeTab === "script" && (
                 <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-5">
-                  <h2 className="text-base font-semibold text-[#F5F5F5]">Script Writer</h2>
+                  <h2 className="text-base font-semibold text-[#F5F5F5]">{t("scriptWriter")}</h2>
 
                   <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_280px_auto]">
                     <div>
                       <label className="mb-1 block text-xs text-[#A3A3A3]">
-                        Descreva seu produto ou serviço
+                        {t("describeProduct")}
                       </label>
                       <Textarea
                         value={scriptDescription}
                         onChange={(e) => setScriptDescription(e.target.value)}
-                        placeholder="Ex.: Creme hidratante com vitamina C para pele oleosa, foco em brilho natural e absorção rápida"
+                        placeholder={t("phDescribeProduct")}
                         className="min-h-28 border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
                       />
                     </div>
 
                     <div>
-                      <label className="mb-1 block text-xs text-[#A3A3A3]">Produto relacionado (opcional)</label>
+                      <label className="mb-1 block text-xs text-[#A3A3A3]">{t("relatedProduct")}</label>
                       <select
                         value={scriptProductId}
                         onChange={(e) => setScriptProductId(e.target.value)}
                         className="h-10 w-full rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-2.5 text-sm text-[#F5F5F5] outline-none"
                       >
-                        <option value="">Nenhum</option>
+                        <option value="">{t("none")}</option>
                         {products.map((product) => (
                           <option key={product.id} value={product.id}>
                             {product.title}
@@ -2405,14 +2392,10 @@ export default function UGCPage() {
                       >
                         {scriptGenerating ? (
                           <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Gerando...
-                          </>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />{t("generating")}</>
                         ) : (
                           <>
-                            <Sparkles className="mr-2 h-4 w-4" />
-                            Gerar roteiro com IA ✨
-                          </>
+                            <Sparkles className="mr-2 h-4 w-4" />{t("genScriptAi")}</>
                         )}
                       </Button>
                     </div>
@@ -2420,7 +2403,7 @@ export default function UGCPage() {
 
                   {!hasScript ? (
                     <div className="mt-5 rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] p-5 text-sm text-[#888888]">
-                      Descreva seu produto acima e clique em Gerar roteiro para começar.
+                      {t("describeThenGenerate")}
                     </div>
                   ) : (
                     <>
@@ -2428,7 +2411,7 @@ export default function UGCPage() {
                         <div className="rounded-lg border border-[#7C3AED]/40 bg-[#7C3AED]/10 p-3">
                           <div className="mb-2 flex items-center justify-between">
                             <p className="text-sm font-semibold text-[#F5F5F5]">🎣 Hook</p>
-                            <Badge className="bg-[#7C3AED]/25 text-[#E9D5FF]">Gancho</Badge>
+                            <Badge className="bg-[#7C3AED]/25 text-[#E9D5FF]">{t("hook")}</Badge>
                           </div>
                           <Textarea
                             value={scriptDraft.hook.text}
@@ -2445,7 +2428,7 @@ export default function UGCPage() {
                         <div className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
                           <div className="mb-2 flex items-center justify-between">
                             <p className="text-sm font-semibold text-[#F5F5F5]">💬 Body 1</p>
-                            <Badge className="bg-[#2A2A2A] text-[#BDBDBD]">Benefício 1</Badge>
+                            <Badge className="bg-[#2A2A2A] text-[#BDBDBD]">{t("benefit1")}</Badge>
                           </div>
                           <Textarea
                             value={scriptDraft.body1.text}
@@ -2462,7 +2445,7 @@ export default function UGCPage() {
                         <div className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
                           <div className="mb-2 flex items-center justify-between">
                             <p className="text-sm font-semibold text-[#F5F5F5]">💬 Body 2</p>
-                            <Badge className="bg-[#2A2A2A] text-[#BDBDBD]">Benefício 2</Badge>
+                            <Badge className="bg-[#2A2A2A] text-[#BDBDBD]">{t("benefit2")}</Badge>
                           </div>
                           <Textarea
                             value={scriptDraft.body2.text}
@@ -2479,7 +2462,7 @@ export default function UGCPage() {
                         <div className="rounded-lg border border-[#16A34A]/35 bg-[#16A34A]/10 p-3">
                           <div className="mb-2 flex items-center justify-between">
                             <p className="text-sm font-semibold text-[#F5F5F5]">📢 CTA</p>
-                            <Badge className="bg-[#16A34A]/25 text-[#DCFCE7]">Ação</Badge>
+                            <Badge className="bg-[#16A34A]/25 text-[#DCFCE7]">{t("cta")}</Badge>
                           </div>
                           <Textarea
                             value={scriptDraft.cta.text}
@@ -2511,7 +2494,7 @@ export default function UGCPage() {
               {activeTab === "avatar" && selectedProject && (
                 <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-5">
                   <div className="flex items-center justify-between">
-                    <h2 className="text-base font-semibold text-[#F5F5F5]">Talking Avatar</h2>
+                    <h2 className="text-base font-semibold text-[#F5F5F5]">{t("talkingAvatar")}</h2>
                     {userCredits !== null && (
                       <span className="text-xs text-[#888888]">{userCredits} créditos disponíveis</span>
                     )}
@@ -2525,8 +2508,8 @@ export default function UGCPage() {
                         disabled={avatarUploading}
                         uploading={avatarUploading}
                         previewUrl={selectedProject.avatar_image_url || undefined}
-                        title={avatarUploading ? "Enviando retrato..." : "Retrato do avatar"}
-                        subtitle="Arraste e solte ou clique para selecionar"
+                        title={avatarUploading ? t("toastUploadingPortrait") : "Retrato do avatar"}
+                        subtitle={t("dropDefault")}
                         cta={selectedProject.avatar_image_url ? "Trocar retrato" : "Enviar retrato"}
                         onFileSelect={(file) => {
                           void handleAvatarPortraitUpload(file);
@@ -2541,7 +2524,7 @@ export default function UGCPage() {
                           void openInfluencerAvatarPicker();
                         }}
                       >
-                        Escolher de Influencers
+                        {t("chooseFromInfluencers")}
                       </Button>
                     </div>
                   </div>
@@ -2571,7 +2554,7 @@ export default function UGCPage() {
                             <div className="mb-2 flex items-center justify-between">
                               <p className="text-sm font-semibold text-[#F5F5F5]">{label}</p>
                               {isCompleted && !videoUrl && (
-                                <Badge className="bg-[#16A34A]/20 text-[#4ADE80]">Concluído</Badge>
+                                <Badge className="bg-[#16A34A]/20 text-[#4ADE80]">{t("completed")}</Badge>
                               )}
                             </div>
 
@@ -2590,9 +2573,7 @@ export default function UGCPage() {
                                   onClick={() => {
                                     openAvatarSegmentModal(key, label, scriptText);
                                   }}
-                                >
-                                  Re-gerar
-                                </Button>
+                                >{t("regenerate")}</Button>
                               </div>
                             ) : isProcessing ? (
                               <GenerationCard
@@ -2622,8 +2603,7 @@ export default function UGCPage() {
                                     openAvatarSegmentModal(key, label, scriptText);
                                   }}
                                 >
-                                  <Sparkles className="mr-1 h-3.5 w-3.5" />Generate
-                                </Button>
+                                  <Sparkles className="mr-1 h-3.5 w-3.5" />{t("generate")}</Button>
                               </>
                             )}
                           </div>
@@ -2644,18 +2624,16 @@ export default function UGCPage() {
                       variant="outline"
                       className="border-[#2A2A2A] text-[#F5F5F5]"
                       onClick={() => setActiveTab("broll")}
-                    >
-                      Ir para B-Roll →
-                    </Button>
+                    >{t("goToBroll")}</Button>
                   </div>
                 </div>
               )}
 
               {activeTab === "broll" && selectedProject && (
                 <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-5 space-y-4">
-                  <h2 className="text-base font-semibold text-[#F5F5F5]">Gerar vídeo</h2>
+                  <h2 className="text-base font-semibold text-[#F5F5F5]">{t("generateVideo")}</h2>
                   <div className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3 text-sm text-[#A3A3A3]">
-                    Gere quantos clipes precisar — mire 1 clipe por seção de 5–8s.
+                    {t("generateManyClips")}
                   </div>
 
                   <section className="rounded-2xl border border-[#242428] bg-[#141416] p-5">
@@ -2664,18 +2642,18 @@ export default function UGCPage() {
                         1
                       </span>
                       <div>
-                        <h3 className="text-sm font-semibold text-[#F5F5F5]">Upload Assets</h3>
+                        <h3 className="text-sm font-semibold text-[#F5F5F5]">{t("uploadAssets")}</h3>
                         <p className="text-xs text-[#888888]">
-                          Suba a imagem do seu produto. PNG ou JPG, fundo limpo funciona melhor.
+                          {t("uploadProductClean")}
                         </p>
                       </div>
                     </div>
                     <div className="grid gap-3 md:grid-cols-3">
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <label className="text-xs text-[#A3A3A3]">Product Image</label>
+                          <label className="text-xs text-[#A3A3A3]">{t("productImage")}</label>
                           <span className="rounded-full bg-[#7C3AED]/15 px-2 py-0.5 text-[10px] font-medium text-[#A78BFA]">
-                            Obrigatório
+                            {t("required")}
                           </span>
                         </div>
                         <ImageDropzone
@@ -2683,8 +2661,8 @@ export default function UGCPage() {
                           disabled={brollProductUploading}
                           uploading={brollProductUploading}
                           previewUrl={brollProductImageUrl || undefined}
-                          title={brollProductUploading ? "Enviando imagem..." : "Imagem do produto"}
-                          subtitle="Arraste e solte ou clique para selecionar"
+                          title={brollProductUploading ? t("toastUploadingImage") : "Imagem do produto"}
+                          subtitle={t("dropDefault")}
                           cta={brollProductImageUrl ? "Trocar imagem" : "Enviar imagem"}
                           onFileSelect={(file) => {
                             void handleBrollProductImageUpload(file);
@@ -2693,9 +2671,9 @@ export default function UGCPage() {
                       </div>
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <label className="text-xs text-[#A3A3A3]">Interno</label>
+                          <label className="text-xs text-[#A3A3A3]">{t("internal")}</label>
                           <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-medium text-[#888888]">
-                            Opcional
+                            {t("optional")}
                           </span>
                         </div>
                         <ImageDropzone
@@ -2703,8 +2681,8 @@ export default function UGCPage() {
                           disabled={brollInsideUploading}
                           uploading={brollInsideUploading}
                           previewUrl={brollInsideImageUrl || undefined}
-                          title={brollInsideUploading ? "Enviando imagem..." : "Imagem do interno / uso"}
-                          subtitle="Arraste e solte ou clique para selecionar"
+                          title={brollInsideUploading ? t("toastUploadingImage") : "Imagem do interno / uso"}
+                          subtitle={t("dropDefault")}
                           cta={brollInsideImageUrl ? "Trocar imagem" : "Enviar imagem"}
                           onFileSelect={(file) => {
                             void handleBrollRefUpload(file, setBrollInsideUploading, setBrollInsideImageUrl, "imagem do interno");
@@ -2713,9 +2691,9 @@ export default function UGCPage() {
                       </div>
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <label className="text-xs text-[#A3A3A3]">Avatar</label>
+                          <label className="text-xs text-[#A3A3A3]">{t("avatar")}</label>
                           <span className="rounded-full bg-[#7C3AED]/15 px-2 py-0.5 text-[10px] font-medium text-[#A78BFA]">
-                            Obrigatório
+                            {t("required")}
                           </span>
                         </div>
                         <ImageDropzone
@@ -2723,8 +2701,8 @@ export default function UGCPage() {
                           disabled={brollAvatarUploading}
                           uploading={brollAvatarUploading}
                           previewUrl={brollAvatarImageUrl || undefined}
-                          title={brollAvatarUploading ? "Enviando imagem..." : "Imagem do avatar"}
-                          subtitle="Arraste e solte ou clique para selecionar"
+                          title={brollAvatarUploading ? t("toastUploadingImage") : "Imagem do avatar"}
+                          subtitle={t("dropDefault")}
                           cta={brollAvatarImageUrl ? "Trocar imagem" : "Enviar imagem"}
                           onFileSelect={(file) => {
                             void handleBrollRefUpload(file, setBrollAvatarUploading, setBrollAvatarImageUrl, "imagem do avatar");
@@ -2740,15 +2718,15 @@ export default function UGCPage() {
                         2
                       </span>
                       <div>
-                        <h3 className="text-sm font-semibold text-[#F5F5F5]">Configuration</h3>
+                        <h3 className="text-sm font-semibold text-[#F5F5F5]">{t("configuration")}</h3>
                         <p className="text-xs text-[#888888]">
-                          Ângulo de câmera, duração e áudio do clipe.
+                          {t("clipConfig")}
                         </p>
                       </div>
                     </div>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
-                      <label className="mb-1.5 block text-xs text-[#A3A3A3]">Aspect ratio</label>
+                      <label className="mb-1.5 block text-xs text-[#A3A3A3]">{t("aspectRatio")}</label>
                       <select
                         value={brollAspect}
                         onChange={(e) => setBrollAspect(e.target.value)}
@@ -2760,7 +2738,7 @@ export default function UGCPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="mb-1.5 block text-xs text-[#A3A3A3]">Resolution</label>
+                      <label className="mb-1.5 block text-xs text-[#A3A3A3]">{t("resolution")}</label>
                       <select
                         value={brollResolution}
                         onChange={(e) => setBrollResolution(e.target.value)}
@@ -2801,7 +2779,7 @@ export default function UGCPage() {
                             }`}
                           />
                         </button>
-                        Audio On
+                        {t("audioOn")}
                       </label>
                     </div>
                   </div>
@@ -2813,34 +2791,34 @@ export default function UGCPage() {
                         3
                       </span>
                       <div>
-                        <h3 className="text-sm font-semibold text-[#F5F5F5]">Describe Your Video</h3>
+                        <h3 className="text-sm font-semibold text-[#F5F5F5]">{t("describeYourVideo")}</h3>
                         <p className="text-xs text-[#888888]">
-                          Descreva a cena e, se quiser, o que a pessoa fala no vídeo.
+                          {t("describeSceneAndSpeech")}
                         </p>
                       </div>
                     </div>
                     <div className="grid gap-3 md:grid-cols-2">
                       <div>
                         <div className="mb-1 flex items-center justify-between">
-                          <label className="text-xs text-[#A3A3A3]">Descreva a cena</label>
-                          <span className="text-[10px] text-[#666666]">Cenário, ação e clima</span>
+                          <label className="text-xs text-[#A3A3A3]">{t("describeScene")}</label>
+                          <span className="text-[10px] text-[#666666]">{t("sceneActionMood")}</span>
                         </div>
                         <Textarea
                           value={brollDescription}
                           onChange={(e) => setBrollDescription(e.target.value)}
-                          placeholder="Ex.: pessoa na cozinha segurando o produto, luz natural da manhã, close no rótulo..."
+                          placeholder={t("phBrollScene")}
                           className="min-h-[110px] resize-none border-[#2A2A2A] bg-[#1A1A1A] text-sm text-[#F5F5F5] placeholder:text-[#5a5a63]"
                         />
                       </div>
                       <div>
                         <div className="mb-1 flex items-center justify-between">
-                          <label className="text-xs text-[#A3A3A3]">Texto de fala <span className="text-[#666666]">(opcional)</span></label>
-                          <span className="text-[10px] text-[#666666]">O que a pessoa diz</span>
+                          <label className="text-xs text-[#A3A3A3]">{t("speechText")} <span className="text-[#666666]">(opcional)</span></label>
+                          <span className="text-[10px] text-[#666666]">{t("whatPersonSays")}</span>
                         </div>
                         <Textarea
                           value={brollSpeech}
                           onChange={(e) => setBrollSpeech(e.target.value)}
-                          placeholder="Ex.: 'esse produto mudou minha rotina...' (até ~40 palavras)"
+                          placeholder={t("phBrollSpeech")}
                           className="min-h-[110px] resize-none border-[#2A2A2A] bg-[#1A1A1A] text-sm text-[#F5F5F5] placeholder:text-[#5a5a63]"
                         />
                       </div>
@@ -2853,15 +2831,15 @@ export default function UGCPage() {
                         4
                       </span>
                       <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-semibold text-[#F5F5F5]">Extend a Video</h3>
+                        <h3 className="text-sm font-semibold text-[#F5F5F5]">{t("extendAVideo")}</h3>
                         <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-medium text-[#888888]">
-                          Opcional
+                          {t("optional")}
                         </span>
                       </div>
                     </div>
                     <div className="grid gap-3 md:grid-cols-2">
                       <div className="space-y-2">
-                        <label className="text-xs text-[#A3A3A3]">Vídeo</label>
+                        <label className="text-xs text-[#A3A3A3]">{t("video")}</label>
                         {extendFrameUrl ? (
                           <div className="space-y-2">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -2871,11 +2849,11 @@ export default function UGCPage() {
                               className="max-h-[180px] w-full rounded-xl object-contain ring-1 ring-white/10"
                             />
                             <p className="text-[11px] text-[#888888]">
-                              Último frame capturado — será o início da continuação.
+                              {t("lastFrameCapturedNote")}
                             </p>
                             {extendAudioUrl && (
                               <p className="text-[11px] text-[#A78BFA]">
-                                Áudio de referência capturado — a voz será usada para manter o tom.
+                                {t("audioRefCaptured")}
                               </p>
                             )}
                             <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-1.5 text-xs text-[#F5F5F5] hover:bg-[#202020]">
@@ -2889,7 +2867,7 @@ export default function UGCPage() {
                                   e.target.value = "";
                                 }}
                               />
-                              Trocar vídeo
+                              {t("swapVideo")}
                             </label>
                           </div>
                         ) : (
@@ -2907,15 +2885,15 @@ export default function UGCPage() {
                             {extendExtracting ? (
                               <>
                                 <Loader2 className="h-5 w-5 animate-spin text-[#A78BFA]" />
-                                <p className="text-xs text-[#888888]">Extraindo o último frame...</p>
+                                <p className="text-xs text-[#888888]">{t("toastExtractingFrame")}</p>
                               </>
                             ) : (
                               <>
                                 <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10">
                                   <Clapperboard className="h-5 w-5 text-[#555555]" />
                                 </span>
-                                <p className="text-xs text-[#888888]">Arraste ou clique — MP4 / MOV</p>
-                                <span className="text-[10px] text-[#666666]">Pegamos o último frame automaticamente</span>
+                                <p className="text-xs text-[#888888]">{t("dragMp4Mov")}</p>
+                                <span className="text-[10px] text-[#666666]">{t("lastFrameAuto")}</span>
                               </>
                             )}
                           </label>
@@ -2923,20 +2901,20 @@ export default function UGCPage() {
                       </div>
                       <div className="space-y-3">
                         <div>
-                          <label className="mb-1 block text-xs text-[#A3A3A3]">Descreva a cena (continuação)</label>
+                          <label className="mb-1 block text-xs text-[#A3A3A3]">{t("describeSceneCont")}</label>
                           <Textarea
                             value={extendPrompt}
                             onChange={(e) => setExtendPrompt(e.target.value)}
-                            placeholder="Ex.: continue o vídeo — a pessoa pega o produto e sorri..."
+                            placeholder={t("phExtendScene")}
                             className="min-h-[70px] resize-none border-[#2A2A2A] bg-[#1A1A1A] text-sm text-[#F5F5F5] placeholder:text-[#5a5a63]"
                           />
                         </div>
                         <div>
-                          <label className="mb-1 block text-xs text-[#A3A3A3]">Texto de fala <span className="text-[#666666]">(opcional)</span></label>
+                          <label className="mb-1 block text-xs text-[#A3A3A3]">{t("speechText")} <span className="text-[#666666]">(opcional)</span></label>
                           <Textarea
                             value={extendSpeech}
                             onChange={(e) => setExtendSpeech(e.target.value)}
-                            placeholder="O que a pessoa diz na continuação..."
+                            placeholder={t("phExtendSpeech")}
                             className="min-h-[70px] resize-none border-[#2A2A2A] bg-[#1A1A1A] text-sm text-[#F5F5F5] placeholder:text-[#5a5a63]"
                           />
                         </div>
@@ -2973,7 +2951,7 @@ export default function UGCPage() {
 
                     {brollInsufficientCredits && (
                       <p className="text-xs text-[#FCA5A5]">
-                        Créditos insuficientes para gerar o vídeo.
+                        {t("creditsInsufficientVideo")}
                       </p>
                     )}
                   </div>
@@ -2982,15 +2960,15 @@ export default function UGCPage() {
                     <div className="flex items-start gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
                       <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#60A5FA]" />
                       <div>
-                        <p className="text-xs font-medium text-[#F5F5F5]">A IA pode errar</p>
-                        <p className="text-[11px] text-[#888888]">Resultados variam. Cada vídeo tem cerca de 15s.</p>
+                        <p className="text-xs font-medium text-[#F5F5F5]">{t("aiCanErr")}</p>
+                        <p className="text-[11px] text-[#888888]">{t("resultsVary15s")}</p>
                       </div>
                     </div>
                     <div className="flex items-start gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
                       <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#FBBF24]" />
                       <div>
-                        <p className="text-xs font-medium text-[#F5F5F5]">Uso alto</p>
-                        <p className="text-[11px] text-[#888888]">Em picos, a espera pode aumentar.</p>
+                        <p className="text-xs font-medium text-[#F5F5F5]">{t("highUse")}</p>
+                        <p className="text-[11px] text-[#888888]">{t("peakWaitNote")}</p>
                       </div>
                     </div>
                   </div>
@@ -3000,13 +2978,13 @@ export default function UGCPage() {
 
               {activeTab === "generations" && selectedProject && (
                 <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-5">
-                  <h2 className="text-base font-semibold text-[#F5F5F5]">Project Generations</h2>
+                  <h2 className="text-base font-semibold text-[#F5F5F5]">{t("projectGenerations")}</h2>
 
                   {completedProjectGenerations.length === 0 ? (
                     <div className="mt-4 rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] px-4">
                       <EmptyState
                         icon={Sparkles}
-                        title="Nenhum clipe finalizado ainda"
+                        title={t("noFinishedClip")}
                         description="Gere seu primeiro segmento de avatar ou um lote de B-Roll para preencher a galeria."
                       />
                     </div>
@@ -3025,9 +3003,7 @@ export default function UGCPage() {
                             rel="noreferrer"
                             className="mt-2 inline-flex w-full items-center justify-center rounded-md border border-[#2A2A2A] px-3 py-2 text-sm text-[#F5F5F5] hover:bg-[#202020]"
                             download
-                          >
-                            Download
-                          </a>
+                          >{t("download")}</a>
                         </div>
                       ))}
                     </div>
@@ -3044,9 +3020,9 @@ export default function UGCPage() {
           <div className="w-full max-w-3xl rounded-xl border border-[#2A2A2A] bg-[#131313] p-5 max-h-[88vh] overflow-y-auto">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h3 className="text-lg font-semibold text-[#F5F5F5]">Escolher de Influencers</h3>
+                <h3 className="text-lg font-semibold text-[#F5F5F5]">{t("chooseFromInfluencers")}</h3>
                 <p className="mt-1 text-sm text-[#888888]">
-                  Selecione uma persona ativa para usar no Locked Avatar.
+                  {t("noActivePersonaLocked")}
                 </p>
               </div>
               <Button
@@ -3054,27 +3030,25 @@ export default function UGCPage() {
                 className="border-[#2A2A2A] text-[#E5E5E5]"
                 onClick={() => setAvatarPickerOpen(false)}
                 disabled={Boolean(avatarPickerSavingId)}
-              >
-                Fechar
-              </Button>
+              >{t("close")}</Button>
             </div>
 
             {avatarPickerLoading ? (
               <div className="mt-4 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-6 text-center text-[#A3A3A3]">
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
-                <p className="mt-2 text-sm">Carregando personas...</p>
+                <p className="mt-2 text-sm">{t("loadingPersonas")}</p>
               </div>
             ) : influencerAvatars.length === 0 ? (
               <div className="mt-4 rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] p-6 text-center">
                 <p className="text-sm text-[#BDBDBD]">
-                  Nenhuma persona ativa — crie uma no Influencer Studio.
+                  {t("noActivePersonaCreate")}
                 </p>
                 <Link
                   href="/influencer"
                   className="mt-2 inline-block text-sm text-[#A78BFA] hover:underline"
                   onClick={() => setAvatarPickerOpen(false)}
                 >
-                  Ir para Influencer Studio
+                  {t("goToInfluencerStudio")}
                 </Link>
               </div>
             ) : (
@@ -3100,7 +3074,7 @@ export default function UGCPage() {
                     <p className="mt-2 line-clamp-1 text-sm font-semibold text-[#F5F5F5]">{inf.name}</p>
                     <p className="line-clamp-1 text-xs text-[#8B8B8B]">{inf.handle || "@sem_handle"}</p>
                     {avatarPickerSavingId === inf.id && (
-                      <p className="mt-2 text-xs text-[#A78BFA]">Aplicando...</p>
+                      <p className="mt-2 text-xs text-[#A78BFA]">{t("applying")}</p>
                     )}
                   </button>
                 ))}
@@ -3114,12 +3088,12 @@ export default function UGCPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-lg rounded-xl border border-[#2A2A2A] bg-[#131313] p-5 overflow-y-auto max-h-[90vh]">
             <h3 className="text-lg font-semibold text-[#F5F5F5]">Generate: {avatarModal.label}</h3>
-            <p className="mt-1 text-sm text-[#888888]">Configure o segmento de talking avatar.</p>
+            <p className="mt-1 text-sm text-[#888888]">{t("configureSegment")}</p>
 
             <div className="mt-4 space-y-4">
               <div>
                 <div className="mb-1 flex items-center justify-between">
-                  <label className="text-xs text-[#A3A3A3]">Fala do avatar</label>
+                  <label className="text-xs text-[#A3A3A3]">{t("avatarSpeech")}</label>
                   {(() => {
                     const words = avatarForm.text.trim() ? avatarForm.text.trim().split(/\s+/).length : 0;
                     const rec = Math.round(avatarForm.duration * 2.75);
@@ -3137,13 +3111,13 @@ export default function UGCPage() {
                 <Textarea
                   value={avatarForm.text}
                   onChange={(e) => setAvatarForm(prev => ({ ...prev, text: e.target.value }))}
-                  placeholder="Digite o que o avatar vai dizer..."
+                  placeholder={t("phAvatarSpeech")}
                   className="min-h-24 border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-xs text-[#A3A3A3]">Accent</label>
+                <label className="mb-1 block text-xs text-[#A3A3A3]">{t("accent")}</label>
                 <select
                   value={avatarForm.accent}
                   onChange={(e) => setAvatarForm(prev => ({ ...prev, accent: e.target.value }))}
@@ -3156,7 +3130,7 @@ export default function UGCPage() {
               </div>
 
               <div>
-                <label className="mb-2 block text-xs text-[#A3A3A3]">Duração</label>
+                <label className="mb-2 block text-xs text-[#A3A3A3]">{t("duration")}</label>
                 <div className="flex gap-2">
                   {([4, 6, 8] as const).map((d) => (
                     <button
@@ -3173,11 +3147,11 @@ export default function UGCPage() {
                     </button>
                   ))}
                 </div>
-                <p className="mt-1 text-xs text-[#777777]">⚠ a duração final segue a fala do áudio</p>
+                <p className="mt-1 text-xs text-[#777777]">{t("audioDurNote")}</p>
               </div>
 
               <div>
-                <label className="mb-2 block text-xs text-[#A3A3A3]">Qualidade</label>
+                <label className="mb-2 block text-xs text-[#A3A3A3]">{t("quality")}</label>
                 <div className="flex gap-2">
                   {([
                     { key: "720p", label: "720p · std quality" },
@@ -3206,7 +3180,7 @@ export default function UGCPage() {
               </div>
 
               <div>
-                <label className="mb-2 block text-xs text-[#A3A3A3]">Formato</label>
+                <label className="mb-2 block text-xs text-[#A3A3A3]">{t("format")}</label>
                 <div className="flex gap-2">
                   {(["9:16", "1:1", "16:9"] as AvatarFormat[]).map((format) => (
                     <button
@@ -3244,13 +3218,13 @@ export default function UGCPage() {
                     }`}
                   />
                 </button>
-                <span className="text-sm text-[#F5F5F5]">Multiple Camera Angles</span>
+                <span className="text-sm text-[#F5F5F5]">{t("multipleCameraAngles")}</span>
               </div>
 
               <div>
                 <label className="mb-1 block text-xs text-[#A3A3A3]">
                   Product Image{" "}
-                  <span className="text-[#777777]">(opcional — composição em breve)</span>
+                  <span className="text-[#777777]">{t("compositionSoon")}</span>
                 </label>
                 <div className="space-y-2">
                   <ImageDropzone
@@ -3263,10 +3237,10 @@ export default function UGCPage() {
                     }
                     title={
                       avatarForm.productImageUploading
-                        ? "Enviando imagem do produto..."
+                        ? t("toastUploadingProductImage")
                         : "Imagem do produto"
                     }
-                    subtitle="Arraste e solte ou clique para selecionar"
+                    subtitle={t("dropDefault")}
                     cta={avatarForm.productImageUrl ? "Trocar imagem" : "Enviar imagem"}
                     onFileSelect={(file) => {
                       void handleProductImageUpload(file);
@@ -3294,7 +3268,7 @@ export default function UGCPage() {
                     onClick={() => void handleGenerateSegment()}
                   >
                     {avatarGenerating ? (
-                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Gerando...</>
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t("generating")}</>
                     ) : insufficient ? (
                       "Créditos esgotados"
                     ) : (
@@ -3306,7 +3280,7 @@ export default function UGCPage() {
             </div>
 
             <p className="mt-2 text-center text-xs text-[#777777]">
-              Results may vary — you might need to trim or re-generate for the perfect take.
+              {t("resultsMayVary")}
             </p>
 
             <div className="mt-4 flex justify-end">
@@ -3315,9 +3289,7 @@ export default function UGCPage() {
                 className="border-[#2A2A2A] text-[#E5E5E5]"
                 disabled={avatarGenerating}
                 onClick={() => setAvatarModal(null)}
-              >
-                Cancelar
-              </Button>
+              >{t("cancel")}</Button>
             </div>
           </div>
         </div>
@@ -3330,21 +3302,21 @@ export default function UGCPage() {
               <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-[#7C3AED]/15">
                 <Clapperboard className="h-6 w-6 text-[#A78BFA]" />
               </div>
-              <h3 className="text-xl font-semibold text-white">New UGC Project</h3>
+              <h3 className="text-xl font-semibold text-white">{t("newUgcProject")}</h3>
               <p className="mt-1 text-sm text-[#888888]">
-                Crie um projeto para organizar roteiro, avatar e b-roll.
+                {t("createProjectOrganize")}
               </p>
             </div>
 
             <div className="space-y-3">
               <div>
-                <label className="mb-1 block text-xs text-[#A3A3A3]">Nome do projeto *</label>
+                <label className="mb-1 block text-xs text-[#A3A3A3]">{t("projectNameReq")}</label>
                 <Input
                   value={projectForm.name}
                   onChange={(e) =>
                     setProjectForm((prev) => ({ ...prev, name: e.target.value }))
                   }
-                  placeholder="Ex.: UGC Hidratante Vitamina C"
+                  placeholder={t("phProjectName")}
                   className="border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
                 />
               </div>
@@ -3362,9 +3334,7 @@ export default function UGCPage() {
                   }
                 }}
                 disabled={projectSaving}
-              >
-                Cancelar
-              </Button>
+              >{t("cancel")}</Button>
               <Button
                 className="flex-1 bg-white text-black hover:bg-white/90"
                 onClick={() => void handleCreateProject()}
@@ -3381,23 +3351,23 @@ export default function UGCPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-lg rounded-xl border border-[#2A2A2A] bg-[#131313] p-5">
             <h3 className="text-lg font-semibold text-[#F5F5F5]">
-              {editing ? "Editar produto" : "Adicionar produto"}
+              {editing ? t("editProductTitle") : t("addProduct")}
             </h3>
             <p className="mt-1 text-sm text-[#888888]">
-              Faça upload da imagem e preencha os dados do produto.
+              {t("uploadImageFillData")}
             </p>
 
             <div className="mt-4 space-y-3">
               <div>
-                <label className="mb-1 block text-xs text-[#A3A3A3]">Imagem do produto *</label>
+                <label className="mb-1 block text-xs text-[#A3A3A3]">{t("productImageReq")}</label>
                 <ImageDropzone
                   id="ugc-product-drop"
                   disabled={uploading || saving}
                   uploading={uploading}
                   previewUrl={form.imageUrl || undefined}
                   onRemovePreview={() => setForm((prev) => ({ ...prev, imageUrl: "" }))}
-                  title={uploading ? "Enviando imagem..." : "Imagem do produto"}
-                  subtitle="Arraste e solte ou clique para selecionar"
+                  title={uploading ? t("toastUploadingImage") : "Imagem do produto"}
+                  subtitle={t("dropDefault")}
                   cta={form.imageUrl ? "Trocar imagem" : "Enviar imagem"}
                   onFileSelect={(file) => {
                     void handleUploadImage(file);
@@ -3406,25 +3376,25 @@ export default function UGCPage() {
               </div>
 
               <div>
-                <label className="mb-1 block text-xs text-[#A3A3A3]">Título *</label>
+                <label className="mb-1 block text-xs text-[#A3A3A3]">{t("title")}</label>
                 <Input
                   value={form.title}
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, title: event.target.value }))
                   }
-                  placeholder="Ex.: Hidratante Facial Glow"
+                  placeholder={t("phProductTitle")}
                   className="border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-xs text-[#A3A3A3]">Descrição</label>
+                <label className="mb-1 block text-xs text-[#A3A3A3]">{t("description")}</label>
                 <Textarea
                   value={form.description}
                   onChange={(event) =>
                     setForm((prev) => ({ ...prev, description: event.target.value }))
                   }
-                  placeholder="Ex.: Benefícios, diferenciais e público-alvo"
+                  placeholder={t("phProductDesc")}
                   className="min-h-24 border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
                 />
               </div>
@@ -3436,9 +3406,7 @@ export default function UGCPage() {
                 className="border-[#2A2A2A] text-[#E5E5E5]"
                 onClick={closeEditor}
                 disabled={saving || uploading}
-              >
-                Cancelar
-              </Button>
+              >{t("cancel")}</Button>
               <Button
                 className="bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
                 onClick={() => void handleSaveProduct()}
@@ -3454,9 +3422,9 @@ export default function UGCPage() {
       {confirmDeleteOpen && pendingDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-md rounded-xl border border-[#2A2A2A] bg-[#131313] p-5">
-            <h3 className="text-lg font-semibold text-[#F5F5F5]">Excluir produto</h3>
+            <h3 className="text-lg font-semibold text-[#F5F5F5]">{t("deleteProduct")}</h3>
             <p className="mt-1 text-sm text-[#888888]">
-              Tem certeza que deseja excluir <strong>{pendingDelete.title}</strong>? Esta ação não pode ser desfeita.
+              {t("confirmDeleteProduct")} <strong>{pendingDelete.title}</strong>? {t("cannotUndo")}
             </p>
 
             <div className="mt-5 flex justify-end gap-2">
@@ -3465,9 +3433,7 @@ export default function UGCPage() {
                 className="border-[#2A2A2A] text-[#E5E5E5]"
                 onClick={closeDeleteDialog}
                 disabled={workingId === pendingDelete.id}
-              >
-                Cancelar
-              </Button>
+              >{t("cancel")}</Button>
               <Button
                 variant="outline"
                 className="border-[#3A1F1F] text-[#FCA5A5] hover:bg-[#2A1313]"
