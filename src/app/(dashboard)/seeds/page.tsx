@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { Package, Pencil, Plus, Sparkles, Sprout, Trash2, Upload, User, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -40,53 +41,31 @@ function emptyForm(): SeedFormState {
   };
 }
 
-function formatDate(iso: string | null): string {
-  if (!iso) return "Nunca usado";
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(iso));
-}
-
 const SEED_TYPES = [
-  { id: "character", label: "Character", desc: "Uma pessoa ou persona", Icon: User },
-  { id: "product", label: "Product", desc: "Um objeto ou item", Icon: Package },
-  { id: "custom", label: "Custom", desc: "Um estilo ou cena", Icon: Sparkles },
+  { id: "character", labelKey: "typeCharacter", descKey: "typeCharacterDesc", Icon: User },
+  { id: "product", labelKey: "typeProduct", descKey: "typeProductDesc", Icon: Package },
+  { id: "custom", labelKey: "typeCustom", descKey: "typeCustomDesc", Icon: Sparkles },
 ] as const;
 type SeedType = (typeof SEED_TYPES)[number]["id"];
 
-const SEED_TYPE_COPY: Record<SeedType, { title: string; sub: string; ph: string; details: string }> = {
-  character: {
-    title: "Criar personagem",
-    sub: "Adicione fotos de referência para a IA saber como a pessoa é.",
-    ph: "ex.: Sarah, CyberNova, Capitão Rex",
-    details: "Detalhes extras: roupas, acessórios, tatuagens, maquiagem, vibe...",
-  },
-  product: {
-    title: "Criar produto",
-    sub: "Adicione fotos de referência para a IA saber como o produto é.",
-    ph: "ex.: LuxyBottle, GlowSerum, SkyPod",
-    details: "Detalhes extras: materiais, cores, acabamento, tamanho, features...",
-  },
-  custom: {
-    title: "Criar asset custom",
-    sub: "Adicione fotos de referência para a IA saber como é.",
-    ph: "ex.: Buddy, MinhaLogo, CasaDosSonhos",
-    details: "Detalhes extras: forma, marcas, traços característicos, vibe...",
-  },
+const SEED_TYPE_COPY: Record<
+  SeedType,
+  { titleKey: string; subKey: string; phKey: string; detailsKey: string }
+> = {
+  character: { titleKey: "copyCharTitle", subKey: "copyCharSub", phKey: "copyCharPh", detailsKey: "copyCharDetails" },
+  product: { titleKey: "copyProdTitle", subKey: "copyProdSub", phKey: "copyProdPh", detailsKey: "copyProdDetails" },
+  custom: { titleKey: "copyCustomTitle", subKey: "copyCustomSub", phKey: "copyCustomPh", detailsKey: "copyCustomDetails" },
 };
 
 // Capas mockadas — cole a URL da imagem depois; "" mostra o placeholder.
-const PRESET_TEMPLATES: { id: SeedType; title: string; desc: string; image: string }[] = [
-  { id: "character", title: "Influencer", desc: "Treine uma pessoa de IA consistente — influencer, porta-voz ou modelo.", image: "" },
-  { id: "product", title: "Produto", desc: "Treine seu produto para a IA renderizá-lo com precisão toda vez.", image: "" },
-  { id: "custom", title: "Custom", desc: "Treine qualquer coisa: pets, logos, veículos, estilos de arte e mais.", image: "" },
+const PRESET_TEMPLATES: { id: SeedType; titleKey: string; descKey: string; image: string }[] = [
+  { id: "character", titleKey: "presetCharTitle", descKey: "presetCharDesc", image: "" },
+  { id: "product", titleKey: "presetProdTitle", descKey: "presetProdDesc", image: "" },
+  { id: "custom", titleKey: "presetCustomTitle", descKey: "presetCustomDesc", image: "" },
 ];
 
 export default function SeedsPage() {
+  const t = useTranslations("seeds");
   const router = useRouter();
   const setReferenceImageUrl = useStudioStore((s) => s.setReferenceImageUrl);
   const setActiveTab = useStudioStore((s) => s.setActiveTab);
@@ -102,6 +81,20 @@ export default function SeedsPage() {
   const [seedType, setSeedType] = useState<SeedType>("character");
   const [seedFiles, setSeedFiles] = useState<{ file: File; url: string }[]>([]);
 
+  const formatDate = useCallback(
+    (iso: string | null): string => {
+      if (!iso) return t("neverUsed");
+      return new Intl.DateTimeFormat("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date(iso));
+    },
+    [t]
+  );
+
   const loadSeeds = useCallback(async () => {
     setLoading(true);
     try {
@@ -111,19 +104,19 @@ export default function SeedsPage() {
       if (!res.ok) {
         if (res.status === 401) {
           setSeeds([]);
-          toast.error("Faça login para ver seus seeds.");
+          toast.error(t("toastLoginRequired"));
           return;
         }
-        throw new Error(data?.error || "Falha ao carregar seeds.");
+        throw new Error(data?.error || t("toastLoadFail"));
       }
 
       setSeeds(Array.isArray(data?.seeds) ? data.seeds : []);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao carregar seeds.");
+      toast.error(err instanceof Error ? err.message : t("toastLoadError"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void loadSeeds();
@@ -190,7 +183,7 @@ export default function SeedsPage() {
   async function handleSave() {
     const name = form.name.trim();
     if (!name) {
-      toast.error("O nome do seed é obrigatório.");
+      toast.error(t("toastNameRequired"));
       return;
     }
 
@@ -214,11 +207,11 @@ export default function SeedsPage() {
         const data = await res.json().catch(() => null);
 
         if (!res.ok) {
-          throw new Error(data?.error || "Erro ao atualizar seed.");
+          throw new Error(data?.error || t("toastUpdateError"));
         }
 
         setSeeds((prev) => prev.map((s) => (s.id === editing.id ? data.seed : s)));
-        toast.success("Seed atualizada com sucesso.");
+        toast.success(t("toastUpdated"));
       } else {
         let previewUrl: string | null = null;
         if (seedFiles.length > 0) {
@@ -245,23 +238,23 @@ export default function SeedsPage() {
         const data = await res.json().catch(() => null);
 
         if (!res.ok) {
-          throw new Error(data?.error || "Erro ao criar seed.");
+          throw new Error(data?.error || t("toastCreateError"));
         }
 
         setSeeds((prev) => [data.seed, ...prev]);
-        toast.success("Seed criada com sucesso.");
+        toast.success(t("toastCreated"));
       }
 
       closeModal();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Falha ao salvar seed.");
+      toast.error(err instanceof Error ? err.message : t("toastSaveFail"));
     } finally {
       setSaving(false);
     }
   }
 
   async function handleDelete(seed: SeedItem) {
-    const confirmed = window.confirm(`Excluir o seed "${seed.name || "Sem nome"}"?`);
+    const confirmed = window.confirm(t("confirmDelete", { name: seed.name || t("confirmUnnamed") }));
     if (!confirmed) return;
 
     setWorkingId(seed.id);
@@ -269,12 +262,12 @@ export default function SeedsPage() {
       const res = await fetch(`/api/seeds/${seed.id}`, { method: "DELETE" });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        throw new Error(data?.error || "Erro ao excluir seed.");
+        throw new Error(data?.error || t("toastDeleteError"));
       }
       setSeeds((prev) => prev.filter((s) => s.id !== seed.id));
-      toast.success("Seed excluída.");
+      toast.success(t("toastDeleted"));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Falha ao excluir seed.");
+      toast.error(err instanceof Error ? err.message : t("toastDeleteFail"));
     } finally {
       setWorkingId(null);
     }
@@ -282,7 +275,7 @@ export default function SeedsPage() {
 
   async function handleUse(seed: SeedItem) {
     if (!seed.preview_url) {
-      toast.error("Este seed não possui preview para usar no Studio.");
+      toast.error(t("toastNoPreview"));
       return;
     }
 
@@ -295,16 +288,16 @@ export default function SeedsPage() {
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        throw new Error(data?.error || "Erro ao registrar uso do seed.");
+        throw new Error(data?.error || t("toastUseError"));
       }
 
       setSeeds((prev) => prev.map((s) => (s.id === seed.id ? data.seed : s)));
       setReferenceImageUrl(seed.preview_url);
       setActiveTab("image");
-      toast.success("Abrindo no Studio…");
+      toast.success(t("toastOpeningStudio"));
       router.push("/studio");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Falha ao usar seed.");
+      toast.error(err instanceof Error ? err.message : t("toastUseFail"));
     } finally {
       setWorkingId(null);
     }
@@ -314,10 +307,8 @@ export default function SeedsPage() {
     <div className="space-y-6 px-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-[#F5F5F5]">Seeds</h1>
-          <p className="mt-1 text-sm text-[#888888]">
-            Reutilize referências visuais para manter consistência entre gerações.
-          </p>
+          <h1 className="text-xl font-semibold text-[#F5F5F5]">{t("title")}</h1>
+          <p className="mt-1 text-sm text-[#888888]">{t("subtitle")}</p>
         </div>
 
         <Button
@@ -325,26 +316,26 @@ export default function SeedsPage() {
           className="rounded-full bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
         >
           <Plus className="mr-1 h-4 w-4" />
-          Novo Seed
+          {t("newSeed")}
         </Button>
       </div>
 
       <section className="space-y-3">
         <div>
-          <h2 className="text-lg font-semibold text-[#F5F5F5]">Preset templates</h2>
-          <p className="text-sm text-[#888888]">Comece com um seed pronto e personalize.</p>
+          <h2 className="text-lg font-semibold text-[#F5F5F5]">{t("presetTitle")}</h2>
+          <p className="text-sm text-[#888888]">{t("presetSubtitle")}</p>
         </div>
         <div className="grid gap-4 md:grid-cols-3">
-          {PRESET_TEMPLATES.map((t) => (
+          {PRESET_TEMPLATES.map((tpl) => (
             <button
-              key={t.id}
+              key={tpl.id}
               type="button"
-              onClick={() => openCreateWithType(t.id)}
+              onClick={() => openCreateWithType(tpl.id)}
               className="group relative flex h-[240px] flex-col justify-end overflow-hidden rounded-2xl border border-[#242428] bg-[#1A1A1A] p-5 text-left transition-transform duration-200 hover:-translate-y-0.5"
             >
-              {t.image ? (
+              {tpl.image ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={t.image} alt={t.title} className="absolute inset-0 h-full w-full object-cover" />
+                <img src={tpl.image} alt={t(tpl.titleKey)} className="absolute inset-0 h-full w-full object-cover" />
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-[#2a1f45] via-[#171326] to-[#0f0d16]">
                   <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10">
@@ -354,10 +345,10 @@ export default function SeedsPage() {
               )}
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/85 to-transparent" />
               <div className="relative">
-                <h3 className="text-lg font-semibold text-white">{t.title}</h3>
-                <p className="mt-1 line-clamp-2 text-sm text-white/70">{t.desc}</p>
+                <h3 className="text-lg font-semibold text-white">{t(tpl.titleKey)}</h3>
+                <p className="mt-1 line-clamp-2 text-sm text-white/70">{t(tpl.descKey)}</p>
                 <span className="mt-3 inline-flex items-center rounded-full bg-white px-3.5 py-1.5 text-xs font-semibold text-[#0A0A0A]">
-                  Iniciar treino
+                  {t("startTraining")}
                 </span>
               </div>
             </button>
@@ -382,9 +373,9 @@ export default function SeedsPage() {
         <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] px-4">
           <EmptyState
             icon={Sprout}
-            title="Você ainda não possui seeds salvos."
-            description="Salve referências no lightbox ou crie manualmente para reutilizar no Studio."
-            action={{ label: "Novo Seed", onClick: openCreateModal }}
+            title={t("emptyTitle")}
+            description={t("emptyDesc")}
+            action={{ label: t("newSeed"), onClick: openCreateModal }}
           />
         </div>
       ) : (
@@ -413,15 +404,15 @@ export default function SeedsPage() {
 
               <div className="mb-1 flex items-start justify-between gap-2">
                 <h3 className="min-w-0 truncate text-sm font-semibold text-[#F5F5F5]">
-                  {seed.name || "Seed sem nome"}
+                  {seed.name || t("unnamed")}
                 </h3>
                 <Badge variant="outline" className="border-[#2A2A2A] text-[#BDBDBD]">
-                  {seed.use_count || 0} usos
+                  {t("uses", { n: seed.use_count || 0 })}
                 </Badge>
               </div>
 
               <p className="line-clamp-3 min-h-[54px] text-sm leading-relaxed text-[#A3A3A3]">
-                {seed.description || "Sem descrição"}
+                {seed.description || t("noDescription")}
               </p>
 
               <div className="mt-2 flex flex-wrap gap-1">
@@ -437,7 +428,7 @@ export default function SeedsPage() {
               </div>
 
               <p className="mt-2 text-xs text-[#777777]">
-                Último uso: {formatDate(seed.last_used_at)}
+                {t("lastUse", { date: formatDate(seed.last_used_at) })}
               </p>
 
               <div className="mt-3 flex items-center gap-1.5">
@@ -446,13 +437,13 @@ export default function SeedsPage() {
                   disabled={workingId === seed.id || !seed.preview_url}
                   onClick={() => void handleUse(seed)}
                 >
-                  Usar
+                  {t("use")}
                 </Button>
                 <Button
                   variant="outline"
                   className="border-[#2A2A2A] px-2.5 text-[#F5F5F5]"
-                  title="Editar"
-                  aria-label="Editar"
+                  title={t("edit")}
+                  aria-label={t("edit")}
                   disabled={workingId === seed.id}
                   onClick={() => openEditModal(seed)}
                 >
@@ -461,8 +452,8 @@ export default function SeedsPage() {
                 <Button
                   variant="outline"
                   className="border-[#3A1F1F] px-2.5 text-[#FCA5A5] hover:bg-[#2A1313]"
-                  title="Excluir"
-                  aria-label="Excluir"
+                  title={t("delete")}
+                  aria-label={t("delete")}
                   disabled={workingId === seed.id}
                   onClick={() => void handleDelete(seed)}
                 >
@@ -482,28 +473,28 @@ export default function SeedsPage() {
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#7C3AED]/15 ring-1 ring-[#7C3AED]/30">
                   <Sprout className="h-4 w-4 text-[#A78BFA]" />
                 </span>
-                <span className="text-sm font-semibold text-[#F5F5F5]">Novo Seed</span>
+                <span className="text-sm font-semibold text-[#F5F5F5]">{t("newSeed")}</span>
               </div>
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-[#666666]">Tipo</p>
-              {SEED_TYPES.map((t) => {
-                const active = seedType === t.id;
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-[#666666]">{t("typeLabel")}</p>
+              {SEED_TYPES.map((st) => {
+                const active = seedType === st.id;
                 return (
                   <button
-                    key={t.id}
+                    key={st.id}
                     type="button"
                     disabled={Boolean(editing)}
-                    onClick={() => setSeedType(t.id)}
+                    onClick={() => setSeedType(st.id)}
                     className={cn(
                       "mb-2 flex items-center gap-3 rounded-xl border p-2.5 text-left transition-colors disabled:opacity-50",
                       active ? "border-[#7C3AED] bg-[#7C3AED]/10" : "border-[#242428] hover:bg-white/5"
                     )}
                   >
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#26262b] ring-1 ring-white/10">
-                      <t.Icon className="h-4 w-4 text-[#c9c9d1]" />
+                      <st.Icon className="h-4 w-4 text-[#c9c9d1]" />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium text-[#F5F5F5]">{t.label}</span>
-                      <span className="block truncate text-[11px] text-[#8b8b93]">{t.desc}</span>
+                      <span className="block text-sm font-medium text-[#F5F5F5]">{t(st.labelKey)}</span>
+                      <span className="block truncate text-[11px] text-[#8b8b93]">{t(st.descKey)}</span>
                     </span>
                     <span
                       className={cn(
@@ -517,7 +508,7 @@ export default function SeedsPage() {
                 );
               })}
               <p className="mt-auto pt-4 text-[11px] leading-relaxed text-[#777777]">
-                Seeds mantêm as gerações da IA consistentes no Fluxyra.
+                {t("seedsKeepConsistent")}
               </p>
             </div>
 
@@ -525,15 +516,15 @@ export default function SeedsPage() {
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold text-[#F5F5F5]">
-                    {editing ? "Editar seed" : SEED_TYPE_COPY[seedType].title}
+                    {editing ? t("editSeed") : t(SEED_TYPE_COPY[seedType].titleKey)}
                   </h2>
-                  <p className="mt-1 text-sm text-[#888888]">{SEED_TYPE_COPY[seedType].sub}</p>
+                  <p className="mt-1 text-sm text-[#888888]">{t(SEED_TYPE_COPY[seedType].subKey)}</p>
                 </div>
                 <button
                   type="button"
                   onClick={closeModal}
                   className="text-[#888888] transition-colors hover:text-[#F5F5F5]"
-                  aria-label="Fechar"
+                  aria-label={t("close")}
                 >
                   <X className="h-5 w-5" />
                 </button>
@@ -541,20 +532,20 @@ export default function SeedsPage() {
 
               <div className="space-y-4">
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-[#E5E5E5]">Nome</label>
+                  <label className="mb-1.5 block text-sm font-medium text-[#E5E5E5]">{t("nameLabel")}</label>
                   <Input
                     value={form.name}
                     onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-                    placeholder={SEED_TYPE_COPY[seedType].ph}
+                    placeholder={t(SEED_TYPE_COPY[seedType].phKey)}
                     className="border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
                   />
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-[#E5E5E5]">Detalhes adicionais</label>
+                  <label className="mb-1.5 block text-sm font-medium text-[#E5E5E5]">{t("detailsLabel")}</label>
                   <Textarea
                     value={form.description}
                     onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-                    placeholder={SEED_TYPE_COPY[seedType].details}
+                    placeholder={t(SEED_TYPE_COPY[seedType].detailsKey)}
                     className="min-h-28 resize-none border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
                   />
                 </div>
@@ -568,8 +559,8 @@ export default function SeedsPage() {
                         <Upload className="h-5 w-5 text-[#888888]" />
                       </span>
                       <span className="min-w-0">
-                        <span className="block text-sm font-medium text-[#F5F5F5]">Upload de referências</span>
-                        <span className="block text-xs text-[#888888]">Arraste ou clique — 4 a 8 fotos</span>
+                        <span className="block text-sm font-medium text-[#F5F5F5]">{t("uploadRefs")}</span>
+                        <span className="block text-xs text-[#888888]">{t("uploadHint")}</span>
                       </span>
                     </label>
                   ) : (
@@ -585,7 +576,7 @@ export default function SeedsPage() {
                             <button
                               type="button"
                               onClick={() => removeSeedFile(i)}
-                              aria-label="Remover foto"
+                              aria-label={t("removePhoto")}
                               className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white opacity-0 transition-opacity group-hover:opacity-100"
                             >
                               <X className="h-3 w-3" />
@@ -601,11 +592,11 @@ export default function SeedsPage() {
                       </div>
                       {seedFiles.length < 4 ? (
                         <p className="mt-2 text-right text-xs text-[#FCA5A5]">
-                          Adicione mais {4 - seedFiles.length} (pelo menos 4 necessárias)
+                          {t("addMorePhotos", { n: 4 - seedFiles.length })}
                         </p>
                       ) : (
                         <p className="mt-2 text-right text-xs text-[#4ADE80]">
-                          {seedFiles.length} fotos prontas
+                          {t("photosReady", { n: seedFiles.length })}
                         </p>
                       )}
                     </div>
@@ -627,12 +618,12 @@ export default function SeedsPage() {
               <div className="mt-5 flex items-center justify-between border-t border-[#242428] pt-4">
                 <span className="text-xs text-[#777777]">
                   {editing
-                    ? "Edite os detalhes do seed."
+                    ? t("statusEdit")
                     : !form.name.trim()
-                    ? "Dê um nome ao seed."
+                    ? t("statusName")
                     : seedFiles.length < 4
-                    ? `Adicione mais ${4 - seedFiles.length} foto(s) de referência.`
-                    : "Tudo pronto para criar."}
+                    ? t("statusAddPhotos", { n: 4 - seedFiles.length })
+                    : t("statusReady")}
                 </span>
                 <div className="flex gap-2">
                   <Button
@@ -641,7 +632,7 @@ export default function SeedsPage() {
                     onClick={closeModal}
                     disabled={saving}
                   >
-                    Cancelar
+                    {t("cancel")}
                   </Button>
                   <Button
                     className="bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
@@ -652,7 +643,7 @@ export default function SeedsPage() {
                       (!editing && seedFiles.length < 4)
                     }
                   >
-                    {saving ? "Salvando..." : editing ? "Salvar" : "Criar Seed"}
+                    {saving ? t("saving") : editing ? t("save") : t("createSeed")}
                   </Button>
                 </div>
               </div>
