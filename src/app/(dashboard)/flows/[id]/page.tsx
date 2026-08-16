@@ -16,6 +16,7 @@ import {
   PanelRightOpen, Layers, Scissors, ArrowUpToLine, Images, Download,
 } from "lucide-react";
 import { toast } from "sonner";
+import { createPortal } from "react-dom";
 import { TTS_VOICES } from "@/lib/tts-voices";
 
 const FLOW_CSS = `
@@ -106,21 +107,23 @@ function ResultThumb({ url }: { url?: string }) {
   // eslint-disable-next-line @next/next/no-img-element
   return <img src={url} alt="result" className="mt-2 h-28 w-full rounded-[8px] object-cover" />;
 }
-function NodeShell({ id, type, title, status, selected, runnable, width = 288, subtitle, children }: {
-  id: string; type: string; title: string; status?: string; selected?: boolean; runnable?: boolean; width?: number; subtitle?: React.ReactNode; children?: React.ReactNode;
+function NodeShell({ id, type, title, status, selected, runnable, width = 288, subtitle, noPad, children }: {
+  id: string; type: string; title: string; status?: string; selected?: boolean; runnable?: boolean; width?: number; subtitle?: React.ReactNode; noPad?: boolean; children?: React.ReactNode;
 }) {
   const rf = useReactFlow(); const { runNode, running } = useContext(ActionsCtx);
-  const reg = REGISTRY.find((r) => r.type === type)!; const accent = reg.accent;
+  const reg = REGISTRY.find((r) => r.type === type)!; const accent = reg.accent; const [info, setInfo] = useState(false);
   return (
-    <div className="fx-card" style={{ width, ...(selected ? { borderColor: accent, boxShadow: `0 0 0 1px ${accent}66, 0 8px 28px rgba(0,0,0,.45)` } : {}) }}>
-      <div className="flex h-[34px] items-center gap-2 border-b px-2.5" style={{ borderColor: "var(--fx-border)" }}>
-        <span className="flex h-4.5 w-4.5 items-center justify-center" style={{ color: accent }}><reg.Icon className="h-3.5 w-3.5" /></span>
+    <div className="fx-card group" style={{ width, ...(selected ? { borderColor: accent, boxShadow: `0 0 0 1px ${accent}66, 0 8px 28px rgba(0,0,0,.45)` } : {}) }}>
+      <div className="relative flex h-[34px] items-center gap-2 border-b px-2.5" style={{ borderColor: "var(--fx-border)" }}>
+        <span className="flex h-4 w-4 items-center justify-center" style={{ color: accent }}><reg.Icon className="h-3.5 w-3.5" /></span>
         <span className="flex-1 truncate text-[11px] font-semibold" style={{ color: accent }}>{title}</span>
         {subtitle}
         <StatusDot status={status} />
+        <button type="button" className="nodrag flex h-5 w-5 items-center justify-center rounded text-[color:var(--fx-subtle)] transition hover:text-[color:var(--fx-muted)]" onMouseEnter={() => setInfo(true)} onMouseLeave={() => setInfo(false)} onClick={() => setInfo((v) => !v)} title="Sobre este nó"><Info className="h-3 w-3" /></button>
         <button type="button" className="nodrag flex h-5 w-5 items-center justify-center rounded text-[color:var(--fx-subtle)] transition hover:text-[#FCA5A5]" onClick={() => rf.deleteElements({ nodes: [{ id }] })} title="Excluir nó"><Trash2 className="h-3 w-3" /></button>
+        {info && <div className="absolute right-1 top-8 z-50 w-[258px] rounded-xl p-3" style={{ background: "#17181b", border: "1px solid var(--fx-border-h)", boxShadow: "0 16px 44px rgba(0,0,0,.6)" }}><p className="mb-1 text-[11px] font-semibold" style={{ color: accent }}>{reg.label}</p><p className="text-[11px] leading-relaxed text-[color:var(--fx-muted)]">{reg.description}</p></div>}
       </div>
-      <div className="p-2.5">{children}</div>
+      <div className={noPad ? "" : "p-2.5"}>{children}</div>
       {runnable ? <div className="flex justify-end border-t px-2.5 py-1.5" style={{ borderColor: "var(--fx-border)" }}><button type="button" disabled={running} onClick={() => runNode(id)} className="nodrag flex h-7 w-7 items-center justify-center rounded-full bg-white text-[#0A0A0A] transition hover:bg-white/90 disabled:opacity-50" title="Rodar este nó">{running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" fill="currentColor" />}</button></div> : null}
     </div>
   );
@@ -159,13 +162,14 @@ function FModelSelect({ value, options, onChange, placeholder }: { value: string
 }
 function PromptModal({ value, onChange, onClose }: { value: string; onChange: (v: string) => void; onClose: () => void }) {
   useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, [onClose]);
-  return (<div className="fixed inset-0 z-[100] flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,.55)", backdropFilter: "blur(6px)" }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-    <div className="w-full max-w-[820px] rounded-[18px] p-5" style={{ background: "var(--fx-surface)", border: "1px solid var(--fx-border-h)", boxShadow: "0 30px 80px rgba(0,0,0,.6)" }}>
+  const content = (<div className="fixed inset-0 z-[100] flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,.55)", backdropFilter: "blur(6px)" }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="w-full max-w-[880px] rounded-[18px] p-5" style={{ background: "var(--fx-surface)", border: "1px solid var(--fx-border-h)", boxShadow: "0 30px 80px rgba(0,0,0,.6)" }}>
       <div className="mb-1 flex items-center justify-between"><p className="text-[16px] font-semibold text-[color:var(--fx-text)]">Prompt</p><button type="button" onClick={onClose} className="text-[color:var(--fx-subtle)] transition hover:text-white"><XIcon className="h-4 w-4" /></button></div>
       <p className="mb-3 text-[12px] text-[color:var(--fx-muted)]">As alterações salvam automaticamente — feche quando terminar.</p>
-      <textarea autoFocus value={value} onChange={(e) => onChange(e.target.value)} rows={12} className="fx-ctrl w-full resize-none px-3 py-2 text-[13px] leading-relaxed" placeholder="Descreva sua imagem…" />
+      <textarea autoFocus value={value} onChange={(e) => onChange(e.target.value)} className="fx-ctrl w-full resize-none px-3 py-2.5 text-[13px] leading-relaxed" style={{ minHeight: 240 }} placeholder="Descreva sua imagem…" />
     </div>
   </div>);
+  return typeof document !== "undefined" ? createPortal(content, document.body) : null;
 }
 function DotLoader({ accent }: { accent: string }) {
   return (<div className="fx-dots" style={{ ["--dot" as string]: accent } as React.CSSProperties}>{Array.from({ length: 16 }).map((_, i) => <span key={i} style={{ animationDelay: (((i % 4) + Math.floor(i / 4)) * 90) + "ms" }} />)}</div>);
@@ -188,9 +192,9 @@ function ImageGenNode({ id, data, selected }: NodeProps) {
   const usedAspect = (meta.aspectRatio as string) || (d.aspectRatio as string) || "1:1";
   const usedRes = (meta.resolution as string) || (d.resolution as string) || "1K";
   const [aw, ah] = ((d.aspectRatio as string) || "1:1").split(":").map(Number);
-  const genH = Math.max(150, Math.min(420, Math.round(276 * ((ah || 1) / (aw || 1)))));
+  const genH = Math.max(150, Math.min(420, Math.round(298 * ((ah || 1) / (aw || 1)))));
   const [uaw, uah] = usedAspect.split(":").map(Number);
-  const resH = Math.max(150, Math.min(440, Math.round(276 * ((uah || 1) / (uaw || 1)))));
+  const resH = Math.max(150, Math.min(440, Math.round(298 * ((uah || 1) / (uaw || 1)))));
   const handles = (<><Handle type="target" position={Position.Left} id="prompt" style={{ top: 48, background: "#22D3EE" }} /><Handle type="target" position={Position.Left} id="reference" style={{ top: 88, background: "#F97316" }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.imageGen }} /></>);
   function spawnLinked(type: string, patch: ND, targetHandle: string) {
     const pos = rf.getNode(id)?.position || { x: 0, y: 0 };
@@ -205,11 +209,12 @@ function ImageGenNode({ id, data, selected }: NodeProps) {
   const title = (d.title as string) || "Image Generator";
 
   if (vstate === "generating") {
-    return (<NodeShell id={id} type="imageGen" title={title} status={status} selected={selected} width={300}>
-      <div className="mb-2 flex items-center justify-between"><span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium" style={{ background: "var(--fx-elev)", color: "var(--fx-text)" }}><span className="h-1.5 w-1.5 rounded-full" style={{ background: ACCENT.imageGen }} />{(d.modelName as string) || (d.model as string) || "Modelo"}</span><span className="rounded-full px-2 py-0.5 text-[9px] text-[color:var(--fx-muted)]" style={{ background: "var(--fx-elev)" }}>{(d.aspectRatio as string) || "1:1"}</span></div>
-      <div className="relative flex items-center justify-center overflow-hidden rounded-[10px]" style={{ height: genH, background: "#0a0a0b", backgroundImage: "radial-gradient(circle at 72% 14%, " + ACCENT.imageGen + "22, transparent 55%)" }}><DotLoader accent={ACCENT.imageGen} /></div>
-      <div className="mt-2 text-[10px] text-[color:var(--fx-text)]">Generating…</div>
-      <div className="mt-1 fx-bar" style={{ ["--dot" as string]: ACCENT.imageGen } as React.CSSProperties} />
+    return (<NodeShell id={id} type="imageGen" title={title} status={status} selected={selected} noPad width={300}>
+      <div className="relative overflow-hidden rounded-b-[11px]" style={{ height: genH, background: "#0a0a0b", backgroundImage: "radial-gradient(circle at 72% 14%, " + ACCENT.imageGen + "22, transparent 55%)" }}>
+        <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between p-2"><span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium text-white" style={{ background: "rgba(0,0,0,.5)" }}><span className="h-1.5 w-1.5 rounded-full" style={{ background: ACCENT.imageGen }} />{(d.modelName as string) || (d.model as string) || "Modelo"}</span><span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.5)" }}>{(d.aspectRatio as string) || "1:1"}</span></div>
+        <div className="flex h-full items-center justify-center"><DotLoader accent={ACCENT.imageGen} /></div>
+        <div className="absolute inset-x-0 bottom-0 p-2.5"><div className="mb-1 text-[10px] font-medium text-white">Generating…</div><div className="fx-bar" style={{ ["--dot" as string]: ACCENT.imageGen } as React.CSSProperties} /></div>
+      </div>
       {handles}
     </NodeShell>);
   }
@@ -222,22 +227,22 @@ function ImageGenNode({ id, data, selected }: NodeProps) {
     </NodeShell>);
   }
   if (vstate === "result") {
-    return (<NodeShell id={id} type="imageGen" title={title} status={status} selected={selected} width={300}>
-      <div className="relative overflow-hidden rounded-[10px]" style={{ height: resH, background: "#0a0a0b" }}>
+    return (<NodeShell id={id} type="imageGen" title={title} status={status} selected={selected} noPad width={300}>
+      <div className="relative overflow-hidden rounded-b-[11px]" style={{ height: resH, background: "#0a0a0b" }}>
         {!imgLoaded && <div className="absolute inset-0 flex items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-[color:var(--fx-subtle)]" /></div>}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={result} alt="" onLoad={() => setImgLoaded(true)} className="h-full w-full object-cover" style={{ opacity: imgLoaded ? 1 : 0, transition: "opacity .2s" }} />
-        <div className="absolute left-2 top-2 flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium text-white" style={{ background: "rgba(0,0,0,.5)" }}><span className="h-1.5 w-1.5 rounded-full" style={{ background: ACCENT.imageGen }} />{usedModel || "Modelo"}</div>
-        <div className="absolute right-2 top-2 flex gap-1"><span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.5)" }}>{usedAspect}</span><span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.5)" }}>{usedRes}</span></div>
-      </div>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        <ActBtn onClick={download} title="Baixar"><Download className="h-3 w-3" /></ActBtn>
-        <ActBtn onClick={animate}><Film className="h-3 w-3" />Animate</ActBtn>
-        <ActBtn onClick={removeBg}><Scissors className="h-3 w-3" />Remove BG</ActBtn>
-        <ActBtn onClick={() => toast("Variations em breve.")}><Layers className="h-3 w-3" />Variations</ActBtn>
-        <ActBtn onClick={() => toast("Angles em breve.")}><CircleDot className="h-3 w-3" />Angles</ActBtn>
-        <ActBtn onClick={() => rf.updateNodeData(id, { __editing: true })}><Sparkles className="h-3 w-3" />Edit</ActBtn>
-        <ActBtn onClick={() => runNode(id)}><Play className="h-3 w-3" fill="currentColor" />Recreate</ActBtn>
+        <div className="absolute left-2 top-2 z-10 flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium text-white" style={{ background: "rgba(0,0,0,.5)" }}><span className="h-1.5 w-1.5 rounded-full" style={{ background: ACCENT.imageGen }} />{usedModel || "Modelo"}</div>
+        <div className="absolute right-2 top-2 z-10 flex gap-1"><span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.5)" }}>{usedAspect}</span><span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.5)" }}>{usedRes}</span></div>
+        <div className={"absolute inset-x-0 bottom-0 z-10 flex flex-wrap gap-1.5 p-2 transition-opacity duration-150 " + (selected ? "opacity-100" : "opacity-0 group-hover:opacity-100")} style={{ backgroundImage: "linear-gradient(to top, rgba(0,0,0,.9), rgba(0,0,0,.45) 55%, transparent)" }}>
+          <ActBtn onClick={download} title="Baixar"><Download className="h-3 w-3" /></ActBtn>
+          <ActBtn onClick={animate}><Film className="h-3 w-3" />Animate</ActBtn>
+          <ActBtn onClick={removeBg}><Scissors className="h-3 w-3" />Remove BG</ActBtn>
+          <ActBtn onClick={() => toast("Variations em breve.")}><Layers className="h-3 w-3" />Variations</ActBtn>
+          <ActBtn onClick={() => toast("Angles em breve.")}><CircleDot className="h-3 w-3" />Angles</ActBtn>
+          <ActBtn onClick={() => rf.updateNodeData(id, { __editing: true })}><Sparkles className="h-3 w-3" />Edit</ActBtn>
+          <ActBtn onClick={() => runNode(id)}><Play className="h-3 w-3" fill="currentColor" />Recreate</ActBtn>
+        </div>
       </div>
       {handles}
     </NodeShell>);
