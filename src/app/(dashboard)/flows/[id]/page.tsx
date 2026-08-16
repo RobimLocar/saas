@@ -538,19 +538,19 @@ function Editor() {
   const [running, setRunning] = useState(false); const [zoom, setZoom] = useState(1); const [credits, setCredits] = useState<number | null>(null);
   const [panelOpen, setPanelOpen] = useState(true); const [galleryOpen, setGalleryOpen] = useState(false); const [infoType, setInfoType] = useState<string | null>(null); const [infoTop, setInfoTop] = useState(120);
   const [imageModels, setImageModels] = useState<ModelOpt[]>([]); const [videoModels, setVideoModels] = useState<ModelOpt[]>([]); const [audioModels, setAudioModels] = useState<ModelOpt[]>([]);
-  const counter = useRef(0); const savingRef = useRef(false);
+  const counter = useRef(0); const savingRef = useRef(false); const runGenRef = useRef<Record<string, string>>({});
 
   const markDirty = useCallback(() => setSaveState((s) => (s === "saving" ? s : "dirty")), []);
   const markEdgesActive = useCallback((tid: string, on: boolean) => rf.setEdges((eds) => eds.map((e) => e.target === tid ? { ...e, data: { ...(e.data || {}), active: on } } : e)), [rf]);
   const resumePoll = useCallback(async (nid: string, gid: string) => {
-    markEdgesActive(nid, true); rf.updateNodeData(nid, { __status: "running" }); let resolved = false;
+    markEdgesActive(nid, true); if (!runGenRef.current[nid]) runGenRef.current[nid] = gid; if (process.env.NODE_ENV !== "production") console.log("[GEN-GUARD]", { nodeId: nid, incomingGenerationId: gid, currentRefGenerationId: runGenRef.current[nid], action: runGenRef.current[nid] === gid ? "reattach-claim" : "reattach-superseded" }); rf.updateNodeData(nid, { __status: "running" }); let resolved = false;
     try {
       for (let i = 0; i < 200; i++) {
         await sleep(3000);
         const r = await fetch(`/api/generate/status?id=${gid}`, { cache: "no-store" });
         const d = await r.json().catch(() => null); if (!d) continue;
-        if (d.status === "completed" && d.result_url) { const nd = (rf.getNode(nid)?.data as ND) || {}; rf.updateNodeData(nid, { __status: "done", __result: d.result_url, __resultMeta: nd.model ? { modelName: (nd.modelName as string) || (nd.model as string), aspectRatio: nd.aspectRatio, resolution: nd.resolution } : undefined }); resolved = true; break; }
-        if (d.status === "failed") { rf.updateNodeData(nid, { __status: "failed", __error: d.error_message || "Falhou." }); resolved = true; break; }
+        if (d.status === "completed" && d.result_url) { const nd = (rf.getNode(nid)?.data as ND) || {}; if (runGenRef.current[nid] === gid) rf.updateNodeData(nid, { __status: "done", __result: d.result_url, __resultMeta: nd.model ? { modelName: (nd.modelName as string) || (nd.model as string), aspectRatio: nd.aspectRatio, resolution: nd.resolution } : undefined }); resolved = true; break; }
+        if (d.status === "failed") { if (runGenRef.current[nid] === gid) rf.updateNodeData(nid, { __status: "failed", __error: d.error_message || "Falhou." }); resolved = true; break; }
       }
       if (!resolved) rf.updateNodeData(nid, { __status: "failed", __error: "Execução interrompida." });
     } catch { rf.updateNodeData(nid, { __status: "failed", __error: "Execução interrompida." }); }
@@ -594,6 +594,7 @@ function Editor() {
   const runFlow = useCallback(async (targetId?: string) => {
     const sn = rf.getNodes(); const se = rf.getEdges();
     const setEdgeActive = markEdgesActive;
+    const applyGuard = (nid: string, incoming: string) => { const cur = runGenRef.current[nid] || ""; const ok = !incoming || cur === incoming; if (process.env.NODE_ENV !== "production") console.log("[GEN-GUARD]", { nodeId: nid, incomingGenerationId: incoming, currentRefGenerationId: cur, action: ok ? "apply" : "discard" }); return ok; };
     if (!sn.length) { toast.error("Adicione nós antes de rodar."); return; }
     const indeg = new Map<string, number>(); const adj = new Map<string, string[]>();
     sn.forEach((n) => { indeg.set(n.id, 0); adj.set(n.id, []); });
@@ -605,7 +606,7 @@ function Editor() {
     if (targetId) { const radj = new Map<string, string[]>(); sn.forEach((n) => radj.set(n.id, [])); se.forEach((e) => radj.get(e.target)?.push(e.source)); allowed = new Set(); const s = [targetId]; while (s.length) { const x = s.shift()!; if (allowed.has(x)) continue; allowed.add(x); for (const p of radj.get(x) || []) s.push(p); } }
     const runOrder = allowed ? order.filter((id) => allowed!.has(id)) : order;
     const byId = new Map(sn.map((n) => [n.id, n])); const out = new Map<string, string>();
-    runOrder.forEach((id) => rf.updateNodeData(id, { __status: undefined, __result: undefined, __editing: undefined, __error: undefined, __gen: undefined }));
+    runOrder.forEach((id) => { runGenRef.current[id] = ""; rf.updateNodeData(id, { __status: undefined, __result: undefined, __editing: undefined, __error: undefined, __gen: undefined }); });
     setRunning(true);
     try {
       for (const id of runOrder) {
@@ -627,8 +628,8 @@ function Editor() {
             : { image_url: src, rmbg_model: (d.rmbgModel as string) || "RMBG-2.0" };
           const rr = await fetch(`/api/generate/${isUp ? "upscale" : "removebg"}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
           const dtt = await rr.json().catch(() => null); if (!rr.ok) { setNS(id, { __status: "failed" }); throw new Error(dtt?.error || "Falha ao processar."); }
-          if (dtt?.generation_id) setNS(id, { __gen: String(dtt.generation_id) }); let uu = dtt?.result_url as string | undefined; if (dtt?.status !== "completed" || !uu) uu = await pollGen(String(dtt.generation_id));
-          out.set(id, uu); if (String((rf.getNode(id)?.data as ND)?.__gen || "") === String(dtt.generation_id)) setNS(id, { __status: "done", __result: uu }); continue;
+          if (dtt?.generation_id) { setNS(id, { __gen: String(dtt.generation_id) }); runGenRef.current[id] = String(dtt.generation_id); } let uu = dtt?.result_url as string | undefined; if (dtt?.status !== "completed" || !uu) uu = await pollGen(String(dtt.generation_id));
+          out.set(id, uu); if (applyGuard(id, String(dtt?.generation_id || ""))) setNS(id, { __status: "done", __result: uu }); continue;
         }
         if (node.type === "audioGen") {
           const text = String(d.prompt || "").trim() || pText.trim();
@@ -637,7 +638,7 @@ function Editor() {
           setNS(id, { __status: "running", __result: undefined });
           const r = await fetch("/api/generate/audio", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: text, model_uuid: d.model, voice_id: d.voice }) });
           const dt = await r.json().catch(() => null); if (!r.ok) { setNS(id, { __status: "failed" }); throw new Error(dt?.error || "Falha ao gerar áudio."); }
-          if (dt?.generation_id) setNS(id, { __gen: String(dt.generation_id) }); let u = dt?.result_url as string | undefined; if (dt?.status !== "completed" || !u) u = await pollGen(String(dt.generation_id)); out.set(id, u); if (String((rf.getNode(id)?.data as ND)?.__gen || "") === String(dt.generation_id)) setNS(id, { __status: "done", __result: u, __resultMeta: { modelName: (d.modelName as string) || (d.model as string), aspectRatio: d.aspectRatio, resolution: d.resolution } }); continue;
+          if (dt?.generation_id) { setNS(id, { __gen: String(dt.generation_id) }); runGenRef.current[id] = String(dt.generation_id); } let u = dt?.result_url as string | undefined; if (dt?.status !== "completed" || !u) u = await pollGen(String(dt.generation_id)); out.set(id, u); if (applyGuard(id, String(dt?.generation_id || ""))) setNS(id, { __status: "done", __result: u, __resultMeta: { modelName: (d.modelName as string) || (d.model as string), aspectRatio: d.aspectRatio, resolution: d.resolution } }); continue;
         }
         if (node.type === "imageGen" || node.type === "videoGen") {
           const gl = (d.title as string) || (node.type === "imageGen" ? "Image Generator" : "Video Generator");
@@ -652,7 +653,7 @@ function Editor() {
           if (all.length) { body.reference_images = all; body.reference_image_url = all[0]; } if (!isImg) body.duration = d.duration;
           const r = await fetch(`/api/generate/${isImg ? "image" : "video"}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
           const dt = await r.json().catch(() => null); if (!r.ok) { setNS(id, { __status: "failed" }); throw new Error(dt?.error || "Falha ao iniciar."); }
-          if (dt?.generation_id) setNS(id, { __gen: String(dt.generation_id) }); let u = dt?.result_url as string | undefined; if (dt?.status !== "completed" || !u) u = await pollGen(String(dt.generation_id)); out.set(id, u); if (String((rf.getNode(id)?.data as ND)?.__gen || "") === String(dt.generation_id)) setNS(id, { __status: "done", __result: u, __resultMeta: { modelName: (d.modelName as string) || (d.model as string), aspectRatio: d.aspectRatio, resolution: d.resolution } });
+          if (dt?.generation_id) { setNS(id, { __gen: String(dt.generation_id) }); runGenRef.current[id] = String(dt.generation_id); } let u = dt?.result_url as string | undefined; if (dt?.status !== "completed" || !u) u = await pollGen(String(dt.generation_id)); out.set(id, u); if (applyGuard(id, String(dt?.generation_id || ""))) setNS(id, { __status: "done", __result: u, __resultMeta: { modelName: (d.modelName as string) || (d.model as string), aspectRatio: d.aspectRatio, resolution: d.resolution } });
         }
         } catch (nodeErr) { setNS(id, { __status: "failed", __error: nodeErr instanceof Error ? nodeErr.message : "Erro" }); throw nodeErr; } finally { setEdgeActive(id, false); }
       }
