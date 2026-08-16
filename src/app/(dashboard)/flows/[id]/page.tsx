@@ -56,10 +56,10 @@ const FLOW_CSS = `
 `;
 
 type ND = Record<string, unknown>;
-interface ModelOpt { id: string; name: string }
+interface ModelOpt { id: string; name: string; cost: number }
 
 /* ── NODE REGISTRY (metadata única: cor, ícone, descrição, exemplos) ─────── */
-interface RegEntry { type: string; label: string; Icon: typeof TypeIcon; accent: string; group: "gen" | "util"; description: string; examples: string[]; }
+interface RegEntry { type: string; label: string; Icon: typeof TypeIcon; accent: string; group: "gen" | "util" | "hidden"; description: string; examples: string[]; }
 const REGISTRY: RegEntry[] = [
   { type: "imageGen", label: "Image Generator", Icon: ImageIcon, accent: "#F97316", group: "gen", description: "Cria imagens de IA a partir de texto. Escolha o modelo, controle proporção e resolução, e suba referências.", examples: ["Um golden retriever numa praia ao pôr do sol", "Foto de produto de tênis sobre mármore", "Logo para uma marca de café"] },
   { type: "videoGen", label: "Video Generator", Icon: Film, accent: "#3B82F6", group: "gen", description: "Transforma prompts em vídeos de IA. Conecte uma imagem como primeiro frame para melhores resultados.", examples: ["Conecte um nó de imagem → vira o start frame", "Duração de 4 a 30 segundos", "End frame para transições controladas"] },
@@ -69,6 +69,7 @@ const REGISTRY: RegEntry[] = [
   { type: "removeBg", label: "Remove BG", Icon: Scissors, accent: "#22D3EE", group: "util", description: "Remove o fundo de qualquer imagem, deixando só o sujeito com transparência.", examples: ["Produto no branco → PNG transparente", "Foto de pessoa → recorte limpo", "(processamento em breve)"] },
   { type: "upscale", label: "Upscale", Icon: ArrowUpToLine, accent: "#A3E635", group: "util", description: "Amplia imagens para 2× ou 4×, preservando detalhe e nitidez.", examples: ["2× transforma 1K em 2K", "4× transforma 1K em 4K", "(processamento em breve)"] },
   { type: "output", label: "Output", Icon: CircleDot, accent: "#4ADE80", group: "util", description: "Coleta o resultado final do fluxo.", examples: ["Conecte a saída de um gerador aqui"] },
+  { type: "imageAsset", label: "Image Asset", Icon: FileImage, accent: "#F97316", group: "hidden", description: "Uma imagem pronta no canvas. Arraste um resultado gerado para cá para reutilizá-la.", examples: ["Arraste a imagem de um resultado", "Conecte a um Video Generator / Remove BG / Upscale"] },
 ];
 const ACCENT: Record<string, string> = Object.fromEntries(REGISTRY.map((r) => [r.type, r.accent]));
 const DEFAULTS: Record<string, ND> = {
@@ -113,7 +114,7 @@ function NodeShell({ id, type, title, status, selected, runnable, width = 288, s
   const rf = useReactFlow(); const { runNode, running } = useContext(ActionsCtx);
   const reg = REGISTRY.find((r) => r.type === type)!; const accent = reg.accent; const [info, setInfo] = useState(false);
   return (
-    <div className="fx-card group" style={{ width, ...(selected ? { borderColor: accent, boxShadow: `0 0 0 1px ${accent}66, 0 8px 28px rgba(0,0,0,.45)` } : {}) }}>
+    <div className="fx-card group relative" style={{ width, ...(selected ? { borderColor: accent, boxShadow: `0 0 0 1px ${accent}66, 0 8px 28px rgba(0,0,0,.45)` } : {}) }}>
       <div className="relative flex h-[34px] items-center gap-2 border-b px-2.5" style={{ borderColor: "var(--fx-border)" }}>
         <span className="flex h-4 w-4 items-center justify-center" style={{ color: accent }}><reg.Icon className="h-3.5 w-3.5" /></span>
         <span className="flex-1 truncate text-[11px] font-semibold" style={{ color: accent }}>{title}</span>
@@ -182,11 +183,15 @@ function ImageGenNode({ id, data, selected }: NodeProps) {
   const rf = useReactFlow(); const upd = useUpdateNodeInternals();
   const models = useContext(ModelsCtx).image; const videoModels = useContext(ModelsCtx).video;
   const { runNode, running } = useContext(ActionsCtx);
-  const d = data as ND; const [promptOpen, setPromptOpen] = useState(false); const [imgLoaded, setImgLoaded] = useState(false);
+  const d = data as ND;
+  const [promptOpen, setPromptOpen] = useState(false); const [imgLoaded, setImgLoaded] = useState(false);
+  const [tool, setTool] = useState<"none" | "angles" | "variations">("none"); const [tCount, setTCount] = useState(4); const [tRes, setTRes] = useState("1K"); const [tBusy, setTBusy] = useState(false);
   const refs = Array.isArray(d.refs) ? (d.refs as string[]) : [];
+  const tray = Array.isArray(d.__tray) ? (d.__tray as string[]) : [];
   const status = d.__status as string | undefined; const result = d.__result as string | undefined; const editing = Boolean(d.__editing);
+  const collapsed = d.__collapsed !== false;
   const vstate = status === "running" ? "generating" : status === "failed" ? "error" : (result && !editing) ? "result" : "config";
-  useEffect(() => { upd(id); }, [vstate, id, upd]);
+  useEffect(() => { upd(id); }, [vstate, id, upd, collapsed, tray.length]);
   const meta = (d.__resultMeta as ND) || {};
   const usedModel = (meta.modelName as string) || (d.modelName as string) || (d.model as string) || "";
   const usedAspect = (meta.aspectRatio as string) || (d.aspectRatio as string) || "1:1";
@@ -195,18 +200,43 @@ function ImageGenNode({ id, data, selected }: NodeProps) {
   const genH = Math.max(150, Math.min(420, Math.round(298 * ((ah || 1) / (aw || 1)))));
   const [uaw, uah] = usedAspect.split(":").map(Number);
   const resH = Math.max(150, Math.min(440, Math.round(298 * ((uah || 1) / (uaw || 1)))));
+  const modelCost = models.find((m) => m.id === d.model)?.cost || 0;
   const handles = (<><Handle type="target" position={Position.Left} id="prompt" style={{ top: 48, background: "#22D3EE" }} /><Handle type="target" position={Position.Left} id="reference" style={{ top: 88, background: "#F97316" }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.imageGen }} /></>);
   function spawnLinked(type: string, patch: ND, targetHandle: string) {
     const pos = rf.getNode(id)?.position || { x: 0, y: 0 };
     const nid = type + "_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
     const base = JSON.parse(JSON.stringify(DEFAULTS[type])) as ND;
-    rf.setNodes((n) => [...n, { id: nid, type, position: { x: pos.x + 348, y: pos.y }, data: { ...base, ...patch } } as Node]);
+    rf.setNodes((n) => [...n, { id: nid, type, position: { x: pos.x + 360, y: pos.y }, data: { ...base, ...patch } } as Node]);
     rf.setEdges((e) => addEdge({ source: id, target: nid, sourceHandle: "out", targetHandle, type: "grad" }, e));
   }
   function animate() { if (!result) return; const vm = videoModels[0]; spawnLinked("videoGen", { title: "Video Generator", startFrame: result, model: vm?.id || "", modelName: vm?.name || "" }, "reference"); toast.success("Video Generator criado com a imagem como start frame."); }
   function removeBg() { if (!result) return; spawnLinked("removeBg", { title: "Remove BG" }, "reference"); toast.success("Nó Remove BG criado e conectado."); }
-  async function download() { if (!result) return; try { const r = await fetch(result); const b = await r.blob(); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = "fluxyra-" + Date.now() + ".png"; a.click(); URL.revokeObjectURL(u); } catch { window.open(result, "_blank"); } }
+  async function download(u: string) { try { const r = await fetch(u); const b = await r.blob(); const l = URL.createObjectURL(b); const a = document.createElement("a"); a.href = l; a.download = "fluxyra-" + Date.now() + ".png"; a.click(); URL.revokeObjectURL(l); } catch { window.open(u, "_blank"); } }
+  async function poll(gid: string): Promise<string> { for (let i = 0; i < 120; i++) { await sleep(3000); const r = await fetch(`/api/generate/status?id=${gid}`, { cache: "no-store" }); const dt = await r.json().catch(() => null); if (dt?.status === "completed" && dt.result_url) return dt.result_url; if (dt?.status === "failed") throw new Error(dt.error_message || "Geração falhou."); } throw new Error("Tempo esgotado."); }
+  async function genDerived(kind: "angles" | "variations") {
+    if (!d.model) { toast.error("Escolha um modelo de imagem."); return; }
+    if (!result) return; setTBusy(true);
+    const suffix = kind === "angles" ? " — same subject, outfit and style, different camera angle and perspective, cinematic framing" : " — same subject, creative variation: alternative composition, lighting and mood";
+    const basePrompt = String(d.prompt || "").trim() || "same subject as the reference image";
+    try {
+      for (let i = 0; i < tCount; i++) {
+        const body = { prompt: basePrompt + suffix, model_uuid: d.model, aspect_ratio: d.aspectRatio, quality: "high", resolution: tRes, reference_images: [result], reference_image_url: result };
+        const r = await fetch("/api/generate/image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+        const dt = await r.json().catch(() => null); if (!r.ok) throw new Error(dt?.error || "Falha ao gerar.");
+        let u = dt?.result_url as string | undefined; if (dt?.status !== "completed" || !u) u = await poll(String(dt.generation_id));
+        const fresh = (rf.getNode(id)?.data as ND) || {}; const cur = Array.isArray(fresh.__tray) ? [...(fresh.__tray as string[])] : []; rf.updateNodeData(id, { __tray: [...cur, u], __collapsed: false });
+      }
+      toast.success((kind === "angles" ? "Ângulos" : "Variações") + " gerados ✓");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Erro"); } finally { setTBusy(false); setTool("none"); }
+  }
   const title = (d.title as string) || "Image Generator";
+  const cfg = (<>
+    <div className="mb-2"><FModelSelect value={(d.model as string) || ""} options={models} placeholder="— modelo —" onChange={(mid) => rf.updateNodeData(id, { model: mid, modelName: models.find((m) => m.id === mid)?.name || "" })} /></div>
+    <div className="relative mb-2"><FTextarea rows={2} value={(d.prompt as string) || ""} onChange={(e) => rf.updateNodeData(id, { prompt: e.target.value })} placeholder="Descreva a imagem (ou conecte um Prompt)…" className="pr-7" /><button type="button" onClick={() => setPromptOpen(true)} className="nodrag absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded text-[color:var(--fx-subtle)] transition hover:text-[color:var(--fx-muted)]" title="Expandir"><Maximize2 className="h-3 w-3" /></button></div>
+    <EnhanceBtn id={id} modality="image" value={(d.prompt as string) || ""} label="Wise enhance" />
+    <MultiUpload id={id} refs={refs} />
+    <div className="grid grid-cols-2 gap-2"><FSelect value={(d.aspectRatio as string) || "1:1"} onChange={(e) => rf.updateNodeData(id, { aspectRatio: e.target.value })}>{["1:1", "16:9", "9:16", "4:3", "3:4"].map((a) => <option key={a} value={a}>{a}</option>)}</FSelect><FSelect value={(d.resolution as string) || "1K"} onChange={(e) => rf.updateNodeData(id, { resolution: e.target.value })}>{["1K", "2K", "4K"].map((r) => <option key={r} value={r}>{r}</option>)}</FSelect></div>
+  </>);
 
   if (vstate === "generating") {
     return (<NodeShell id={id} type="imageGen" title={title} status={status} selected={selected} noPad width={300}>
@@ -227,32 +257,42 @@ function ImageGenNode({ id, data, selected }: NodeProps) {
     </NodeShell>);
   }
   if (vstate === "result") {
-    return (<NodeShell id={id} type="imageGen" title={title} status={status} selected={selected} noPad width={300}>
+    return (<NodeShell id={id} type="imageGen" title={title} status={status} selected={selected} noPad runnable={!collapsed} width={300}>
+      {tool !== "none" && <div className="nodrag absolute -top-12 left-0 z-30 flex items-center gap-1.5 rounded-xl fx-panel px-2 py-1.5">
+        <span className="flex items-center gap-1 text-[10px] font-medium" style={{ color: ACCENT.imageGen }}>{tool === "angles" ? <CircleDot className="h-3 w-3" /> : <Layers className="h-3 w-3" />}{tool === "angles" ? "Angles" : "Variations"}</span>
+        <button type="button" onClick={() => setTCount((c) => Math.max(1, c - 1))} className="flex h-5 w-5 items-center justify-center rounded text-[color:var(--fx-muted)] hover:bg-white/5"><Minus className="h-3 w-3" /></button>
+        <span className="w-4 text-center text-[11px] text-[color:var(--fx-text)]">{tCount}</span>
+        <button type="button" onClick={() => setTCount((c) => Math.min(8, c + 1))} className="flex h-5 w-5 items-center justify-center rounded text-[color:var(--fx-muted)] hover:bg-white/5"><Plus className="h-3 w-3" /></button>
+        <select value={tRes} onChange={(e) => setTRes(e.target.value)} className="fx-ctrl nodrag h-6 appearance-none px-1.5 text-[10px]">{["1K", "2K", "4K"].map((r) => <option key={r} value={r}>{r}</option>)}</select>
+        <button type="button" onClick={() => genDerived(tool)} disabled={tBusy} className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold text-white disabled:opacity-60" style={{ background: ACCENT.imageGen }}>{tBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Zap className="h-3 w-3" fill="currentColor" />Generate{modelCost ? " " + modelCost * tCount : ""}</>}</button>
+        <button type="button" onClick={() => setTool("none")} className="flex h-5 w-5 items-center justify-center rounded text-[color:var(--fx-subtle)] hover:text-white"><XIcon className="h-3.5 w-3.5" /></button>
+      </div>}
       <div className="relative overflow-hidden rounded-b-[11px]" style={{ height: resH, background: "#0a0a0b" }}>
         {!imgLoaded && <div className="absolute inset-0 flex items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-[color:var(--fx-subtle)]" /></div>}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={result} alt="" onLoad={() => setImgLoaded(true)} className="h-full w-full object-cover" style={{ opacity: imgLoaded ? 1 : 0, transition: "opacity .2s" }} />
+        <img src={result} alt="" onLoad={() => setImgLoaded(true)} draggable onDragStart={(e) => { e.dataTransfer.setData("application/flowasset", JSON.stringify({ url: result, aspectRatio: usedAspect })); e.dataTransfer.effectAllowed = "copy"; }} className="nodrag h-full w-full object-cover" style={{ opacity: imgLoaded ? 1 : 0, transition: "opacity .2s" }} />
         <div className="absolute left-2 top-2 z-10 flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium text-white" style={{ background: "rgba(0,0,0,.5)" }}><span className="h-1.5 w-1.5 rounded-full" style={{ background: ACCENT.imageGen }} />{usedModel || "Modelo"}</div>
         <div className="absolute right-2 top-2 z-10 flex gap-1"><span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.5)" }}>{usedAspect}</span><span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.5)" }}>{usedRes}</span></div>
-        <div className={"absolute inset-x-0 bottom-0 z-10 flex flex-wrap gap-1.5 p-2 transition-opacity duration-150 " + (selected ? "opacity-100" : "opacity-0 group-hover:opacity-100")} style={{ backgroundImage: "linear-gradient(to top, rgba(0,0,0,.9), rgba(0,0,0,.45) 55%, transparent)" }}>
-          <ActBtn onClick={download} title="Baixar"><Download className="h-3 w-3" /></ActBtn>
-          <ActBtn onClick={animate}><Film className="h-3 w-3" />Animate</ActBtn>
-          <ActBtn onClick={removeBg}><Scissors className="h-3 w-3" />Remove BG</ActBtn>
-          <ActBtn onClick={() => toast("Variations em breve.")}><Layers className="h-3 w-3" />Variations</ActBtn>
-          <ActBtn onClick={() => toast("Angles em breve.")}><CircleDot className="h-3 w-3" />Angles</ActBtn>
-          <ActBtn onClick={() => rf.updateNodeData(id, { __editing: true })}><Sparkles className="h-3 w-3" />Edit</ActBtn>
-          <ActBtn onClick={() => runNode(id)}><Play className="h-3 w-3" fill="currentColor" />Recreate</ActBtn>
-        </div>
       </div>
+      <div className="flex flex-wrap gap-1.5 p-2">
+        <ActBtn onClick={() => download(result!)} title="Baixar"><Download className="h-3 w-3" /></ActBtn>
+        <ActBtn onClick={animate}><Film className="h-3 w-3" />Animate</ActBtn>
+        <ActBtn onClick={removeBg}><Scissors className="h-3 w-3" />Remove BG</ActBtn>
+        <ActBtn onClick={() => setTool(tool === "variations" ? "none" : "variations")}><Layers className="h-3 w-3" />Variations</ActBtn>
+        <ActBtn onClick={() => setTool(tool === "angles" ? "none" : "angles")}><CircleDot className="h-3 w-3" />Angles</ActBtn>
+        {collapsed ? <ActBtn onClick={() => rf.updateNodeData(id, { __collapsed: false })}><Sparkles className="h-3 w-3" />Edit</ActBtn> : <ActBtn onClick={() => rf.updateNodeData(id, { __collapsed: true })}><ChevronUp className="h-3 w-3" />Collapse</ActBtn>}
+        <ActBtn onClick={() => runNode(id)}><Play className="h-3 w-3" fill="currentColor" />Recreate</ActBtn>
+      </div>
+      {!collapsed && <div className="space-y-2 border-t p-2.5" style={{ borderColor: "var(--fx-border)" }}>
+        {cfg}
+        {tray.length > 0 && <div><p className="mb-1 text-[9px] font-semibold uppercase tracking-widest text-[color:var(--fx-subtle)]">Generated</p><div className="flex flex-wrap gap-1.5">{tray.map((u, i) => <div key={i} className="group/thumb relative h-14 w-14 overflow-hidden rounded-md ring-1 ring-white/10">{/* eslint-disable-next-line @next/next/no-img-element */}<img src={u} alt="" draggable onDragStart={(e) => { e.dataTransfer.setData("application/flowasset", JSON.stringify({ url: u, aspectRatio: usedAspect })); e.dataTransfer.effectAllowed = "copy"; }} className="nodrag h-full w-full cursor-grab object-cover" /><button type="button" onClick={() => download(u)} className="nodrag absolute bottom-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded bg-black/70 text-white opacity-0 transition group-hover/thumb:opacity-100"><Download className="h-2.5 w-2.5" /></button></div>)}</div></div>}
+      </div>}
+      {promptOpen && <PromptModal value={(d.prompt as string) || ""} onChange={(v) => rf.updateNodeData(id, { prompt: v })} onClose={() => setPromptOpen(false)} />}
       {handles}
     </NodeShell>);
   }
   return (<NodeShell id={id} type="imageGen" title={title} status={status} selected={selected} runnable width={300}>
-    <div className="mb-2"><FModelSelect value={(d.model as string) || ""} options={models} placeholder="— modelo —" onChange={(mid) => rf.updateNodeData(id, { model: mid, modelName: models.find((m) => m.id === mid)?.name || "" })} /></div>
-    <div className="relative mb-2"><FTextarea rows={2} value={(d.prompt as string) || ""} onChange={(e) => rf.updateNodeData(id, { prompt: e.target.value })} placeholder="Descreva a imagem (ou conecte um Prompt)…" className="pr-7" /><button type="button" onClick={() => setPromptOpen(true)} className="nodrag absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded text-[color:var(--fx-subtle)] transition hover:text-[color:var(--fx-muted)]" title="Expandir"><Maximize2 className="h-3 w-3" /></button></div>
-    <EnhanceBtn id={id} modality="image" value={(d.prompt as string) || ""} label="Wise enhance" />
-    <MultiUpload id={id} refs={refs} />
-    <div className="grid grid-cols-2 gap-2"><FSelect value={(d.aspectRatio as string) || "1:1"} onChange={(e) => rf.updateNodeData(id, { aspectRatio: e.target.value })}>{["1:1", "16:9", "9:16", "4:3", "3:4"].map((a) => <option key={a} value={a}>{a}</option>)}</FSelect><FSelect value={(d.resolution as string) || "1K"} onChange={(e) => rf.updateNodeData(id, { resolution: e.target.value })}>{["1K", "2K", "4K"].map((r) => <option key={r} value={r}>{r}</option>)}</FSelect></div>
+    {cfg}
     {promptOpen && <PromptModal value={(d.prompt as string) || ""} onChange={(v) => rf.updateNodeData(id, { prompt: v })} onClose={() => setPromptOpen(false)} />}
     {handles}
   </NodeShell>);
@@ -355,7 +395,19 @@ function UpscaleNode({ id, data, selected }: NodeProps) {
 }
 function OutputNode({ id, data, selected }: NodeProps) { const d = data as ND; return (<NodeShell id={id} type="output" title={(d.title as string) || "Output"} status={d.__status as string} selected={selected} width={256}>{d.__result ? <ResultThumb url={d.__result as string} /> : <p className="text-[10px] text-[color:var(--fx-subtle)]">O resultado final aparece aqui após o Run.</p>}<Handle type="target" position={Position.Left} id="in" style={{ background: ACCENT.output }} /></NodeShell>); }
 
-const nodeTypes: NodeTypes = { prompt: PromptNode, refImage: RefImageNode, imageGen: ImageGenNode, videoGen: VideoGenNode, audioGen: AudioGenNode, storyboard: StoryboardNode, removeBg: RemoveBgNode, upscale: UpscaleNode, output: OutputNode };
+function ImageAssetNode({ id, data, selected }: NodeProps) {
+  const d = data as ND; const url = (d.url as string) || "";
+  const [aw, ah] = ((d.aspectRatio as string) || "1:1").split(":").map(Number);
+  const h = Math.max(120, Math.min(340, Math.round(200 * ((ah || 1) / (aw || 1)))));
+  return (<NodeShell id={id} type="imageAsset" title={(d.title as string) || "Image Asset"} selected={selected} noPad width={200}>
+    <div className="relative overflow-hidden rounded-b-[11px]" style={{ height: h, background: "#0a0a0b" }}>
+      {url ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={url} alt="" draggable onDragStart={(e) => { e.dataTransfer.setData("application/flowasset", JSON.stringify({ url, aspectRatio: (d.aspectRatio as string) || "1:1" })); e.dataTransfer.effectAllowed = "copy"; }} className="nodrag h-full w-full object-cover" />) : <div className="flex h-full items-center justify-center text-[10px] text-[color:var(--fx-subtle)]">Vazio</div>}
+      <Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.imageGen }} />
+    </div>
+  </NodeShell>);
+}
+
+const nodeTypes: NodeTypes = { prompt: PromptNode, refImage: RefImageNode, imageGen: ImageGenNode, videoGen: VideoGenNode, audioGen: AudioGenNode, storyboard: StoryboardNode, removeBg: RemoveBgNode, upscale: UpscaleNode, output: OutputNode, imageAsset: ImageAssetNode };
 
 /* ── EDGE COM GRADIENTE POR CATEGORIA ────────────────────────────────────── */
 function GradientEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, source, target }: EdgeProps) {
@@ -400,7 +452,7 @@ function Editor() {
   const onNodesChange = useCallback((c: Parameters<typeof onNodesChangeRaw>[0]) => { onNodesChangeRaw(c); markDirty(); }, [onNodesChangeRaw, markDirty]);
   const onEdgesChange = useCallback((c: Parameters<typeof onEdgesChangeRaw>[0]) => { onEdgesChangeRaw(c); markDirty(); }, [onEdgesChangeRaw, markDirty]);
 
-  useEffect(() => { (async () => { const load = async (t: string) => { const r = await fetch(`/api/models?type=${t}`, { cache: "no-store" }).then((x) => x.json()).catch(() => null); return Array.isArray(r?.models) ? r.models.map((m: ModelOpt) => ({ id: m.id, name: m.name })) : []; }; const [im, vm, am] = await Promise.all([load("image"), load("video"), load("audio")]); setImageModels(im); setVideoModels(vm); setAudioModels(am); try { const me = await fetch("/api/me", { cache: "no-store" }).then((r) => r.json()).catch(() => null); if (typeof me?.credits === "number") setCredits(me.credits); } catch { /* noop */ } })(); }, []);
+  useEffect(() => { (async () => { const load = async (t: string) => { const r = await fetch(`/api/models?type=${t}`, { cache: "no-store" }).then((x) => x.json()).catch(() => null); return Array.isArray(r?.models) ? r.models.map((m: { id: string; name: string; credit_cost?: number }) => ({ id: m.id, name: m.name, cost: typeof m.credit_cost === "number" ? m.credit_cost : 0 })) : []; }; const [im, vm, am] = await Promise.all([load("image"), load("video"), load("audio")]); setImageModels(im); setVideoModels(vm); setAudioModels(am); try { const me = await fetch("/api/me", { cache: "no-store" }).then((r) => r.json()).catch(() => null); if (typeof me?.credits === "number") setCredits(me.credits); } catch { /* noop */ } })(); }, []);
 
   useEffect(() => { let alive = true; (async () => { setLoading(true); try { const res = await fetch(`/api/flows/${flowId}`, { cache: "no-store" }); const data = await res.json().catch(() => null); if (!res.ok) throw new Error(data?.error || "Falha ao carregar."); if (!alive) return; setName(data.flow.name || "Novo Flow"); const def = data.flow.definition || {}; setNodes(Array.isArray(def.nodes) ? def.nodes : []); setEdges(Array.isArray(def.edges) ? def.edges : []); setSaveState("saved"); } catch (err) { toast.error(err instanceof Error ? err.message : "Erro ao carregar."); } finally { if (alive) setLoading(false); } })(); return () => { alive = false; }; }, [flowId, setNodes, setEdges]);
 
@@ -426,7 +478,7 @@ function Editor() {
   }, [imageModels, videoModels, audioModels, setNodes, rf, markDirty]);
 
   const addAtCenter = useCallback((type: string) => { const b = wrapRef.current?.getBoundingClientRect(); const p = b ? rf.screenToFlowPosition({ x: b.x + b.width / 2 - 145, y: b.y + b.height / 2 - 90 }) : { x: 200, y: 160 }; spawn(type, p); }, [rf, spawn]);
-  const onDrop = useCallback((e: React.DragEvent) => { e.preventDefault(); const t = e.dataTransfer.getData("application/flownode"); if (!t) return; spawn(t, rf.screenToFlowPosition({ x: e.clientX, y: e.clientY })); }, [rf, spawn]);
+  const onDrop = useCallback((e: React.DragEvent) => { e.preventDefault(); const asset = e.dataTransfer.getData("application/flowasset"); if (asset) { let payload: { url?: string; aspectRatio?: string } = {}; try { payload = JSON.parse(asset); } catch { payload = { url: asset }; } if (!payload.url) return; const nid = `imageAsset_${Date.now()}_${Math.floor(Math.random() * 1000)}`; setNodes((nds) => [...nds, { id: nid, type: "imageAsset", position: rf.screenToFlowPosition({ x: e.clientX, y: e.clientY }), data: { url: payload.url, aspectRatio: payload.aspectRatio || "1:1", title: "Image Asset" } }]); markDirty(); return; } const t = e.dataTransfer.getData("application/flownode"); if (!t) return; spawn(t, rf.screenToFlowPosition({ x: e.clientX, y: e.clientY })); }, [rf, spawn, setNodes, markDirty]);
   const setNS = useCallback((id: string, patch: ND) => rf.updateNodeData(id, patch), [rf]);
 
   async function pollGen(gid: string): Promise<string> { for (let i = 0; i < 120; i++) { await sleep(3000); const r = await fetch(`/api/generate/status?id=${gid}`, { cache: "no-store" }); const d = await r.json().catch(() => null); if (d?.status === "completed" && d.result_url) return d.result_url; if (d?.status === "failed") throw new Error(d.error_message || "Geração falhou."); } throw new Error("Tempo esgotado."); }
