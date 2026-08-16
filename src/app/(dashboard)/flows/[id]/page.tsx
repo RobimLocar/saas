@@ -52,7 +52,7 @@ const FLOW_CSS = `
 .fx-bar::after{content:"";position:absolute;left:-40%;top:0;height:100%;width:40%;border-radius:999px;background:var(--dot,#F97316);animation:fxslide 1.2s ease-in-out infinite}
 @keyframes fxslide{0%{left:-40%}100%{left:110%}}
 @media (prefers-reduced-motion: reduce){.fx-dots span{animation:none;opacity:.55}.fx-bar::after{animation:none;left:0;width:100%;opacity:.5}}
-.fx-edge-active{stroke-dasharray:5 7;stroke-linecap:round;animation:fxdash .7s linear infinite}
+.fx-edge-active{stroke-dasharray:9 8;stroke-linecap:round;animation:fxdash .8s linear infinite}
 @keyframes fxdash{to{stroke-dashoffset:-24}}
 @media (prefers-reduced-motion: reduce){.fx-edge-active{animation:none;opacity:.5}}
 .fx-checker{background-color:#0f0f10;background-image:linear-gradient(45deg,#1c1c1f 25%,transparent 25%),linear-gradient(-45deg,#1c1c1f 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#1c1c1f 75%),linear-gradient(-45deg,transparent 75%,#1c1c1f 75%);background-size:14px 14px;background-position:0 0,0 7px,7px -7px,-7px 0}
@@ -452,31 +452,46 @@ function RemoveBgNode({ id, data, selected }: NodeProps) {
     </div>{handles}
   </NodeShell>);
 }
+function FDrop({ value, options, accent, onChange }: { value: string; options: { value: string; label: string; disabled?: boolean; note?: string }[]; accent: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false); const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (!open) return; const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as globalThis.Node)) setOpen(false); }; const k = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); }; window.addEventListener("mousedown", h); window.addEventListener("keydown", k); return () => { window.removeEventListener("mousedown", h); window.removeEventListener("keydown", k); }; }, [open]);
+  const sel = options.find((o) => o.value === value);
+  return (<div ref={ref} className="relative nodrag">
+    <button type="button" onClick={() => setOpen((o) => !o)} className="fx-ctrl flex h-[32px] w-full items-center justify-between px-2.5 text-[11px]"><span className="truncate text-[color:var(--fx-text)]">{sel?.label || value}</span><ChevronDown className="h-3 w-3 shrink-0 text-[color:var(--fx-subtle)]" /></button>
+    {open && <div className="nowheel absolute left-0 right-0 top-[36px] z-50 rounded-[10px] p-1" style={{ background: "var(--fx-elev)", border: "1px solid var(--fx-border-h)", boxShadow: "0 16px 40px rgba(0,0,0,.6)" }}>
+      {options.map((o) => { const on = o.value === value; return (<button key={o.value} type="button" disabled={o.disabled} onClick={() => { if (o.disabled) return; onChange(o.value); setOpen(false); }} className="flex w-full items-center gap-2 rounded-[7px] px-2.5 py-1.5 text-left text-[11px] transition disabled:cursor-not-allowed" style={on ? { background: `${accent}22`, color: accent } : o.disabled ? { color: "var(--fx-subtle)" } : { color: "var(--fx-text)" }}><span className="flex-1 truncate">{o.label}</span>{o.note ? <span className="rounded px-1 py-0.5 text-[8px]" style={{ background: "rgba(255,255,255,.06)", color: "var(--fx-subtle)" }}>{o.note}</span> : null}{on && <Check className="h-3.5 w-3.5 shrink-0" style={{ color: accent }} />}</button>); })}
+    </div>}
+  </div>);
+}
+
 function UpscaleNode({ id, data, selected }: NodeProps) {
   const rf = useReactFlow(); const d = data as ND;
   const status = d.__status as string | undefined; const result = d.__result as string | undefined;
   const mode = (d.mode as string) || "Sharp"; const scale = (d.scale as string) || "2x";
   const meta = (d.__resultMeta as ND) || {}; const resultScale = (meta.scale as string) || scale;
-  const inputUrl = useStore((s) => { const e = s.edges.find((ed) => ed.target === id); if (!e) return ""; const sd = (s.nodeLookup.get(e.source)?.data || {}) as ND; const u = (sd.__result as string) || (sd.url as string) || (sd.heldImage as string) || ""; return /^https?:\/\//i.test(u) ? u : ""; });
+  // selector empacotado em string (equality estável): "hasEdge|running|url"
+  const packed = useStore((s) => { const e = s.edges.find((ed) => ed.target === id); if (!e) return "0|0|"; const sd = (s.nodeLookup.get(e.source)?.data || {}) as ND; const u = (sd.__result as string) || (sd.url as string) || (sd.heldImage as string) || ""; const url = /^https?:\/\//i.test(u) ? u : ""; return "1|" + (sd.__status === "running" ? "1" : "0") + "|" + url; });
+  const parts = packed.split("|"); const hasEdge = parts[0] === "1"; const sourceRunning = parts[1] === "1"; const inputUrl = parts.slice(2).join("|");
+  const lastInputRef = useRef(""); if (inputUrl) lastInputRef.current = inputUrl; const displayInput = inputUrl || lastInputRef.current;
   const resultInput = (meta.inputUrl as string) || ""; const resultStale = Boolean(result) && Boolean(inputUrl) && Boolean(resultInput) && resultInput !== inputUrl;
   const [nat, setNat] = useState<{ w: number; h: number } | null>(null);
   const upd = useUpdateNodeInternals();
-  useEffect(() => { const r = requestAnimationFrame(() => upd(id)); return () => cancelAnimationFrame(r); }, [status, result, inputUrl, nat, id, upd]);
+  useEffect(() => { const r = requestAnimationFrame(() => upd(id)); return () => cancelAnimationFrame(r); }, [status, result, inputUrl, hasEdge, nat, id, upd]);
   const [aw, ah] = ((d.aspectRatio as string) || "1:1").split(":").map(Number);
-  const rw = nat?.w || aw || 1; const rh = nat?.h || ah || 1; const mediaH = Math.max(180, Math.min(470, Math.round(268 * (rh / rw))));
+  const rw = nat?.w || aw || 1; const rh = nat?.h || ah || 1; const mH = nat ? Math.max(180, Math.min(470, Math.round(268 * (rh / rw)))) : 360;
   const W = 292;
   const onImgLoad = (e: React.SyntheticEvent<HTMLImageElement>) => { const t = e.currentTarget; if (t.naturalWidth && t.naturalHeight) setNat({ w: t.naturalWidth, h: t.naturalHeight }); };
   async function download() { const u = result; if (!u) return; try { const r = await fetch(u); const b = await r.blob(); const l = URL.createObjectURL(b); const a = document.createElement("a"); a.href = l; a.download = "fluxyra-" + Date.now() + ".png"; a.click(); URL.revokeObjectURL(l); } catch { window.open(u, "_blank"); } }
   const handles = (<><Handle type="target" position={Position.Left} id="reference" style={{ background: ACCENT.upscale }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.upscale }} /></>);
-  const controls = (<div className="grid grid-cols-2 gap-2"><FSelect value={mode} onChange={(e) => { if (e.target.value === "Creative") { toast("Modo Creative em breve."); return; } rf.updateNodeData(id, { mode: e.target.value }); }}>{["Sharp", "Creative"].map((m) => <option key={m} value={m}>{m}</option>)}</FSelect><FSelect value={scale} onChange={(e) => rf.updateNodeData(id, { scale: e.target.value })}>{["2x", "4x"].map((sc) => <option key={sc} value={sc}>{sc}</option>)}</FSelect></div>);
+  const controls = (<div className="grid grid-cols-2 gap-2"><FDrop value={mode} accent={ACCENT.upscale} options={[{ value: "Sharp", label: "Sharp" }, { value: "Creative", label: "Creative", disabled: true, note: "Em breve" }]} onChange={(v) => rf.updateNodeData(id, { mode: v })} /><FDrop value={scale} accent={ACCENT.upscale} options={[{ value: "2x", label: "2×" }, { value: "4x", label: "4×" }]} onChange={(v) => rf.updateNodeData(id, { scale: v })} /></div>);
 
   if (status === "running") {
     return (<NodeShell id={id} type="upscale" title={(d.title as string) || "Upscale"} status={status} selected={selected} glow={ACCENT.upscale} noPad width={W}>
-      <div className="relative overflow-hidden" style={{ height: nat ? mediaH : 220, background: "#0a0a0b" }}>
-        {(result || inputUrl) ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={result || inputUrl} alt="" className="h-full w-full scale-105 object-cover opacity-45 blur-md" />) : null}
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2" style={{ background: "rgba(0,0,0,.45)" }}><Loader2 className="h-6 w-6 animate-spin" style={{ color: ACCENT.upscale }} /><span className="text-[11px] font-medium text-white">Ampliando…</span></div>
+      <div className="relative overflow-hidden" style={{ height: mH, background: "#0a0a0b" }}>
+        {(result || displayInput) ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={result || displayInput} alt="" className="h-full w-full scale-105 object-cover opacity-60 blur-sm" />) : null}
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2" style={{ background: "rgba(0,0,0,.4)" }}><Loader2 className="h-6 w-6 animate-spin" style={{ color: ACCENT.upscale }} /><span className="text-[11px] font-medium text-white">Ampliando…</span></div>
       </div>
-      <div className="pointer-events-none border-t p-2.5 opacity-50" style={{ borderColor: "var(--fx-border)" }}>{controls}</div>
+      <div className="pointer-events-none border-t p-2.5 opacity-45" style={{ borderColor: "var(--fx-border)" }}>{controls}</div>
       {handles}
     </NodeShell>);
   }
@@ -489,7 +504,7 @@ function UpscaleNode({ id, data, selected }: NodeProps) {
   }
   if (result && !resultStale) {
     return (<NodeShell id={id} type="upscale" title={(d.title as string) || "Upscale"} status={status} selected={selected} noPad width={W} runnable>
-      <div className="relative overflow-hidden" style={{ height: mediaH, background: "#0a0a0b" }}>
+      <div className="relative overflow-hidden" style={{ height: mH, background: "#0a0a0b" }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={result} alt="" onLoad={onImgLoad} draggable onDragStart={(e) => { e.dataTransfer.setData("application/flowasset", JSON.stringify({ url: result, aspectRatio: (d.aspectRatio as string) || "1:1", model: "Upscale" })); e.dataTransfer.effectAllowed = "all"; }} className="nodrag h-full w-full object-cover" />
         <div className="absolute right-2 top-2 rounded-full px-2 py-0.5 text-[9px] font-medium text-white" style={{ background: "rgba(0,0,0,.55)" }}>{resultScale}</div>
@@ -498,14 +513,23 @@ function UpscaleNode({ id, data, selected }: NodeProps) {
       <div className="border-t p-2.5" style={{ borderColor: "var(--fx-border)" }}>{controls}</div>{handles}
     </NodeShell>);
   }
-  if (inputUrl) {
+  if (hasEdge && inputUrl) {
     return (<NodeShell id={id} type="upscale" title={(d.title as string) || "Upscale"} status={status} selected={selected} noPad width={W} runnable>
-      <div className="relative overflow-hidden" style={{ height: mediaH, background: "#0a0a0b" }}>
+      <div className="relative overflow-hidden" style={{ height: mH, background: "#0a0a0b" }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={inputUrl} alt="" onLoad={onImgLoad} className="h-full w-full object-cover" />
         <div className="absolute right-2 top-2 rounded-full px-2 py-0.5 text-[9px] font-medium text-white" style={{ background: "rgba(0,0,0,.55)" }}>Input</div>
       </div>
       <div className="border-t p-2.5" style={{ borderColor: "var(--fx-border)" }}>{controls}</div>{handles}
+    </NodeShell>);
+  }
+  if (hasEdge) {
+    return (<NodeShell id={id} type="upscale" title={(d.title as string) || "Upscale"} status={status} selected={selected} noPad width={W}>
+      <div className="relative overflow-hidden" style={{ height: mH, background: "#0a0a0b" }}>
+        {displayInput ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={displayInput} alt="" onLoad={onImgLoad} className="h-full w-full object-cover opacity-35" />) : null}
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5" style={{ background: "rgba(0,0,0,.35)" }}><Loader2 className="h-4 w-4 animate-spin text-[color:var(--fx-muted)]" /><span className="text-[10px] font-medium text-[color:var(--fx-muted)]">{sourceRunning ? "Aguardando nova imagem…" : "Aguardando imagem…"}</span></div>
+      </div>
+      <div className="pointer-events-none border-t p-2.5 opacity-45" style={{ borderColor: "var(--fx-border)" }}>{controls}</div>{handles}
     </NodeShell>);
   }
   return (<NodeShell id={id} type="upscale" title={(d.title as string) || "Upscale"} status={status} selected={selected} width={W} runnable>
@@ -605,7 +629,7 @@ function Editor() {
 
   useEffect(() => { let alive = true; (async () => { setLoading(true); try { const res = await fetch(`/api/flows/${flowId}`, { cache: "no-store" }); const data = await res.json().catch(() => null); if (!res.ok) throw new Error(data?.error || "Falha ao carregar."); if (!alive) return; setName(data.flow.name || "Novo Flow"); const def = data.flow.definition || {}; setNodes(Array.isArray(def.nodes) ? def.nodes : []); const defNodes = (Array.isArray(def.nodes) ? def.nodes : []) as Node[]; setEdges(Array.isArray(def.edges) ? def.edges : []); setSaveState("saved"); setTimeout(() => { defNodes.forEach((n) => { const dd = (n.data || {}) as ND; if (dd.__gen && !dd.__result) void resumePoll(n.id, String(dd.__gen)); }); }, 0); } catch (err) { toast.error(err instanceof Error ? err.message : "Erro ao carregar."); } finally { if (alive) setLoading(false); } })(); return () => { alive = false; }; }, [flowId, setNodes, setEdges]);
 
-  const onConnect = useCallback((c: Connection) => { setEdges((eds) => addEdge({ ...c, type: "grad", animated: true }, eds)); markDirty(); }, [setEdges, markDirty]);
+  const onConnect = useCallback((c: Connection) => { setEdges((eds) => addEdge({ ...c, type: "grad" }, eds)); markDirty(); }, [setEdges, markDirty]);
 
   const save = useCallback(async () => {
     if (savingRef.current) return; savingRef.current = true; setSaveState("saving");
