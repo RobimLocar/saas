@@ -324,6 +324,28 @@ export interface GptImageParams {
  * Gera imagem com o GPT Image 2 real da PiAPI (síncrono).
  * Retorna uma data-URL (base64) ou URL http, pronta para persistir no Storage.
  */
+// ─── Qubico Image Toolkit (Remove BG / Upscale) — assíncrono via /task ────────
+// Docs PiAPI: POST /task { model:"Qubico/image-toolkit", task_type, input }.
+// background-remove → input { rmbg_model, image }; upscale → input { image, scale, face_enhance }.
+// A saída sai em output.image (lida pelo extractResultUrl no polling do status).
+export async function submitImageToolkitTask(
+  args: { taskType: "background-remove" | "upscale"; input: Record<string, unknown> },
+  requestId = "-"
+): Promise<PiAPITaskResponse> {
+  return piapiFetch<PiAPITaskResponse>(
+    "/task",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        model: "Qubico/image-toolkit",
+        task_type: args.taskType,
+        input: args.input,
+      }),
+    },
+    requestId
+  );
+}
+
 export async function generateImageGptSync(
   params: GptImageParams
 ): Promise<string> {
