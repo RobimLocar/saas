@@ -1,13 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
   ReactFlow,
   ReactFlowProvider,
   Background,
-  Controls,
   MiniMap,
   addEdge,
   useNodesState,
@@ -24,19 +30,24 @@ import {
 import "@xyflow/react/dist/style.css";
 import {
   ArrowLeft,
-  Save,
   Play,
   Loader2,
   Check,
   X as XIcon,
+  Trash2,
   Type as TypeIcon,
   Image as ImageIcon,
   Film,
   FileImage,
   CircleDot,
+  Workflow,
+  Crosshair,
+  Eraser,
+  Plus,
+  Maximize2,
+  Minus,
 } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 
 type NodeData = Record<string, unknown>;
 interface ModelOpt {
@@ -52,120 +63,212 @@ const NODE_COLOR: Record<string, string> = {
   output: "#4ADE80",
 };
 
+const ModelsCtx = createContext<{ image: ModelOpt[]; video: ModelOpt[] }>({ image: [], video: [] });
+
+// ── UI helpers dentro dos nós ───────────────────────────────────────────────
+const fieldCls =
+  "nodrag w-full rounded-lg border border-[#2A2A2E] bg-[#0f0f11] px-2 py-1.5 text-[11px] text-[#F5F5F5] outline-none focus:border-[#7C3AED]";
+
 function StatusDot({ status }: { status?: string }) {
-  if (status === "running")
-    return <Loader2 className="h-3.5 w-3.5 animate-spin text-[#A78BFA]" />;
+  if (status === "running") return <Loader2 className="h-3.5 w-3.5 animate-spin text-[#A78BFA]" />;
   if (status === "done") return <Check className="h-3.5 w-3.5 text-[#4ADE80]" />;
   if (status === "failed") return <XIcon className="h-3.5 w-3.5 text-[#FCA5A5]" />;
   return null;
 }
 
-function NodeShell({
+function ResultThumb({ url }: { url?: string }) {
+  if (!url) return null;
+  const isVideo = /\.(mp4|mov|webm)(\?|$)/i.test(url);
+  return isVideo ? (
+    <video src={url} muted playsInline className="mt-2 h-28 w-full rounded-lg object-cover" />
+  ) : (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={url} alt="result" className="mt-2 h-28 w-full rounded-lg object-cover" />
+  );
+}
+
+function NodeCard({
+  id,
   color,
+  icon: Icon,
   title,
-  children,
-  selected,
   status,
+  selected,
+  children,
 }: {
+  id: string;
   color: string;
+  icon: typeof TypeIcon;
   title: string;
-  children?: React.ReactNode;
-  selected?: boolean;
   status?: string;
+  selected?: boolean;
+  children?: React.ReactNode;
 }) {
+  const rf = useReactFlow();
   return (
     <div
-      className="w-[210px] rounded-xl border bg-[#161618] text-left shadow-lg transition-colors"
-      style={{ borderColor: selected ? color : "#2A2A2E" }}
+      className="w-[262px] rounded-2xl border bg-[#161618]/95 shadow-[0_10px_40px_rgba(0,0,0,0.5)] backdrop-blur transition-colors"
+      style={{ borderColor: selected ? color : "#26262b" }}
     >
-      <div
-        className="flex items-center gap-2 rounded-t-xl px-3 py-2 text-xs font-semibold"
-        style={{ backgroundColor: `${color}22`, color }}
-      >
-        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
-        <span className="flex-1">{title}</span>
+      <div className="flex items-center gap-2 rounded-t-2xl border-b border-[#242428] px-3 py-2">
+        <span
+          className="flex h-6 w-6 items-center justify-center rounded-lg"
+          style={{ backgroundColor: `${color}22`, color }}
+        >
+          <Icon className="h-3.5 w-3.5" />
+        </span>
+        <span className="flex-1 text-xs font-semibold" style={{ color }}>
+          {title}
+        </span>
         <StatusDot status={status} />
+        <button
+          type="button"
+          className="nodrag flex h-6 w-6 items-center justify-center rounded-md text-[#666] transition hover:bg-[#2A1313] hover:text-[#FCA5A5]"
+          onClick={() => rf.deleteElements({ nodes: [{ id }] })}
+          title="Excluir nó"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
       </div>
-      <div className="px-3 py-2 text-[11px] text-[#B8B8C0]">{children}</div>
+      <div className="px-3 py-2.5">{children}</div>
     </div>
   );
 }
 
-function ResultThumb({ data }: { data: NodeData }) {
-  const url = data.__result as string | undefined;
-  if (!url) return null;
-  const isVideo = /\.(mp4|mov|webm)(\?|$)/i.test(url);
-  return isVideo ? (
-    <video src={url} muted playsInline className="mt-2 h-24 w-full rounded object-cover" />
-  ) : (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={url} alt="result" className="mt-2 h-24 w-full rounded object-cover" />
-  );
-}
-
-function PromptNode({ data, selected }: NodeProps) {
+function PromptNode({ id, data, selected }: NodeProps) {
+  const rf = useReactFlow();
   const d = data as NodeData;
   return (
-    <NodeShell color={NODE_COLOR.prompt} title="Prompt" selected={selected} status={d.__status as string}>
-      <p className="line-clamp-3 min-h-[32px] whitespace-pre-wrap">
-        {(d.text as string) || "Escreva o prompt no painel à direita…"}
-      </p>
-      <Handle type="source" position={Position.Right} id="out" style={{ background: NODE_COLOR.prompt }} />
-    </NodeShell>
+    <NodeCard id={id} color={NODE_COLOR.prompt} icon={TypeIcon} title="Prompt" status={d.__status as string} selected={selected}>
+      <textarea
+        value={(d.text as string) || ""}
+        onChange={(e) => rf.updateNodeData(id, { text: e.target.value })}
+        rows={3}
+        className={fieldCls}
+        placeholder="Escreva o prompt…"
+      />
+      <Handle type="source" position={Position.Right} id="out" style={{ background: NODE_COLOR.prompt, width: 10, height: 10 }} />
+    </NodeCard>
   );
 }
 
-function RefImageNode({ data, selected }: NodeProps) {
+function RefImageNode({ id, data, selected }: NodeProps) {
+  const rf = useReactFlow();
   const d = data as NodeData;
   const url = (d.url as string) || "";
   return (
-    <NodeShell color={NODE_COLOR.refImage} title="Reference Image" selected={selected} status={d.__status as string}>
+    <NodeCard id={id} color={NODE_COLOR.refImage} icon={FileImage} title="Reference Image" status={d.__status as string} selected={selected}>
+      <input
+        value={url}
+        onChange={(e) => rf.updateNodeData(id, { url: e.target.value })}
+        className={fieldCls}
+        placeholder="Cole a URL da imagem…"
+      />
       {url ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt="ref" className="h-20 w-full rounded object-cover" />
+        <img src={url} alt="ref" className="mt-2 h-24 w-full rounded-lg object-cover" />
+      ) : null}
+      <Handle type="source" position={Position.Right} id="out" style={{ background: NODE_COLOR.refImage, width: 10, height: 10 }} />
+    </NodeCard>
+  );
+}
+
+function ImageGenNode({ id, data, selected }: NodeProps) {
+  const rf = useReactFlow();
+  const models = useContext(ModelsCtx).image;
+  const d = data as NodeData;
+  return (
+    <NodeCard id={id} color={NODE_COLOR.imageGen} icon={ImageIcon} title="Image Generator" status={d.__status as string} selected={selected}>
+      <select
+        value={(d.model as string) || ""}
+        onChange={(e) => rf.updateNodeData(id, { model: e.target.value, modelName: models.find((m) => m.id === e.target.value)?.name || "" })}
+        className={`${fieldCls} mb-2`}
+      >
+        <option value="">— escolha o modelo —</option>
+        {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+      </select>
+      <textarea
+        value={(d.prompt as string) || ""}
+        onChange={(e) => rf.updateNodeData(id, { prompt: e.target.value })}
+        rows={2}
+        className={`${fieldCls} mb-2`}
+        placeholder="Descreva a imagem (ou conecte um Prompt)…"
+      />
+      <div className="flex gap-2">
+        <select value={(d.aspectRatio as string) || "1:1"} onChange={(e) => rf.updateNodeData(id, { aspectRatio: e.target.value })} className={fieldCls}>
+          {["1:1", "16:9", "9:16", "4:3", "3:4"].map((a) => <option key={a} value={a}>{a}</option>)}
+        </select>
+        <select value={(d.resolution as string) || "720p"} onChange={(e) => rf.updateNodeData(id, { resolution: e.target.value })} className={fieldCls}>
+          {["720p", "1080p"].map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+      </div>
+      <ResultThumb url={d.__result as string} />
+      <Handle type="target" position={Position.Left} id="prompt" style={{ top: 44, background: "#22D3EE", width: 10, height: 10 }} />
+      <Handle type="target" position={Position.Left} id="reference" style={{ top: 90, background: "#F97316", width: 10, height: 10 }} />
+      <Handle type="source" position={Position.Right} id="out" style={{ background: NODE_COLOR.imageGen, width: 10, height: 10 }} />
+    </NodeCard>
+  );
+}
+
+function VideoGenNode({ id, data, selected }: NodeProps) {
+  const rf = useReactFlow();
+  const models = useContext(ModelsCtx).video;
+  const d = data as NodeData;
+  return (
+    <NodeCard id={id} color={NODE_COLOR.videoGen} icon={Film} title="Video Generator" status={d.__status as string} selected={selected}>
+      <select
+        value={(d.model as string) || ""}
+        onChange={(e) => rf.updateNodeData(id, { model: e.target.value, modelName: models.find((m) => m.id === e.target.value)?.name || "" })}
+        className={`${fieldCls} mb-2`}
+      >
+        <option value="">— escolha o modelo —</option>
+        {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+      </select>
+      <textarea
+        value={(d.prompt as string) || ""}
+        onChange={(e) => rf.updateNodeData(id, { prompt: e.target.value })}
+        rows={2}
+        className={`${fieldCls} mb-2`}
+        placeholder="Descreva o vídeo (ou conecte um Prompt)…"
+      />
+      <div className="mb-2 flex items-center gap-2">
+        <input
+          type="range"
+          min={4}
+          max={30}
+          value={(d.duration as number) || 8}
+          onChange={(e) => rf.updateNodeData(id, { duration: Number(e.target.value) })}
+          className="nodrag flex-1"
+        />
+        <span className="w-8 text-right text-[11px] text-[#B8B8C0]">{(d.duration as number) || 8}s</span>
+      </div>
+      <div className="flex gap-2">
+        <select value={(d.aspectRatio as string) || "9:16"} onChange={(e) => rf.updateNodeData(id, { aspectRatio: e.target.value })} className={fieldCls}>
+          {["9:16", "16:9", "1:1", "4:3", "3:4"].map((a) => <option key={a} value={a}>{a}</option>)}
+        </select>
+        <select value={(d.resolution as string) || "720p"} onChange={(e) => rf.updateNodeData(id, { resolution: e.target.value })} className={fieldCls}>
+          {["480p", "720p", "1080p"].map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+      </div>
+      <ResultThumb url={d.__result as string} />
+      <Handle type="target" position={Position.Left} id="prompt" style={{ top: 44, background: "#22D3EE", width: 10, height: 10 }} />
+      <Handle type="target" position={Position.Left} id="reference" style={{ top: 90, background: "#F97316", width: 10, height: 10 }} />
+      <Handle type="source" position={Position.Right} id="out" style={{ background: NODE_COLOR.videoGen, width: 10, height: 10 }} />
+    </NodeCard>
+  );
+}
+
+function OutputNode({ id, data, selected }: NodeProps) {
+  const d = data as NodeData;
+  return (
+    <NodeCard id={id} color={NODE_COLOR.output} icon={CircleDot} title="Output" status={d.__status as string} selected={selected}>
+      {d.__result ? (
+        <ResultThumb url={d.__result as string} />
       ) : (
-        <p className="text-[#777]">Cole a URL da imagem no painel.</p>
+        <p className="text-[11px] text-[#888]">O resultado final aparece aqui após o Run.</p>
       )}
-      <Handle type="source" position={Position.Right} id="out" style={{ background: NODE_COLOR.refImage }} />
-    </NodeShell>
-  );
-}
-
-function ImageGenNode({ data, selected }: NodeProps) {
-  const d = data as NodeData;
-  return (
-    <NodeShell color={NODE_COLOR.imageGen} title="Image Generator" selected={selected} status={d.__status as string}>
-      <p>Modelo: <span className="text-white">{(d.modelName as string) || "— escolha —"}</span></p>
-      <p>AR: {(d.aspectRatio as string) || "1:1"} · x{(d.count as number) || 1}</p>
-      <ResultThumb data={d} />
-      <Handle type="target" position={Position.Left} id="prompt" style={{ top: "30%", background: "#22D3EE" }} />
-      <Handle type="target" position={Position.Left} id="reference" style={{ top: "60%", background: "#F97316" }} />
-      <Handle type="source" position={Position.Right} id="out" style={{ background: NODE_COLOR.imageGen }} />
-    </NodeShell>
-  );
-}
-
-function VideoGenNode({ data, selected }: NodeProps) {
-  const d = data as NodeData;
-  return (
-    <NodeShell color={NODE_COLOR.videoGen} title="Video Generator" selected={selected} status={d.__status as string}>
-      <p>Modelo: <span className="text-white">{(d.modelName as string) || "— escolha —"}</span></p>
-      <p>{(d.duration as number) || 8}s · {(d.resolution as string) || "720p"} · {(d.aspectRatio as string) || "9:16"}</p>
-      <ResultThumb data={d} />
-      <Handle type="target" position={Position.Left} id="prompt" style={{ top: "30%", background: "#22D3EE" }} />
-      <Handle type="target" position={Position.Left} id="reference" style={{ top: "60%", background: "#F97316" }} />
-      <Handle type="source" position={Position.Right} id="out" style={{ background: NODE_COLOR.videoGen }} />
-    </NodeShell>
-  );
-}
-
-function OutputNode({ data, selected }: NodeProps) {
-  const d = data as NodeData;
-  return (
-    <NodeShell color={NODE_COLOR.output} title="Output" selected={selected} status={d.__status as string}>
-      {d.__result ? <ResultThumb data={d} /> : <p>{(d.label as string) || "Resultado final do fluxo"}</p>}
-      <Handle type="target" position={Position.Left} id="in" style={{ background: NODE_COLOR.output }} />
-    </NodeShell>
+      <Handle type="target" position={Position.Left} id="in" style={{ background: NODE_COLOR.output, width: 10, height: 10 }} />
+    </NodeCard>
   );
 }
 
@@ -177,12 +280,12 @@ const nodeTypes: NodeTypes = {
   output: OutputNode,
 };
 
-const PALETTE = [
-  { type: "prompt", label: "Prompt", Icon: TypeIcon, defaults: { label: "Prompt", text: "" } },
-  { type: "refImage", label: "Imagem de referência", Icon: FileImage, defaults: { label: "Reference Image", url: "" } },
-  { type: "imageGen", label: "Gerador de imagem", Icon: ImageIcon, defaults: { label: "Image Generator", model: "", modelName: "", aspectRatio: "1:1", count: 1 } },
-  { type: "videoGen", label: "Gerador de vídeo", Icon: Film, defaults: { label: "Video Generator", model: "", modelName: "", duration: 8, resolution: "720p", aspectRatio: "9:16" } },
-  { type: "output", label: "Saída", Icon: CircleDot, defaults: { label: "Output" } },
+const NODE_DEFS = [
+  { type: "imageGen", label: "Image Generator", Icon: ImageIcon, hint: "Gera imagens do seu prompt. Conecte referências para maior consistência.", defaults: { prompt: "", model: "", modelName: "", aspectRatio: "1:1", resolution: "720p" } },
+  { type: "videoGen", label: "Video Generator", Icon: Film, hint: "Transforma prompts em vídeos. Conecte uma imagem como primeiro frame.", defaults: { prompt: "", model: "", modelName: "", duration: 8, resolution: "720p", aspectRatio: "9:16" } },
+  { type: "prompt", label: "Prompt", Icon: TypeIcon, hint: "Um texto reutilizável que alimenta os geradores.", defaults: { text: "" } },
+  { type: "refImage", label: "Reference Image", Icon: FileImage, hint: "Uma imagem de referência (URL) para estilo ou primeiro frame.", defaults: { url: "" } },
+  { type: "output", label: "Output", Icon: CircleDot, hint: "Coleta o resultado final do fluxo.", defaults: { label: "Output" } },
 ] as const;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -191,17 +294,21 @@ function Editor() {
   const params = useParams();
   const flowId = String(params?.id || "");
   const rf = useReactFlow();
+  const wrapRef = useRef<HTMLDivElement>(null);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [nodes, setNodes, onNodesChangeRaw] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChangeRaw] = useEdgesState<Edge>([]);
   const [name, setName] = useState("Novo Flow");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
   const [imageModels, setImageModels] = useState<ModelOpt[]>([]);
   const [videoModels, setVideoModels] = useState<ModelOpt[]>([]);
   const counter = useRef(0);
+
+  const onNodesChange = useCallback((c: Parameters<typeof onNodesChangeRaw>[0]) => { onNodesChangeRaw(c); setDirty(true); }, [onNodesChangeRaw]);
+  const onEdgesChange = useCallback((c: Parameters<typeof onEdgesChangeRaw>[0]) => { onEdgesChangeRaw(c); setDirty(true); }, [onEdgesChangeRaw]);
 
   useEffect(() => {
     (async () => {
@@ -213,7 +320,7 @@ function Editor() {
         setImageModels(Array.isArray(im?.models) ? im.models.map((m: ModelOpt) => ({ id: m.id, name: m.name })) : []);
         setVideoModels(Array.isArray(vm?.models) ? vm.models.map((m: ModelOpt) => ({ id: m.id, name: m.name })) : []);
       } catch {
-        // silencioso
+        /* silencioso */
       }
     })();
   }, []);
@@ -231,82 +338,74 @@ function Editor() {
         const def = data.flow.definition || {};
         setNodes(Array.isArray(def.nodes) ? def.nodes : []);
         setEdges(Array.isArray(def.edges) ? def.edges : []);
+        setDirty(false);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Erro ao carregar flow.");
       } finally {
         if (alive) setLoading(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [flowId, setNodes, setEdges]);
 
   const onConnect = useCallback(
-    (c: Connection) => setEdges((eds) => addEdge({ ...c, animated: true, style: { stroke: "#7C3AED" } }, eds)),
+    (c: Connection) => { setEdges((eds) => addEdge({ ...c, animated: true, style: { stroke: "#7C3AED", strokeWidth: 2 } }, eds)); setDirty(true); },
     [setEdges]
   );
 
-  function addNode(item: (typeof PALETTE)[number]) {
-    counter.current += 1;
-    const idx = nodes.length;
-    const nid = `${item.type}_${Date.now()}_${counter.current}`;
-    const defaults: NodeData = { ...item.defaults };
-    if (item.type === "imageGen" && imageModels[0]) {
-      defaults.model = imageModels[0].id;
-      defaults.modelName = imageModels[0].name;
-    }
-    if (item.type === "videoGen" && videoModels[0]) {
-      defaults.model = videoModels[0].id;
-      defaults.modelName = videoModels[0].name;
-    }
-    const newNode: Node = {
-      id: nid,
-      type: item.type,
-      position: { x: 80 + (idx % 4) * 260, y: 60 + Math.floor(idx / 4) * 200 },
-      data: defaults,
-    };
-    setNodes((nds) => [...nds, newNode]);
-    setSelectedId(nid);
-  }
-
-  const selectedNode = useMemo(() => nodes.find((n) => n.id === selectedId) || null, [nodes, selectedId]);
-
-  const patchData = useCallback(
-    (patch: NodeData) => {
-      if (!selectedId) return;
-      setNodes((nds) => nds.map((n) => (n.id === selectedId ? { ...n, data: { ...n.data, ...patch } } : n)));
+  const spawn = useCallback(
+    (type: string, position: { x: number; y: number }) => {
+      const def = NODE_DEFS.find((d) => d.type === type);
+      if (!def) return;
+      counter.current += 1;
+      const nid = `${type}_${Date.now()}_${counter.current}`;
+      const defaults: NodeData = { ...def.defaults };
+      if (type === "imageGen" && imageModels[0]) { defaults.model = imageModels[0].id; defaults.modelName = imageModels[0].name; }
+      if (type === "videoGen" && videoModels[0]) { defaults.model = videoModels[0].id; defaults.modelName = videoModels[0].name; }
+      setNodes((nds) => [...nds, { id: nid, type, position, data: defaults }]);
+      setDirty(true);
     },
-    [selectedId, setNodes]
+    [imageModels, videoModels, setNodes]
   );
 
-  const setNodeState = useCallback(
-    (id: string, patch: NodeData) => {
-      setNodes((nds) => nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)));
+  const addAtCenter = useCallback((type: string) => {
+    const box = wrapRef.current?.getBoundingClientRect();
+    const pos = box
+      ? rf.screenToFlowPosition({ x: box.x + box.width / 2 - 130, y: box.y + box.height / 2 - 80 })
+      : { x: 200, y: 160 };
+    spawn(type, pos);
+  }, [rf, spawn]);
+
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      const type = e.dataTransfer.getData("application/flownode");
+      if (!type) return;
+      const pos = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      spawn(type, pos);
     },
-    [setNodes]
+    [rf, spawn]
   );
+
+  const setNodeState = useCallback((id: string, patch: NodeData) => rf.updateNodeData(id, patch), [rf]);
 
   async function save() {
     setSaving(true);
     try {
       const obj = rf.toObject();
-      // limpa campos de runtime antes de salvar
       const cleanNodes = obj.nodes.map((n) => {
-        const d = { ...(n.data as NodeData) };
-        delete d.__status;
-        delete d.__result;
-        return { ...n, data: d };
+        const dd = { ...(n.data as NodeData) };
+        delete dd.__status;
+        delete dd.__result;
+        return { ...n, data: dd };
       });
       const res = await fetch(`/api/flows/${flowId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, definition: { ...obj, nodes: cleanNodes } }),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error || "Falha ao salvar flow.");
-      }
+      if (!res.ok) { const data = await res.json().catch(() => null); throw new Error(data?.error || "Falha ao salvar flow."); }
+      setDirty(false);
       toast.success("Flow salvo ✓");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao salvar flow.");
@@ -327,52 +426,31 @@ function Editor() {
   }
 
   async function runFlow() {
-    // snapshot atual
     const snapNodes = rf.getNodes();
     const snapEdges = rf.getEdges();
-    if (snapNodes.length === 0) {
-      toast.error("Adicione nós ao fluxo antes de rodar.");
-      return;
-    }
+    if (snapNodes.length === 0) { toast.error("Adicione nós ao fluxo antes de rodar."); return; }
 
-    // ordenação topológica (Kahn)
     const indeg = new Map<string, number>();
     const adj = new Map<string, string[]>();
-    snapNodes.forEach((n) => {
-      indeg.set(n.id, 0);
-      adj.set(n.id, []);
-    });
-    snapEdges.forEach((e) => {
-      adj.get(e.source)?.push(e.target);
-      indeg.set(e.target, (indeg.get(e.target) || 0) + 1);
-    });
+    snapNodes.forEach((n) => { indeg.set(n.id, 0); adj.set(n.id, []); });
+    snapEdges.forEach((e) => { adj.get(e.source)?.push(e.target); indeg.set(e.target, (indeg.get(e.target) || 0) + 1); });
     const queue = snapNodes.filter((n) => (indeg.get(n.id) || 0) === 0).map((n) => n.id);
     const order: string[] = [];
     while (queue.length) {
       const id = queue.shift()!;
       order.push(id);
-      for (const t of adj.get(id) || []) {
-        indeg.set(t, (indeg.get(t) || 0) - 1);
-        if ((indeg.get(t) || 0) === 0) queue.push(t);
-      }
+      for (const t of adj.get(id) || []) { indeg.set(t, (indeg.get(t) || 0) - 1); if ((indeg.get(t) || 0) === 0) queue.push(t); }
     }
-    if (order.length !== snapNodes.length) {
-      toast.error("O fluxo tem um ciclo — remova ligações em loop.");
-      return;
-    }
+    if (order.length !== snapNodes.length) { toast.error("O fluxo tem um ciclo — remova ligações em loop."); return; }
 
     const nodeById = new Map(snapNodes.map((n) => [n.id, n]));
     const outputs = new Map<string, string>();
-
-    // limpa status anterior
-    setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, __status: undefined, __result: undefined } })));
+    snapNodes.forEach((n) => rf.updateNodeData(n.id, { __status: undefined, __result: undefined }));
     setRunning(true);
-
     try {
       for (const id of order) {
         const node = nodeById.get(id)!;
         const d = node.data as NodeData;
-        // resolve entradas
         const incoming = snapEdges.filter((e) => e.target === id);
         let promptText = "";
         const refUrls: string[] = [];
@@ -383,65 +461,30 @@ function Editor() {
           else promptText = promptText ? `${promptText} ${val}` : val;
         }
 
-        if (node.type === "prompt") {
-          outputs.set(id, (d.text as string) || "");
-          continue;
-        }
-        if (node.type === "refImage") {
-          outputs.set(id, (d.url as string) || "");
-          continue;
-        }
+        if (node.type === "prompt") { outputs.set(id, (d.text as string) || ""); continue; }
+        if (node.type === "refImage") { outputs.set(id, (d.url as string) || ""); continue; }
         if (node.type === "output") {
           const val = incoming.map((e) => outputs.get(e.source)).find(Boolean) || "";
           outputs.set(id, val);
           setNodeState(id, { __status: val ? "done" : "failed", __result: val || undefined });
           continue;
         }
-
-        // nós de geração
         if (node.type === "imageGen" || node.type === "videoGen") {
-          if (!d.model) {
-            setNodeState(id, { __status: "failed" });
-            throw new Error(`Selecione um modelo no nó "${node.type === "imageGen" ? "Image Generator" : "Video Generator"}".`);
-          }
-          if (!promptText.trim()) {
-            setNodeState(id, { __status: "failed" });
-            throw new Error("Conecte um nó Prompt ao gerador.");
-          }
+          const finalPrompt = promptText.trim() || String(d.prompt || "").trim();
+          if (!d.model) { setNodeState(id, { __status: "failed" }); throw new Error("Selecione um modelo no gerador."); }
+          if (!finalPrompt) { setNodeState(id, { __status: "failed" }); throw new Error("Escreva ou conecte um prompt no gerador."); }
           setNodeState(id, { __status: "running", __result: undefined });
 
           const isImage = node.type === "imageGen";
-          const body: Record<string, unknown> = {
-            prompt: promptText,
-            model_uuid: d.model,
-            aspect_ratio: d.aspectRatio,
-            quality: "high",
-          };
-          if (refUrls.length > 0) {
-            body.reference_images = refUrls;
-            body.reference_image_url = refUrls[0];
-          }
-          if (isImage) {
-            body.resolution = "720p";
-          } else {
-            body.duration = d.duration;
-            body.resolution = d.resolution;
-          }
+          const body: Record<string, unknown> = { prompt: finalPrompt, model_uuid: d.model, aspect_ratio: d.aspectRatio, quality: "high", resolution: d.resolution || "720p" };
+          if (refUrls.length > 0) { body.reference_images = refUrls; body.reference_image_url = refUrls[0]; }
+          if (!isImage) body.duration = d.duration;
 
-          const res = await fetch(`/api/generate/${isImage ? "image" : "video"}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          });
+          const res = await fetch(`/api/generate/${isImage ? "image" : "video"}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
           const data = await res.json().catch(() => null);
-          if (!res.ok) {
-            setNodeState(id, { __status: "failed" });
-            throw new Error(data?.error || "Falha ao iniciar a geração.");
-          }
+          if (!res.ok) { setNodeState(id, { __status: "failed" }); throw new Error(data?.error || "Falha ao iniciar a geração."); }
           let url = data?.result_url as string | undefined;
-          if (data?.status !== "completed" || !url) {
-            url = await pollGeneration(String(data.generation_id));
-          }
+          if (data?.status !== "completed" || !url) url = await pollGeneration(String(data.generation_id));
           outputs.set(id, url);
           setNodeState(id, { __status: "done", __result: url });
         }
@@ -454,206 +497,127 @@ function Editor() {
     }
   }
 
-  return (
-    <div className="flex h-[calc(100vh-4rem)] min-h-[560px] flex-col">
-      <style>{`
-        .react-flow__controls-button{background:#161618;border-bottom:1px solid #242428;color:#B8B8C0;}
-        .react-flow__controls-button:hover{background:#242428;}
-        .react-flow__controls-button svg{fill:#B8B8C0;}
-      `}</style>
-      {/* Header */}
-      <div className="flex items-center gap-3 border-b border-[#242428] px-4 py-2.5">
-        <Link
-          href="/flows"
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#2A2A2A] text-[#B8B8C0] hover:bg-white/5"
-          aria-label="Voltar"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1 text-sm font-semibold text-[#F5F5F5] outline-none hover:border-[#2A2A2A] focus:border-[#7C3AED]"
-        />
-        <Button
-          onClick={() => void runFlow()}
-          disabled={running || loading}
-          variant="outline"
-          className="border-[#2A2A2A] text-[#F5F5F5]"
-        >
-          {running ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Play className="mr-1 h-4 w-4" />}
-          {running ? "Rodando..." : "Run"}
-        </Button>
-        <Button
-          onClick={() => void save()}
-          disabled={saving || loading}
-          className="rounded-full bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
-        >
-          <Save className="mr-1 h-4 w-4" />
-          {saving ? "Salvando..." : "Salvar"}
-        </Button>
-      </div>
+  function clearAll() {
+    if (nodes.length === 0) return;
+    if (!window.confirm("Limpar todos os nós deste flow?")) return;
+    setNodes([]);
+    setEdges([]);
+    setDirty(true);
+  }
 
-      <div className="flex min-h-0 flex-1">
-        {/* Paleta */}
-        <div className="w-[190px] shrink-0 space-y-1.5 border-r border-[#242428] bg-[#101012] p-3">
-          <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-widest text-[#666]">Adicionar nó</p>
-          {PALETTE.map((item) => (
-            <button
-              key={item.type}
-              type="button"
-              onClick={() => addNode(item)}
-              className="flex w-full items-center gap-2 rounded-lg border border-[#242428] bg-[#161618] px-2.5 py-2 text-left text-xs text-[#E5E5E5] transition hover:border-[#7C3AED]/50 hover:bg-white/5"
+  return (
+    <ModelsCtx.Provider value={{ image: imageModels, video: videoModels }}>
+      <div className="relative flex h-[calc(100vh-4rem)] min-h-[560px] flex-col">
+        <style>{`.react-flow__attribution{display:none}`}</style>
+        {/* Header / breadcrumb */}
+        <div className="flex items-center gap-2 border-b border-[#242428] px-4 py-2.5">
+          <Link href="/flows" className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#2A2A2A] text-[#B8B8C0] hover:bg-white/5" aria-label="Voltar">
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+          <Workflow className="h-4 w-4 text-[#7C3AED]" />
+          <Link href="/flows" className="text-sm text-[#888] hover:text-white">Flows</Link>
+          <span className="text-[#555]">/</span>
+          <input
+            value={name}
+            onChange={(e) => { setName(e.target.value); setDirty(true); }}
+            className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-1.5 py-1 text-sm font-semibold text-[#F5F5F5] outline-none hover:border-[#2A2A2A] focus:border-[#7C3AED]"
+          />
+          <span
+            className="rounded-full px-2.5 py-1 text-[11px] font-medium"
+            style={{ background: dirty ? "#F59E0B22" : "#4ADE8022", color: dirty ? "#FBBF24" : "#4ADE80" }}
+          >
+            {saving ? "Salvando…" : dirty ? "Não salvo" : "Salvo ✓"}
+          </span>
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={saving || loading}
+            className="rounded-full bg-[#7C3AED] px-4 py-1.5 text-sm font-medium text-white transition hover:bg-[#6D28D9] disabled:opacity-50"
+          >
+            Salvar
+          </button>
+        </div>
+
+        <div className="flex min-h-0 flex-1">
+          {/* Canvas */}
+          <div ref={wrapRef} className="relative min-w-0 flex-1 bg-[#0d0d0f]" onDrop={onDrop} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}>
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              nodeTypes={nodeTypes}
+              fitView
+              minZoom={0.2}
+              proOptions={{ hideAttribution: true }}
             >
-              <span
-                className="flex h-6 w-6 items-center justify-center rounded-md"
-                style={{ backgroundColor: `${NODE_COLOR[item.type]}22`, color: NODE_COLOR[item.type] }}
+              <Background color="#242428" gap={20} />
+              <MiniMap pannable zoomable nodeColor={(n) => NODE_COLOR[n.type || "output"] || "#666"} maskColor="rgba(0,0,0,0.65)" style={{ background: "#101012", borderRadius: 8 }} />
+            </ReactFlow>
+
+            {nodes.length === 0 && !loading && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <p className="text-sm text-[#666]">Arraste um nó do painel à direita para começar.</p>
+              </div>
+            )}
+
+            {/* Barra de ações inferior */}
+            <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-2xl border border-[#242428] bg-[#161618]/95 p-1 shadow-[0_10px_40px_rgba(0,0,0,0.5)] backdrop-blur">
+              <button
+                type="button"
+                onClick={() => void runFlow()}
+                disabled={running || loading}
+                className="flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-[#0A0A0A] transition hover:bg-white/90 disabled:opacity-50"
               >
-                <item.Icon className="h-3.5 w-3.5" />
-              </span>
-              {item.label}
-            </button>
-          ))}
-          <p className="mt-3 px-1 text-[10px] leading-relaxed text-[#666]">
-            Ligue os nós arrastando dos pontos coloridos. Prompt → Gerador → Saída. Clique em Run pra executar.
-          </p>
-        </div>
+                {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" fill="currentColor" />}
+                {running ? "Rodando…" : "Run Flow"}
+              </button>
+              <button type="button" onClick={clearAll} className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm text-[#B8B8C0] transition hover:bg-white/5">
+                <Eraser className="h-4 w-4" /> Limpar
+              </button>
+              <button type="button" onClick={() => rf.fitView({ duration: 300 })} className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm text-[#B8B8C0] transition hover:bg-white/5">
+                <Crosshair className="h-4 w-4" /> Centralizar
+              </button>
+              <div className="mx-1 h-5 w-px bg-[#2A2A2E]" />
+              <button type="button" onClick={() => rf.zoomOut()} className="flex h-8 w-8 items-center justify-center rounded-lg text-[#B8B8C0] hover:bg-white/5"><Minus className="h-4 w-4" /></button>
+              <button type="button" onClick={() => rf.zoomIn()} className="flex h-8 w-8 items-center justify-center rounded-lg text-[#B8B8C0] hover:bg-white/5"><Plus className="h-4 w-4" /></button>
+              <button type="button" onClick={() => rf.fitView({ duration: 300 })} className="flex h-8 w-8 items-center justify-center rounded-lg text-[#B8B8C0] hover:bg-white/5"><Maximize2 className="h-4 w-4" /></button>
+            </div>
+          </div>
 
-        {/* Canvas */}
-        <div className="relative min-w-0 flex-1 bg-[#0d0d0f]">
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            nodeTypes={nodeTypes}
-            onNodeClick={(_e, n) => setSelectedId(n.id)}
-            onPaneClick={() => setSelectedId(null)}
-            fitView
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background color="#242428" gap={18} />
-            <Controls />
-            <MiniMap
-              pannable
-              zoomable
-              nodeColor={(n) => NODE_COLOR[n.type || "output"] || "#666"}
-              maskColor="rgba(0,0,0,0.6)"
-              style={{ background: "#101012" }}
-            />
-          </ReactFlow>
-        </div>
-
-        {/* Inspector */}
-        <div className="w-[240px] shrink-0 border-l border-[#242428] bg-[#101012] p-3">
-          <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-widest text-[#666]">Propriedades</p>
-          {!selectedNode ? (
-            <p className="px-1 text-xs text-[#666]">Selecione um nó para editar.</p>
-          ) : (
-            <Inspector node={selectedNode} onPatch={patchData} imageModels={imageModels} videoModels={videoModels} />
-          )}
+          {/* Painel de nós (direita) */}
+          <div className="w-[240px] shrink-0 border-l border-[#242428] bg-[#101012] p-3">
+            <div className="mb-2 flex items-center gap-2 px-1">
+              <Workflow className="h-4 w-4 text-[#A78BFA]" />
+              <p className="text-xs font-semibold text-[#F5F5F5]">Nós</p>
+            </div>
+            <div className="space-y-1.5">
+              {NODE_DEFS.map((def) => (
+                <button
+                  key={def.type}
+                  type="button"
+                  draggable
+                  onDragStart={(e) => { e.dataTransfer.setData("application/flownode", def.type); e.dataTransfer.effectAllowed = "move"; }}
+                  onClick={() => addAtCenter(def.type)}
+                  title={def.hint}
+                  className="flex w-full cursor-grab items-center gap-2.5 rounded-xl border border-[#242428] bg-[#161618] px-3 py-2.5 text-left transition hover:border-[#7C3AED]/50 hover:bg-white/5 active:cursor-grabbing"
+                >
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ backgroundColor: `${NODE_COLOR[def.type]}22`, color: NODE_COLOR[def.type] }}>
+                    <def.Icon className="h-4 w-4" />
+                  </span>
+                  <span className="text-xs font-medium text-[#E5E5E5]">{def.label}</span>
+                </button>
+              ))}
+            </div>
+            <p className="mt-3 px-1 text-[10px] leading-relaxed text-[#666]">
+              Arraste um nó pro canvas (ou clique). Ligue arrastando dos pontos coloridos: azul = prompt, laranja = referência. Depois clique em <span className="text-white">Run Flow</span>.
+            </p>
+          </div>
         </div>
       </div>
-    </div>
+    </ModelsCtx.Provider>
   );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="mb-3">
-      <label className="mb-1 block text-[11px] text-[#9a9aa3]">{label}</label>
-      {children}
-    </div>
-  );
-}
-
-const inputCls =
-  "w-full rounded-lg border border-[#2A2A2A] bg-[#161618] px-2 py-1.5 text-xs text-[#F5F5F5] outline-none focus:border-[#7C3AED]";
-
-function Inspector({
-  node,
-  onPatch,
-  imageModels,
-  videoModels,
-}: {
-  node: Node;
-  onPatch: (p: NodeData) => void;
-  imageModels: ModelOpt[];
-  videoModels: ModelOpt[];
-}) {
-  const d = node.data as NodeData;
-  if (node.type === "prompt") {
-    return (
-      <Field label="Texto do prompt">
-        <textarea value={(d.text as string) || ""} onChange={(e) => onPatch({ text: e.target.value })} rows={6} className={inputCls} placeholder="Descreva o que gerar…" />
-      </Field>
-    );
-  }
-  if (node.type === "refImage") {
-    return (
-      <Field label="URL da imagem">
-        <input value={(d.url as string) || ""} onChange={(e) => onPatch({ url: e.target.value })} className={inputCls} placeholder="https://…" />
-      </Field>
-    );
-  }
-  if (node.type === "imageGen") {
-    return (
-      <>
-        <Field label="Modelo">
-          <select
-            value={(d.model as string) || ""}
-            onChange={(e) => {
-              const m = imageModels.find((x) => x.id === e.target.value);
-              onPatch({ model: e.target.value, modelName: m?.name || "" });
-            }}
-            className={inputCls}
-          >
-            <option value="">— escolha —</option>
-            {imageModels.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
-        </Field>
-        <Field label="Proporção">
-          <select value={(d.aspectRatio as string) || "1:1"} onChange={(e) => onPatch({ aspectRatio: e.target.value })} className={inputCls}>
-            {["1:1", "16:9", "9:16", "4:3", "3:4"].map((a) => <option key={a} value={a}>{a}</option>)}
-          </select>
-        </Field>
-      </>
-    );
-  }
-  if (node.type === "videoGen") {
-    return (
-      <>
-        <Field label="Modelo">
-          <select
-            value={(d.model as string) || ""}
-            onChange={(e) => {
-              const m = videoModels.find((x) => x.id === e.target.value);
-              onPatch({ model: e.target.value, modelName: m?.name || "" });
-            }}
-            className={inputCls}
-          >
-            <option value="">— escolha —</option>
-            {videoModels.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
-        </Field>
-        <Field label="Duração (s)">
-          <input type="number" min={4} max={30} value={(d.duration as number) || 8} onChange={(e) => onPatch({ duration: Number(e.target.value) })} className={inputCls} />
-        </Field>
-        <Field label="Resolução">
-          <select value={(d.resolution as string) || "720p"} onChange={(e) => onPatch({ resolution: e.target.value })} className={inputCls}>
-            {["480p", "720p", "1080p"].map((r) => <option key={r} value={r}>{r}</option>)}
-          </select>
-        </Field>
-        <Field label="Proporção">
-          <select value={(d.aspectRatio as string) || "9:16"} onChange={(e) => onPatch({ aspectRatio: e.target.value })} className={inputCls}>
-            {["9:16", "16:9", "1:1", "4:3", "3:4"].map((a) => <option key={a} value={a}>{a}</option>)}
-          </select>
-        </Field>
-      </>
-    );
-  }
-  return <p className="px-1 text-xs text-[#666]">Este nó não tem configurações.</p>;
 }
 
 export default function FlowEditorPage() {
