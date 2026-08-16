@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -80,7 +80,7 @@ const DEFAULTS: Record<string, ND> = {
 };
 
 const ModelsCtx = createContext<{ image: ModelOpt[]; video: ModelOpt[]; audio: ModelOpt[] }>({ image: [], video: [], audio: [] });
-const ActionsCtx = createContext<{ runNode: (id: string) => void; running: boolean }>({ runNode: () => {}, running: false });
+const ActionsCtx = createContext<{ runNode: (id: string) => void; running: boolean; markDirty: () => void }>({ runNode: () => {}, running: false, markDirty: () => {} });
 
 /* ── PRIMITIVAS DE CONTROLE (compactas) ──────────────────────────────────── */
 function FSelect(p: React.SelectHTMLAttributes<HTMLSelectElement>) {
@@ -182,17 +182,42 @@ function PromptModal({ value, onChange, onClose }: { value: string; onChange: (v
 function DotLoader({ accent }: { accent: string }) {
   return (<div className="fx-dots" style={{ ["--dot" as string]: accent } as React.CSSProperties}>{Array.from({ length: 16 }).map((_, i) => <span key={i} style={{ animationDelay: (((i % 4) + Math.floor(i / 4)) * 90) + "ms" }} />)}</div>);
 }
-function ActBtn({ children, onClick, title }: { children: React.ReactNode; onClick: () => void; title?: string }) {
-  return (<button type="button" onClick={onClick} title={title} className="nodrag flex h-[28px] items-center gap-1 rounded-[7px] px-2 text-[10px] font-medium text-[color:var(--fx-text)] transition" style={{ background: "var(--fx-elev)", border: "1px solid var(--fx-border)" }} onMouseEnter={(e) => { e.currentTarget.style.background = "#202024"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "var(--fx-elev)"; }}>{children}</button>);
+function ActBtn({ children, onClick, title, active }: { children: React.ReactNode; onClick: (e: React.MouseEvent) => void; title?: string; active?: boolean }) {
+  return (<button type="button" onClick={onClick} data-active={active ? "1" : undefined} title={title} className="nodrag flex h-[28px] items-center gap-1 rounded-[7px] px-2 text-[10px] font-medium text-[color:var(--fx-text)] transition" style={{ background: "var(--fx-elev)", border: active ? "1px solid #F97316" : "1px solid var(--fx-border)" }} onMouseEnter={(e) => { e.currentTarget.style.background = "#202024"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "var(--fx-elev)"; }}>{children}</button>);
+}
+
+function GenToolPopover({ kind, anchor, count, setCount, res, setRes, cost, busy, onGenerate, onClose }: { kind: "angles" | "variations"; anchor: DOMRect; count: number; setCount: (f: (c: number) => number) => void; res: string; setRes: (v: string) => void; cost: number; busy: boolean; onGenerate: () => void; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null); const [pos, setPos] = useState({ left: anchor.left, top: anchor.top - 8 });
+  useLayoutEffect(() => { const el = ref.current; if (!el) return; const w = el.offsetWidth; const hh = el.offsetHeight; let left = anchor.left; if (left + w > window.innerWidth - 16) left = window.innerWidth - 16 - w; if (left < 16) left = 16; let top = anchor.top - hh - 8; if (top < 16) top = anchor.bottom + 8; setPos({ left, top }); }, [anchor]);
+  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); }; const md = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as globalThis.Node)) onClose(); }; window.addEventListener("keydown", k); window.addEventListener("mousedown", md); return () => { window.removeEventListener("keydown", k); window.removeEventListener("mousedown", md); }; }, [onClose]);
+  if (typeof document === "undefined") return null;
+  return createPortal(<div ref={ref} className="fixed z-[95] flex items-center gap-2 rounded-xl fx-panel px-2.5 py-2" style={{ left: pos.left, top: pos.top, width: "max-content", minWidth: 360, maxWidth: "min(520px, calc(100vw - 32px))" }} onMouseDown={(e) => e.stopPropagation()}>
+    <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium" style={{ color: ACCENT.imageGen }}>{kind === "angles" ? <CircleDot className="h-3.5 w-3.5" /> : <Layers className="h-3.5 w-3.5" />}{kind === "angles" ? "Angles" : "Variations"}</span>
+    <div className="flex shrink-0 items-center gap-1">
+      <button type="button" onClick={() => setCount((c) => Math.max(1, c - 1))} className="flex h-6 w-6 items-center justify-center rounded text-[color:var(--fx-muted)] hover:bg-white/5"><Minus className="h-3.5 w-3.5" /></button>
+      <span className="w-5 text-center text-[12px] text-[color:var(--fx-text)]">{count}</span>
+      <button type="button" onClick={() => setCount((c) => Math.min(8, c + 1))} className="flex h-6 w-6 items-center justify-center rounded text-[color:var(--fx-muted)] hover:bg-white/5"><Plus className="h-3.5 w-3.5" /></button>
+    </div>
+    <select value={res} onChange={(e) => setRes(e.target.value)} className="fx-ctrl h-7 w-[74px] shrink-0 appearance-none px-2 text-[11px]">{["1K", "2K", "4K"].map((r) => <option key={r} value={r}>{r}</option>)}</select>
+    <button type="button" onClick={onGenerate} disabled={busy} className="flex h-7 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-3 text-[12px] font-semibold text-white disabled:opacity-60" style={{ background: ACCENT.imageGen }}>{busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><Zap className="h-3.5 w-3.5" fill="currentColor" />Generate{cost ? " " + cost : ""}</>}</button>
+    <button type="button" onClick={onClose} className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-[color:var(--fx-subtle)] hover:text-white"><XIcon className="h-4 w-4" /></button>
+  </div>, document.body);
+}
+function ImagePreviewModal({ url, onClose }: { url: string; onClose: () => void }) {
+  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, [onClose]);
+  if (typeof document === "undefined" || !url) return null;
+  return createPortal(<div className="fixed inset-0 z-[100] flex items-center justify-center p-8" style={{ background: "rgba(0,0,0,.7)", backdropFilter: "blur(4px)" }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="relative max-h-[90vh] max-w-[90vw]"><button type="button" onClick={onClose} className="absolute -right-2 -top-10 flex h-8 w-8 items-center justify-center rounded-full text-white" style={{ background: "rgba(0,0,0,.6)" }}><XIcon className="h-4 w-4" /></button>{/* eslint-disable-next-line @next/next/no-img-element */}<img src={url} alt="" className="max-h-[90vh] max-w-[90vw] rounded-xl object-contain" /></div>
+  </div>, document.body);
 }
 
 function ImageGenNode({ id, data, selected }: NodeProps) {
   const rf = useReactFlow(); const upd = useUpdateNodeInternals();
   const models = useContext(ModelsCtx).image; const videoModels = useContext(ModelsCtx).video;
-  const { runNode, running } = useContext(ActionsCtx);
+  const { runNode, running, markDirty } = useContext(ActionsCtx);
   const d = data as ND;
   const [promptOpen, setPromptOpen] = useState(false); const [imgLoaded, setImgLoaded] = useState(false);
-  const [tool, setTool] = useState<"none" | "angles" | "variations">("none"); const [tCount, setTCount] = useState(4); const [tRes, setTRes] = useState("1K"); const [tBusy, setTBusy] = useState(false);
+  const [tool, setTool] = useState<"none" | "angles" | "variations">("none"); const [toolAnchor, setToolAnchor] = useState<DOMRect | null>(null); const [tCount, setTCount] = useState(4); const [tRes, setTRes] = useState("1K"); const [tBusy, setTBusy] = useState(false);
   const refs = Array.isArray(d.refs) ? (d.refs as string[]) : [];
   const tray = Array.isArray(d.__tray) ? (d.__tray as string[]) : [];
   const status = d.__status as string | undefined; const result = d.__result as string | undefined; const editing = Boolean(d.__editing);
@@ -214,7 +239,7 @@ function ImageGenNode({ id, data, selected }: NodeProps) {
     const nid = type + "_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
     const base = JSON.parse(JSON.stringify(DEFAULTS[type])) as ND;
     rf.setNodes((n) => [...n, { id: nid, type, position: { x: pos.x + 360, y: pos.y }, data: { ...base, ...patch } } as Node]);
-    rf.setEdges((e) => addEdge({ source: id, target: nid, sourceHandle: "out", targetHandle, type: "grad" }, e));
+    rf.setEdges((e) => addEdge({ source: id, target: nid, sourceHandle: "out", targetHandle, type: "grad" }, e)); markDirty();
   }
   function animate() { if (!result) return; const vm = videoModels[0]; spawnLinked("videoGen", { title: "Video Generator", startFrame: result, model: vm?.id || "", modelName: vm?.name || "" }, "reference"); toast.success("Video Generator criado com a imagem como start frame."); }
   function removeBg() { if (!result) return; spawnLinked("removeBg", { title: "Remove BG" }, "reference"); toast.success("Nó Remove BG criado e conectado."); }
@@ -265,15 +290,7 @@ function ImageGenNode({ id, data, selected }: NodeProps) {
   }
   if (vstate === "result") {
     return (<NodeShell id={id} type="imageGen" title={title} status={status} selected={selected} noPad runnable={!collapsed} width={300}>
-      {tool !== "none" && <div className="nodrag absolute -top-12 left-0 z-30 flex items-center gap-1.5 rounded-xl fx-panel px-2 py-1.5">
-        <span className="flex items-center gap-1 text-[10px] font-medium" style={{ color: ACCENT.imageGen }}>{tool === "angles" ? <CircleDot className="h-3 w-3" /> : <Layers className="h-3 w-3" />}{tool === "angles" ? "Angles" : "Variations"}</span>
-        <button type="button" onClick={() => setTCount((c) => Math.max(1, c - 1))} className="flex h-5 w-5 items-center justify-center rounded text-[color:var(--fx-muted)] hover:bg-white/5"><Minus className="h-3 w-3" /></button>
-        <span className="w-4 text-center text-[11px] text-[color:var(--fx-text)]">{tCount}</span>
-        <button type="button" onClick={() => setTCount((c) => Math.min(8, c + 1))} className="flex h-5 w-5 items-center justify-center rounded text-[color:var(--fx-muted)] hover:bg-white/5"><Plus className="h-3 w-3" /></button>
-        <select value={tRes} onChange={(e) => setTRes(e.target.value)} className="fx-ctrl nodrag h-6 appearance-none px-1.5 text-[10px]">{["1K", "2K", "4K"].map((r) => <option key={r} value={r}>{r}</option>)}</select>
-        <button type="button" onClick={() => genDerived(tool)} disabled={tBusy} className="flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-semibold text-white disabled:opacity-60" style={{ background: ACCENT.imageGen }}>{tBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Zap className="h-3 w-3" fill="currentColor" />Generate{modelCost ? " " + modelCost * tCount : ""}</>}</button>
-        <button type="button" onClick={() => setTool("none")} className="flex h-5 w-5 items-center justify-center rounded text-[color:var(--fx-subtle)] hover:text-white"><XIcon className="h-3.5 w-3.5" /></button>
-      </div>}
+      {tool !== "none" && toolAnchor && <GenToolPopover kind={tool} anchor={toolAnchor} count={tCount} setCount={setTCount} res={tRes} setRes={setTRes} cost={modelCost * tCount} busy={tBusy} onGenerate={() => genDerived(tool)} onClose={() => setTool("none")} />}
       <div className="relative overflow-hidden rounded-b-[11px]" style={{ height: resH, background: "#0a0a0b" }}>
         {!imgLoaded && <div className="absolute inset-0 flex items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-[color:var(--fx-subtle)]" /></div>}
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -285,8 +302,8 @@ function ImageGenNode({ id, data, selected }: NodeProps) {
         <ActBtn onClick={() => download(result!)} title="Baixar"><Download className="h-3 w-3" /></ActBtn>
         <ActBtn onClick={animate}><Film className="h-3 w-3" />Animate</ActBtn>
         <ActBtn onClick={removeBg}><Scissors className="h-3 w-3" />Remove BG</ActBtn>
-        <ActBtn onClick={() => setTool(tool === "variations" ? "none" : "variations")}><Layers className="h-3 w-3" />Variations</ActBtn>
-        <ActBtn onClick={() => setTool(tool === "angles" ? "none" : "angles")}><CircleDot className="h-3 w-3" />Angles</ActBtn>
+        <ActBtn active={tool === "variations"} onClick={(e) => { setToolAnchor((e.currentTarget as HTMLElement).getBoundingClientRect()); setTool(tool === "variations" ? "none" : "variations"); }}><Layers className="h-3 w-3" />Variations</ActBtn>
+        <ActBtn active={tool === "angles"} onClick={(e) => { setToolAnchor((e.currentTarget as HTMLElement).getBoundingClientRect()); setTool(tool === "angles" ? "none" : "angles"); }}><CircleDot className="h-3 w-3" />Angles</ActBtn>
         {collapsed ? <ActBtn onClick={() => rf.updateNodeData(id, { __collapsed: false })}><Sparkles className="h-3 w-3" />Edit</ActBtn> : <ActBtn onClick={() => rf.updateNodeData(id, { __collapsed: true })}><ChevronUp className="h-3 w-3" />Collapse</ActBtn>}
         <ActBtn onClick={() => runNode(id)}><Play className="h-3 w-3" fill="currentColor" />Recreate</ActBtn>
       </div>
@@ -403,15 +420,26 @@ function UpscaleNode({ id, data, selected }: NodeProps) {
 function OutputNode({ id, data, selected }: NodeProps) { const d = data as ND; return (<NodeShell id={id} type="output" title={(d.title as string) || "Output"} status={d.__status as string} selected={selected} width={256}>{d.__result ? <ResultThumb url={d.__result as string} /> : <p className="text-[10px] text-[color:var(--fx-subtle)]">O resultado final aparece aqui após o Run.</p>}<Handle type="target" position={Position.Left} id="in" style={{ background: ACCENT.output }} /></NodeShell>); }
 
 function ImageAssetNode({ id, data, selected }: NodeProps) {
-  const d = data as ND; const url = (d.url as string) || "";
-  const [aw, ah] = ((d.aspectRatio as string) || "1:1").split(":").map(Number);
-  const h = Math.max(120, Math.min(340, Math.round(200 * ((ah || 1) / (aw || 1)))));
-  return (<NodeShell id={id} type="imageAsset" title={(d.title as string) || "Image Asset"} selected={selected} noPad width={200}>
-    <div className="relative overflow-hidden rounded-b-[11px]" style={{ height: h, background: "#0a0a0b" }}>
-      {url ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={url} alt="" draggable onDragStart={(e) => { e.dataTransfer.setData("application/flowasset", JSON.stringify({ url, aspectRatio: (d.aspectRatio as string) || "1:1" })); e.dataTransfer.effectAllowed = "all"; }} className="nodrag h-full w-full object-cover" />) : <div className="flex h-full items-center justify-center text-[10px] text-[color:var(--fx-subtle)]">Vazio</div>}
-      <Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.imageGen }} />
+  const rf = useReactFlow(); const upd = useUpdateNodeInternals(); const models = useContext(ModelsCtx).image; const { markDirty } = useContext(ActionsCtx);
+  const d = data as ND; const url = (d.url as string) || ""; const aspect = (d.aspectRatio as string) || "1:1";
+  const [aw, ah] = aspect.split(":").map(Number); const w = 220; const h = Math.max(140, Math.min(360, Math.round(w * ((ah || 1) / (aw || 1)))));
+  const [preview, setPreview] = useState(false);
+  function del(e: React.MouseEvent) { e.stopPropagation(); rf.deleteElements({ nodes: [{ id }] }); markDirty(); }
+  function convert(e: React.MouseEvent) { e.stopPropagation(); const first = models[0]; rf.setNodes((nds) => nds.map((n) => n.id === id ? ({ ...n, type: "imageGen", data: { title: "Image Generator", prompt: "", model: first?.id || "", modelName: first?.name || "", aspectRatio: aspect, resolution: "1K", refs: url ? [url] : [] } }) as Node : n)); markDirty(); setTimeout(() => upd(id), 0); toast.success("Convertido em Image Generator — imagem como referência."); }
+  return (
+    <div className="fx-card group relative" style={{ width: w, ...(selected ? { borderColor: ACCENT.imageGen, boxShadow: `0 0 16px ${ACCENT.imageGen}22, 0 8px 28px rgba(0,0,0,.45)` } : {}) }}>
+      <div className="relative overflow-hidden rounded-[11px]" style={{ height: h, background: "#0a0a0b" }}>
+        {url ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={url} alt="" className="h-full w-full object-cover" />) : <div className="flex h-full items-center justify-center text-[10px] text-[color:var(--fx-subtle)]">Vazio</div>}
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-12 opacity-0 transition-opacity group-hover:opacity-100" style={{ backgroundImage: "linear-gradient(to bottom, rgba(0,0,0,.5), transparent)" }} />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 opacity-0 transition-opacity group-hover:opacity-100" style={{ backgroundImage: "linear-gradient(to top, rgba(0,0,0,.6), transparent)" }} />
+        <button type="button" onMouseDown={(e) => e.stopPropagation()} onClick={del} className="nodrag nopan absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-lg text-white opacity-0 transition group-hover:opacity-100" style={{ background: "#ef4444" }} title="Excluir"><Trash2 className="h-3.5 w-3.5" /></button>
+        <button type="button" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setPreview(true); }} className="nodrag nopan absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-lg text-white opacity-0 transition group-hover:opacity-100" style={{ background: "rgba(0,0,0,.55)" }} title="Ampliar"><Maximize2 className="h-3.5 w-3.5" /></button>
+        <button type="button" onMouseDown={(e) => e.stopPropagation()} onClick={convert} className="nodrag nopan absolute inset-x-3 bottom-3 flex h-9 items-center justify-center gap-1.5 rounded-xl text-[12px] font-semibold text-[#0A0A0A] opacity-0 transition group-hover:opacity-100" style={{ background: ACCENT.imageGen }}><Sparkles className="h-3.5 w-3.5" />Convert to Image Node</button>
+        <Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.imageGen }} />
+      </div>
+      {preview && <ImagePreviewModal url={url} onClose={() => setPreview(false)} />}
     </div>
-  </NodeShell>);
+  );
 }
 
 const nodeTypes: NodeTypes = { prompt: memo(PromptNode), refImage: memo(RefImageNode), imageGen: memo(ImageGenNode), videoGen: memo(VideoGenNode), audioGen: memo(AudioGenNode), storyboard: memo(StoryboardNode), removeBg: memo(RemoveBgNode), upscale: memo(UpscaleNode), output: memo(OutputNode), imageAsset: memo(ImageAssetNode) };
@@ -556,7 +584,7 @@ function Editor() {
   const infoReg = infoType ? REGISTRY.find((r) => r.type === infoType) : null;
   const modelsValue = useMemo(() => ({ image: imageModels, video: videoModels, audio: audioModels }), [imageModels, videoModels, audioModels]);
   const runNodeCb = useCallback((nid: string) => { void runFlow(nid); }, [runFlow]);
-  const actionsValue = useMemo(() => ({ runNode: runNodeCb, running }), [runNodeCb, running]);
+  const actionsValue = useMemo(() => ({ runNode: runNodeCb, running, markDirty }), [runNodeCb, running, markDirty]);
 
   return (
     <ModelsCtx.Provider value={modelsValue}>
