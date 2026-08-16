@@ -531,7 +531,8 @@ function Editor() {
         for (const e of incoming) {
           const val = outputs.get(e.source);
           if (!val) continue;
-          if (e.targetHandle === "reference") connRefs.push(val);
+          const isUrl = /^https?:\/\//i.test(val);
+          if (e.targetHandle === "reference" || isUrl) connRefs.push(val);
           else promptText = promptText ? `${promptText} ${val}` : val;
         }
 
@@ -560,9 +561,10 @@ function Editor() {
         }
 
         if (node.type === "imageGen" || node.type === "videoGen") {
+          const genLabel = node.type === "imageGen" ? "Image Generator" : "Video Generator";
           const finalPrompt = promptText.trim() || String(d.prompt || "").trim();
-          if (!d.model) { setNodeState(id, { __status: "failed" }); throw new Error("Selecione um modelo no gerador."); }
-          if (!finalPrompt) { setNodeState(id, { __status: "failed" }); throw new Error("Escreva ou conecte um prompt no gerador."); }
+          if (!d.model) { setNodeState(id, { __status: "failed" }); throw new Error(`O no "${genLabel}" precisa de um modelo selecionado.`); }
+          if (!finalPrompt) { setNodeState(id, { __status: "failed" }); throw new Error(`O no "${genLabel}" precisa de um prompt — escreva nele ou conecte um Prompt.`); }
           setNodeState(id, { __status: "running", __result: undefined });
 
           const isImage = node.type === "imageGen";
