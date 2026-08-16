@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
   ReactFlow, ReactFlowProvider, Background, addEdge, useNodesState, useEdgesState,
-  useReactFlow, useUpdateNodeInternals, Handle, Position, getBezierPath,
+  useReactFlow, useStore, useUpdateNodeInternals, Handle, Position, getBezierPath,
   type Node, type Edge, type Connection, type NodeProps, type NodeTypes, type EdgeTypes, type EdgeProps, type Viewport,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -69,8 +69,8 @@ const REGISTRY: RegEntry[] = [
   { type: "audioGen", label: "Audio Generator", Icon: Music, accent: "#A78BFA", group: "gen", description: "Três modos: Text-to-Speech com 39 vozes, e (em breve) SFX e Música por IA.", examples: ["TTS: escolha a voz, escreva o script, gere", "SFX: 'trovão durante uma tempestade' (em breve)", "Música: 'lo-fi hip hop, Ré menor' (em breve)"] },
   { type: "prompt", label: "Prompt", Icon: TypeIcon, accent: "#C9C9D1", group: "util", description: "Um nó de texto reutilizável. O que você escrever aqui alimenta os geradores conectados.", examples: ["Escreva uma vez, use em vários nós", "Ótimo pra testar o mesmo prompt em modelos diferentes"] },
   { type: "storyboard", label: "Storyboard", Icon: Layers, accent: "#D8ED19", group: "util", description: "Planeje uma sequência de cenas. Encadeie Image e Video generators com direção criativa compartilhada.", examples: ["Esboce um comercial de 4 cenas num fluxo", "Mantenha luz e enquadramento consistentes", "(processamento em breve)"] },
-  { type: "removeBg", label: "Remove BG", Icon: Scissors, accent: "#22D3EE", group: "util", description: "Remove o fundo de qualquer imagem, deixando só o sujeito com transparência.", examples: ["Produto no branco → PNG transparente", "Foto de pessoa → recorte limpo", "(processamento em breve)"] },
-  { type: "upscale", label: "Upscale", Icon: ArrowUpToLine, accent: "#A3E635", group: "util", description: "Amplia imagens para 2× ou 4×, preservando detalhe e nitidez.", examples: ["2× transforma 1K em 2K", "4× transforma 1K em 4K", "(processamento em breve)"] },
+  { type: "removeBg", label: "Remove BG", Icon: Scissors, accent: "#22D3EE", group: "util", description: "Remove o fundo de qualquer imagem, deixando só o sujeito com transparência.", examples: ["Produto no branco → PNG transparente", "Foto de pessoa → recorte limpo", "Conecte qualquer saída de imagem"] },
+  { type: "upscale", label: "Upscale", Icon: ArrowUpToLine, accent: "#A3E635", group: "util", description: "Amplia imagens para 2× ou 4×, preservando detalhe e nitidez.", examples: ["2× transforma 1K em 2K", "4× transforma 1K em 4K", "Conecte qualquer saída de imagem → upscale"] },
   { type: "output", label: "Output", Icon: CircleDot, accent: "#4ADE80", group: "util", description: "Coleta o resultado final do fluxo.", examples: ["Conecte a saída de um gerador aqui"] },
   { type: "imageAsset", label: "Image Asset", Icon: FileImage, accent: "#F97316", group: "hidden", description: "Uma imagem pronta no canvas. Arraste um resultado gerado para cá para reutilizá-la.", examples: ["Arraste a imagem de um resultado", "Conecte a um Video Generator / Remove BG / Upscale"] },
 ];
@@ -79,7 +79,7 @@ const DEFAULTS: Record<string, ND> = {
   imageGen: { prompt: "", model: "", modelName: "", aspectRatio: "1:1", resolution: "1K", refs: [] },
   videoGen: { prompt: "", model: "", modelName: "", duration: 8, resolution: "720p", aspectRatio: "9:16", startFrame: "", endFrame: "", audioOn: true, multiShot: false },
   audioGen: { prompt: "", model: "", modelName: "", voice: "", mode: "TTS" },
-  prompt: { text: "" }, storyboard: { aspectRatio: "1:1", resolution: "1K", image: "", prompts: [], model: "", modelName: "", results: [] }, removeBg: { rmbgModel: "RMBG-2.0" }, upscale: { scale: "2x", faceEnhance: false }, output: {},
+  prompt: { text: "" }, storyboard: { aspectRatio: "1:1", resolution: "1K", image: "", prompts: [], model: "", modelName: "", results: [] }, removeBg: { rmbgModel: "RMBG-2.0" }, upscale: { scale: "2x", mode: "Sharp" }, output: {},
 };
 
 const ModelsCtx = createContext<{ image: ModelOpt[]; video: ModelOpt[]; audio: ModelOpt[] }>({ image: [], video: [], audio: [] });
@@ -454,24 +454,66 @@ function RemoveBgNode({ id, data, selected }: NodeProps) {
 }
 function UpscaleNode({ id, data, selected }: NodeProps) {
   const rf = useReactFlow(); const d = data as ND;
-  const status = d.__status as string | undefined; const result = d.__result as string | undefined; const aspect = (d.aspectRatio as string) || "1:1"; const scale = (d.scale as string) || "2x";
-  const upd = useUpdateNodeInternals(); useEffect(() => { const raf = requestAnimationFrame(() => upd(id)); return () => cancelAnimationFrame(raf); }, [status, result, id, upd]);
+  const status = d.__status as string | undefined; const result = d.__result as string | undefined;
+  const mode = (d.mode as string) || "Sharp"; const scale = (d.scale as string) || "2x";
+  const meta = (d.__resultMeta as ND) || {}; const resultScale = (meta.scale as string) || scale;
+  const inputUrl = useStore((s) => { const e = s.edges.find((ed) => ed.target === id); if (!e) return ""; const sd = (s.nodeLookup.get(e.source)?.data || {}) as ND; const u = (sd.__result as string) || (sd.url as string) || (sd.heldImage as string) || ""; return /^https?:\/\//i.test(u) ? u : ""; });
+  const resultInput = (meta.inputUrl as string) || ""; const resultStale = Boolean(result) && Boolean(inputUrl) && Boolean(resultInput) && resultInput !== inputUrl;
+  const [nat, setNat] = useState<{ w: number; h: number } | null>(null);
+  const upd = useUpdateNodeInternals();
+  useEffect(() => { const r = requestAnimationFrame(() => upd(id)); return () => cancelAnimationFrame(r); }, [status, result, inputUrl, nat, id, upd]);
+  const [aw, ah] = ((d.aspectRatio as string) || "1:1").split(":").map(Number);
+  const rw = nat?.w || aw || 1; const rh = nat?.h || ah || 1; const mediaH = Math.max(180, Math.min(470, Math.round(268 * (rh / rw))));
+  const W = 292;
+  const onImgLoad = (e: React.SyntheticEvent<HTMLImageElement>) => { const t = e.currentTarget; if (t.naturalWidth && t.naturalHeight) setNat({ w: t.naturalWidth, h: t.naturalHeight }); };
+  async function download() { const u = result; if (!u) return; try { const r = await fetch(u); const b = await r.blob(); const l = URL.createObjectURL(b); const a = document.createElement("a"); a.href = l; a.download = "fluxyra-" + Date.now() + ".png"; a.click(); URL.revokeObjectURL(l); } catch { window.open(u, "_blank"); } }
   const handles = (<><Handle type="target" position={Position.Left} id="reference" style={{ background: ACCENT.upscale }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.upscale }} /></>);
+  const controls = (<div className="grid grid-cols-2 gap-2"><FSelect value={mode} onChange={(e) => { if (e.target.value === "Creative") { toast("Modo Creative em breve."); return; } rf.updateNodeData(id, { mode: e.target.value }); }}>{["Sharp", "Creative"].map((m) => <option key={m} value={m}>{m}</option>)}</FSelect><FSelect value={scale} onChange={(e) => rf.updateNodeData(id, { scale: e.target.value })}>{["2x", "4x"].map((sc) => <option key={sc} value={sc}>{sc}</option>)}</FSelect></div>);
+
   if (status === "running") {
-    return (<NodeShell id={id} type="upscale" title={(d.title as string) || "Upscale"} status={status} selected={selected} glow={ACCENT.upscale} noPad width={256}>
-      <div className="relative flex items-center justify-center rounded-b-[11px]" style={{ height: 150, background: "#0a0a0b" }}><DotLoader accent={ACCENT.upscale} /><span className="absolute bottom-2.5 left-2.5 text-[10px] font-medium text-white">Ampliando…</span></div>{handles}
+    return (<NodeShell id={id} type="upscale" title={(d.title as string) || "Upscale"} status={status} selected={selected} glow={ACCENT.upscale} noPad width={W}>
+      <div className="relative overflow-hidden" style={{ height: nat ? mediaH : 220, background: "#0a0a0b" }}>
+        {(result || inputUrl) ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={result || inputUrl} alt="" className="h-full w-full scale-105 object-cover opacity-45 blur-md" />) : null}
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2" style={{ background: "rgba(0,0,0,.45)" }}><Loader2 className="h-6 w-6 animate-spin" style={{ color: ACCENT.upscale }} /><span className="text-[11px] font-medium text-white">Ampliando…</span></div>
+      </div>
+      <div className="pointer-events-none border-t p-2.5 opacity-50" style={{ borderColor: "var(--fx-border)" }}>{controls}</div>
+      {handles}
     </NodeShell>);
   }
-  if (result) {
-    return (<NodeShell id={id} type="upscale" title={(d.title as string) || "Upscale"} status={status} selected={selected} noPad width={256}>
-      <ProcessedResult id={id} url={result} aspect={aspect} provLabel="Upscale" />{handles}
+  if (status === "failed") {
+    return (<NodeShell id={id} type="upscale" title={(d.title as string) || "Upscale"} status={status} selected={selected} width={W} runnable>
+      <p className="text-[12px] font-medium text-[#FCA5A5]">Falha no upscale</p>
+      <p className="mt-1 text-[10px] text-[color:var(--fx-muted)]">{(d.__error as string) || "Não foi possível concluir. Tente novamente."}</p>
+      <div className="mt-2">{controls}</div>{handles}
     </NodeShell>);
   }
-  return (<NodeShell id={id} type="upscale" title={(d.title as string) || "Upscale"} status={status} selected={selected} width={256} runnable>
-    <div className="mb-2 grid grid-cols-2 gap-2"><FSelect value={scale} onChange={(e) => rf.updateNodeData(id, { scale: e.target.value })}>{["2x", "4x"].map((sc) => <option key={sc} value={sc}>{sc}</option>)}</FSelect><FSwitch label="Face enhance" on={Boolean(d.faceEnhance)} onToggle={() => rf.updateNodeData(id, { faceEnhance: !d.faceEnhance })} /></div>
-    <p className="text-[10px] text-[color:var(--fx-muted)]">Conecte uma imagem, escolha a escala e rode.</p>{handles}
+  if (result && !resultStale) {
+    return (<NodeShell id={id} type="upscale" title={(d.title as string) || "Upscale"} status={status} selected={selected} noPad width={W} runnable>
+      <div className="relative overflow-hidden" style={{ height: mediaH, background: "#0a0a0b" }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={result} alt="" onLoad={onImgLoad} draggable onDragStart={(e) => { e.dataTransfer.setData("application/flowasset", JSON.stringify({ url: result, aspectRatio: (d.aspectRatio as string) || "1:1", model: "Upscale" })); e.dataTransfer.effectAllowed = "all"; }} className="nodrag h-full w-full object-cover" />
+        <div className="absolute right-2 top-2 rounded-full px-2 py-0.5 text-[9px] font-medium text-white" style={{ background: "rgba(0,0,0,.55)" }}>{resultScale}</div>
+        <button type="button" onMouseDown={(e) => e.stopPropagation()} onClick={download} title="Baixar" className="nodrag absolute bottom-2 left-2 z-20 flex h-7 w-7 items-center justify-center rounded-lg bg-white text-[#0A0A0A]"><Download className="h-3.5 w-3.5" /></button>
+      </div>
+      <div className="border-t p-2.5" style={{ borderColor: "var(--fx-border)" }}>{controls}</div>{handles}
+    </NodeShell>);
+  }
+  if (inputUrl) {
+    return (<NodeShell id={id} type="upscale" title={(d.title as string) || "Upscale"} status={status} selected={selected} noPad width={W} runnable>
+      <div className="relative overflow-hidden" style={{ height: mediaH, background: "#0a0a0b" }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={inputUrl} alt="" onLoad={onImgLoad} className="h-full w-full object-cover" />
+        <div className="absolute right-2 top-2 rounded-full px-2 py-0.5 text-[9px] font-medium text-white" style={{ background: "rgba(0,0,0,.55)" }}>Input</div>
+      </div>
+      <div className="border-t p-2.5" style={{ borderColor: "var(--fx-border)" }}>{controls}</div>{handles}
+    </NodeShell>);
+  }
+  return (<NodeShell id={id} type="upscale" title={(d.title as string) || "Upscale"} status={status} selected={selected} width={W} runnable>
+    {controls}
+    <p className="mt-2 text-[10px] text-[color:var(--fx-muted)]">Conecte uma imagem, escolha a escala e rode.</p>{handles}
   </NodeShell>);
 }
+
 function OutputNode({ id, data, selected }: NodeProps) { const d = data as ND; return (<NodeShell id={id} type="output" title={(d.title as string) || "Output"} status={d.__status as string} selected={selected} width={256}>{d.__result ? <ResultThumb url={d.__result as string} /> : <p className="text-[10px] text-[color:var(--fx-subtle)]">O resultado final aparece aqui após o Run.</p>}<Handle type="target" position={Position.Left} id="in" style={{ background: ACCENT.output }} /></NodeShell>); }
 
 function ImageAssetNode({ id, data, selected }: NodeProps) {
@@ -624,12 +666,12 @@ function Editor() {
           setNS(id, { __status: "running", __result: undefined });
           const isUp = node.type === "upscale";
           const body: Record<string, unknown> = isUp
-            ? { image_url: src, scale: Number(String(d.scale || "2x").replace(/x/i, "")) || 2, face_enhance: Boolean(d.faceEnhance) }
+            ? { image_url: src, scale: Number(String(d.scale || "2x").replace(/x/i, "")) || 2, face_enhance: ((d.mode as string) || "Sharp") === "Sharp" }
             : { image_url: src, rmbg_model: (d.rmbgModel as string) || "RMBG-2.0" };
           const rr = await fetch(`/api/generate/${isUp ? "upscale" : "removebg"}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
           const dtt = await rr.json().catch(() => null); if (!rr.ok) { setNS(id, { __status: "failed" }); throw new Error(dtt?.error || "Falha ao processar."); }
           if (dtt?.generation_id) { setNS(id, { __gen: String(dtt.generation_id) }); runGenRef.current[id] = String(dtt.generation_id); } let uu = dtt?.result_url as string | undefined; if (dtt?.status !== "completed" || !uu) uu = await pollGen(String(dtt.generation_id));
-          out.set(id, uu); if (applyGuard(id, String(dtt?.generation_id || ""))) setNS(id, { __status: "done", __result: uu }); continue;
+          out.set(id, uu); if (applyGuard(id, String(dtt?.generation_id || ""))) setNS(id, { __status: "done", __result: uu, __resultMeta: isUp ? { scale: String(d.scale || "2x"), inputUrl: src } : undefined }); continue;
         }
         if (node.type === "audioGen") {
           const text = String(d.prompt || "").trim() || pText.trim();
