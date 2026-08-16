@@ -13,7 +13,7 @@ import {
   ArrowLeft, Play, Loader2, Check, X as XIcon, Trash2, Info, ChevronDown, ChevronUp,
   Type as TypeIcon, Image as ImageIcon, Film, FileImage, CircleDot, Workflow,
   Crosshair, Eraser, Plus, Maximize2, Minus, Upload, Sparkles, Music, Zap,
-  PanelRightOpen, Layers, Scissors, ArrowUpToLine, Images, Download,
+  PanelRightOpen, Layers, Scissors, ArrowUpToLine, Images, Download, Sliders,
 } from "lucide-react";
 import { toast } from "sonner";
 import { createPortal } from "react-dom";
@@ -404,14 +404,16 @@ function StoryboardNode({ id, data, selected }: NodeProps) {
     <Handle type="target" position={Position.Left} id="in" style={{ background: "#F97316" }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.storyboard }} />
   </NodeShell>);
 }
-function ProcessedResult({ id, url, aspect, accent, checker, provLabel, badge }: { id: string; url: string; aspect: string; accent: string; checker?: boolean; provLabel: string; badge?: string }) {
+function ProcessedResult({ id, url, aspect, checker, provLabel }: { id: string; url: string; aspect: string; checker?: boolean; provLabel: string }) {
   const rf = useReactFlow(); const models = useContext(ModelsCtx); const { markDirty } = useContext(ActionsCtx);
-  const [aw, ah] = aspect.split(":").map(Number); const h = Math.max(150, Math.min(380, Math.round(248 * ((ah || 1) / (aw || 1)))));
+  const [aw, ah] = aspect.split(":").map(Number); const [nat, setNat] = useState<{ w: number; h: number } | null>(null); const upd = useUpdateNodeInternals();
+  useEffect(() => { if (nat) { const r = requestAnimationFrame(() => upd(id)); return () => cancelAnimationFrame(r); } }, [nat, id, upd]);
+  const rw = nat?.w || aw || 1; const rh = nat?.h || ah || 1; const h = Math.max(180, Math.min(470, Math.round(248 * (rh / rw))));
   function linked(type: string, patch: ND, targetHandle: string) {
     const pos = rf.getNode(id)?.position || { x: 0, y: 0 };
     const nid = type + "_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
     const base = JSON.parse(JSON.stringify(DEFAULTS[type])) as ND;
-    rf.setNodes((n) => [...n, { id: nid, type, position: { x: pos.x + 300, y: pos.y }, data: { ...base, ...patch } } as Node]);
+    rf.setNodes((n) => [...n, { id: nid, type, position: { x: pos.x + 340, y: pos.y }, data: { ...base, ...patch } } as Node]);
     rf.setEdges((e) => addEdge({ source: id, target: nid, sourceHandle: "out", targetHandle, type: "grad" }, e)); markDirty();
   }
   function novaCriacao() { const m = models.image[0]; linked("imageGen", { title: "Image Generator", prompt: "", model: m?.id || "", modelName: m?.name || "", aspectRatio: aspect, resolution: "1K", refs: [url] }, "reference"); toast.success("Nova imagem criada com esta imagem como referência."); }
@@ -419,21 +421,19 @@ function ProcessedResult({ id, url, aspect, accent, checker, provLabel, badge }:
   async function download() { try { const r = await fetch(url); const b = await r.blob(); const l = URL.createObjectURL(b); const a = document.createElement("a"); a.href = l; a.download = "fluxyra-" + Date.now() + ".png"; a.click(); URL.revokeObjectURL(l); } catch { window.open(url, "_blank"); } }
   return (<div className={`relative overflow-hidden rounded-b-[11px] ${checker ? "fx-checker" : ""}`} style={{ height: h, background: checker ? undefined : "#0a0a0b" }}>
     {/* eslint-disable-next-line @next/next/no-img-element */}
-    <img src={url} alt="" draggable onDragStart={(e) => { e.dataTransfer.setData("application/flowasset", JSON.stringify({ url, aspectRatio: aspect, model: provLabel })); e.dataTransfer.effectAllowed = "all"; }} className={`nodrag h-full w-full ${checker ? "object-contain" : "object-cover"}`} />
-    <div className="absolute left-2 top-2 flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium text-white" style={{ background: "rgba(0,0,0,.5)" }}><span className="h-1.5 w-1.5 rounded-full" style={{ background: accent }} />{provLabel}</div>
-    {badge ? <div className="absolute right-2 top-2 rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.5)" }}>{badge}</div> : null}
-    <div className="absolute inset-x-0 bottom-0 flex flex-wrap gap-1.5 p-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100" style={{ backgroundImage: "linear-gradient(to top, rgba(0,0,0,.9), rgba(0,0,0,.45) 55%, transparent)" }}>
-      <button type="button" onMouseDown={(e) => e.stopPropagation()} onClick={download} title="Baixar" className="nodrag flex h-[26px] items-center gap-1 rounded-[7px] px-2 text-[10px] font-medium text-white" style={{ background: "rgba(255,255,255,.14)" }}><Download className="h-3 w-3" /></button>
-      <button type="button" onMouseDown={(e) => e.stopPropagation()} onClick={novaCriacao} className="nodrag flex h-[26px] items-center gap-1 rounded-[7px] px-2 text-[10px] font-medium text-white" style={{ background: "rgba(255,255,255,.14)" }}><Sparkles className="h-3 w-3" />Nova criação</button>
-      <button type="button" onMouseDown={(e) => e.stopPropagation()} onClick={animate} className="nodrag flex h-[26px] items-center gap-1 rounded-[7px] px-2 text-[10px] font-medium text-white" style={{ background: "rgba(255,255,255,.14)" }}><Film className="h-3 w-3" />Animate</button>
+    <img src={url} alt="" draggable onLoad={(e) => { const t = e.currentTarget; if (t.naturalWidth && t.naturalHeight) setNat({ w: t.naturalWidth, h: t.naturalHeight }); }} onDragStart={(e) => { e.dataTransfer.setData("application/flowasset", JSON.stringify({ url, aspectRatio: aspect, model: provLabel })); e.dataTransfer.effectAllowed = "all"; }} className={`nodrag h-full w-full ${checker ? "object-contain" : "object-cover"}`} />
+    <button type="button" onMouseDown={(e) => e.stopPropagation()} onClick={download} title="Baixar" className="nodrag absolute bottom-2 left-2 z-20 flex h-7 w-7 items-center justify-center rounded-lg bg-white text-[#0A0A0A]"><Download className="h-3.5 w-3.5" /></button>
+    <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-1.5 py-2 pl-12 pr-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100" style={{ backgroundImage: "linear-gradient(to top, rgba(0,0,0,.9), rgba(0,0,0,.45) 55%, transparent)" }}>
+      <button type="button" onMouseDown={(e) => e.stopPropagation()} onClick={novaCriacao} className="nodrag flex h-[26px] items-center gap-1 rounded-[7px] px-2 text-[10px] font-medium text-white" style={{ background: "rgba(255,255,255,.18)" }}><Sparkles className="h-3 w-3" />Nova criação</button>
+      <button type="button" onMouseDown={(e) => e.stopPropagation()} onClick={animate} className="nodrag flex h-[26px] items-center gap-1 rounded-[7px] px-2 text-[10px] font-medium text-white" style={{ background: "rgba(255,255,255,.18)" }}><Film className="h-3 w-3" />Animate</button>
     </div>
   </div>);
 }
 
 function RemoveBgNode({ id, data, selected }: NodeProps) {
-  const rf = useReactFlow(); const d = data as ND;
+  const rf = useReactFlow(); const d = data as ND; const [cfg, setCfg] = useState(false);
   const status = d.__status as string | undefined; const result = d.__result as string | undefined; const aspect = (d.aspectRatio as string) || "1:1";
-  const upd = useUpdateNodeInternals(); useEffect(() => { upd(id); }, [status, result, id, upd]);
+  const upd = useUpdateNodeInternals(); useEffect(() => { const raf = requestAnimationFrame(() => upd(id)); return () => cancelAnimationFrame(raf); }, [status, result, id, upd]);
   const handles = (<><Handle type="target" position={Position.Left} id="reference" style={{ background: "#F97316" }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.removeBg }} /></>);
   if (status === "running") {
     return (<NodeShell id={id} type="removeBg" title={(d.title as string) || "Remove BG"} status={status} selected={selected} glow={ACCENT.removeBg} noPad width={248}>
@@ -442,18 +442,21 @@ function RemoveBgNode({ id, data, selected }: NodeProps) {
   }
   if (result) {
     return (<NodeShell id={id} type="removeBg" title={(d.title as string) || "Remove BG"} status={status} selected={selected} noPad width={248}>
-      <ProcessedResult id={id} url={result} aspect={aspect} accent={ACCENT.removeBg} checker provLabel="Remove BG" badge="PNG" />{handles}
+      <ProcessedResult id={id} url={result} aspect={aspect} checker provLabel="Remove BG" />{handles}
     </NodeShell>);
   }
   return (<NodeShell id={id} type="removeBg" title={(d.title as string) || "Remove BG"} status={status} selected={selected} width={248} runnable>
-    <div className="mb-2"><FSelect value={(d.rmbgModel as string) || "RMBG-2.0"} onChange={(e) => rf.updateNodeData(id, { rmbgModel: e.target.value })}>{["RMBG-2.0", "RMBG-1.4", "BEN2"].map((m) => <option key={m} value={m}>{m}</option>)}</FSelect></div>
-    <p className="text-[10px] text-[color:var(--fx-muted)]">Conecte uma imagem e rode para remover o fundo.</p>{handles}
+    <p className="text-[10px] text-[color:var(--fx-muted)]">Conecte uma imagem e rode para remover o fundo.</p>
+    <div className="relative mt-2">
+      <button type="button" onClick={() => setCfg((v) => !v)} className="fx-item nodrag inline-flex h-6 items-center gap-1 px-2 text-[9px] text-[color:var(--fx-muted)]"><Sliders className="h-3 w-3" />{(d.rmbgModel as string) || "RMBG-2.0"}</button>
+      {cfg && <div className="absolute left-0 top-7 z-50 w-[152px] rounded-lg fx-panel p-1">{["RMBG-2.0", "RMBG-1.4", "BEN2"].map((m) => { const on = ((d.rmbgModel as string) || "RMBG-2.0") === m; return <button key={m} type="button" onClick={() => { rf.updateNodeData(id, { rmbgModel: m }); setCfg(false); }} className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[10px]" style={on ? { color: "#22D3EE" } : { color: "var(--fx-text)" }}>{m}{on && <Check className="ml-auto h-3 w-3" />}</button>; })}</div>}
+    </div>{handles}
   </NodeShell>);
 }
 function UpscaleNode({ id, data, selected }: NodeProps) {
   const rf = useReactFlow(); const d = data as ND;
   const status = d.__status as string | undefined; const result = d.__result as string | undefined; const aspect = (d.aspectRatio as string) || "1:1"; const scale = (d.scale as string) || "2x";
-  const upd = useUpdateNodeInternals(); useEffect(() => { upd(id); }, [status, result, id, upd]);
+  const upd = useUpdateNodeInternals(); useEffect(() => { const raf = requestAnimationFrame(() => upd(id)); return () => cancelAnimationFrame(raf); }, [status, result, id, upd]);
   const handles = (<><Handle type="target" position={Position.Left} id="reference" style={{ background: "#F97316" }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.upscale }} /></>);
   if (status === "running") {
     return (<NodeShell id={id} type="upscale" title={(d.title as string) || "Upscale"} status={status} selected={selected} glow={ACCENT.upscale} noPad width={256}>
@@ -462,7 +465,7 @@ function UpscaleNode({ id, data, selected }: NodeProps) {
   }
   if (result) {
     return (<NodeShell id={id} type="upscale" title={(d.title as string) || "Upscale"} status={status} selected={selected} noPad width={256}>
-      <ProcessedResult id={id} url={result} aspect={aspect} accent={ACCENT.upscale} provLabel="Upscale" badge={scale} />{handles}
+      <ProcessedResult id={id} url={result} aspect={aspect} provLabel="Upscale" />{handles}
     </NodeShell>);
   }
   return (<NodeShell id={id} type="upscale" title={(d.title as string) || "Upscale"} status={status} selected={selected} width={256} runnable>
@@ -626,7 +629,7 @@ function Editor() {
           const rr = await fetch(`/api/generate/${isUp ? "upscale" : "removebg"}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
           const dtt = await rr.json().catch(() => null); if (!rr.ok) { setNS(id, { __status: "failed" }); throw new Error(dtt?.error || "Falha ao processar."); }
           if (dtt?.generation_id) setNS(id, { __gen: String(dtt.generation_id) }); let uu = dtt?.result_url as string | undefined; if (dtt?.status !== "completed" || !uu) uu = await pollGen(String(dtt.generation_id));
-          out.set(id, uu); setNS(id, { __status: "done", __result: uu }); continue;
+          out.set(id, uu); if (String((rf.getNode(id)?.data as ND)?.__gen || "") === String(dtt.generation_id)) setNS(id, { __status: "done", __result: uu }); continue;
         }
         if (node.type === "audioGen") {
           const text = String(d.prompt || "").trim() || pText.trim();
@@ -635,7 +638,7 @@ function Editor() {
           setNS(id, { __status: "running", __result: undefined });
           const r = await fetch("/api/generate/audio", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: text, model_uuid: d.model, voice_id: d.voice }) });
           const dt = await r.json().catch(() => null); if (!r.ok) { setNS(id, { __status: "failed" }); throw new Error(dt?.error || "Falha ao gerar áudio."); }
-          if (dt?.generation_id) setNS(id, { __gen: String(dt.generation_id) }); let u = dt?.result_url as string | undefined; if (dt?.status !== "completed" || !u) u = await pollGen(String(dt.generation_id)); out.set(id, u); setNS(id, { __status: "done", __result: u, __resultMeta: { modelName: (d.modelName as string) || (d.model as string), aspectRatio: d.aspectRatio, resolution: d.resolution } }); continue;
+          if (dt?.generation_id) setNS(id, { __gen: String(dt.generation_id) }); let u = dt?.result_url as string | undefined; if (dt?.status !== "completed" || !u) u = await pollGen(String(dt.generation_id)); out.set(id, u); if (String((rf.getNode(id)?.data as ND)?.__gen || "") === String(dt.generation_id)) setNS(id, { __status: "done", __result: u, __resultMeta: { modelName: (d.modelName as string) || (d.model as string), aspectRatio: d.aspectRatio, resolution: d.resolution } }); continue;
         }
         if (node.type === "imageGen" || node.type === "videoGen") {
           const gl = (d.title as string) || (node.type === "imageGen" ? "Image Generator" : "Video Generator");
@@ -650,7 +653,7 @@ function Editor() {
           if (all.length) { body.reference_images = all; body.reference_image_url = all[0]; } if (!isImg) body.duration = d.duration;
           const r = await fetch(`/api/generate/${isImg ? "image" : "video"}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
           const dt = await r.json().catch(() => null); if (!r.ok) { setNS(id, { __status: "failed" }); throw new Error(dt?.error || "Falha ao iniciar."); }
-          if (dt?.generation_id) setNS(id, { __gen: String(dt.generation_id) }); let u = dt?.result_url as string | undefined; if (dt?.status !== "completed" || !u) u = await pollGen(String(dt.generation_id)); out.set(id, u); setNS(id, { __status: "done", __result: u, __resultMeta: { modelName: (d.modelName as string) || (d.model as string), aspectRatio: d.aspectRatio, resolution: d.resolution } });
+          if (dt?.generation_id) setNS(id, { __gen: String(dt.generation_id) }); let u = dt?.result_url as string | undefined; if (dt?.status !== "completed" || !u) u = await pollGen(String(dt.generation_id)); out.set(id, u); if (String((rf.getNode(id)?.data as ND)?.__gen || "") === String(dt.generation_id)) setNS(id, { __status: "done", __result: u, __resultMeta: { modelName: (d.modelName as string) || (d.model as string), aspectRatio: d.aspectRatio, resolution: d.resolution } });
         }
         } catch (nodeErr) { setNS(id, { __status: "failed", __error: nodeErr instanceof Error ? nodeErr.message : "Erro" }); throw nodeErr; } finally { setEdgeActive(id, false); }
       }
