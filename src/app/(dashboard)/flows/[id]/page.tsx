@@ -67,7 +67,7 @@ const DEFAULTS: Record<string, ND> = {
   imageGen: { prompt: "", model: "", modelName: "", aspectRatio: "1:1", resolution: "720p", refs: [] },
   videoGen: { prompt: "", model: "", modelName: "", duration: 8, resolution: "720p", aspectRatio: "9:16", startFrame: "", endFrame: "", audioOn: true, multiShot: false },
   audioGen: { prompt: "", model: "", modelName: "", voice: "", mode: "TTS" },
-  prompt: { text: "" }, storyboard: { aspectRatio: "1:1", resolution: "1K" }, removeBg: {}, upscale: { style: "Sharp", scale: "2x" }, output: {},
+  prompt: { text: "" }, storyboard: { aspectRatio: "1:1", resolution: "1K", image: "", prompts: [] }, removeBg: {}, upscale: { style: "Sharp", scale: "2x" }, output: {},
 };
 
 const ModelsCtx = createContext<{ image: ModelOpt[]; video: ModelOpt[]; audio: ModelOpt[] }>({ image: [], video: [], audio: [] });
@@ -177,12 +177,29 @@ function AudioGenNode({ id, data, selected }: NodeProps) {
   </NodeShell>);
 }
 function StoryboardNode({ id, data, selected }: NodeProps) {
-  const rf = useReactFlow(); const d = data as ND;
-  return (<NodeShell id={id} type="storyboard" title={(d.title as string) || "Storyboard"} status={d.__status as string} selected={selected} width={264} subtitle={<span className="text-[9px] text-[color:var(--fx-subtle)]">0 prompts</span>}>
-    <p className="mb-2 text-[10px] text-[color:var(--fx-muted)]">Conecte uma fonte de imagem para gerar prompts.</p>
-    <div className="mb-2 flex items-center justify-between gap-2"><span className="text-[10px] text-[color:var(--fx-muted)]">Proporção</span><div className="w-20"><FSelect value={(d.aspectRatio as string) || "1:1"} onChange={(e) => rf.updateNodeData(id, { aspectRatio: e.target.value })}>{["1:1", "16:9", "9:16"].map((a) => <option key={a} value={a}>{a}</option>)}</FSelect></div></div>
-    <div className="mb-2 flex items-center justify-between gap-2"><span className="text-[10px] text-[color:var(--fx-muted)]">Resolução</span><div className="w-20"><FSelect value={(d.resolution as string) || "1K"} onChange={(e) => rf.updateNodeData(id, { resolution: e.target.value })}>{["1K", "2K"].map((r) => <option key={r} value={r}>{r}</option>)}</FSelect></div></div>
-    <FButton onClick={() => toast("Storyboard: geração automática em breve.")}><Sparkles className="h-3 w-3" />Gerar prompts</FButton>
+  const rf = useReactFlow(); const d = data as ND; const [busy, setBusy] = useState(false);
+  const prompts = Array.isArray(d.prompts) ? (d.prompts as string[]) : [];
+  function resolveImage(): string {
+    const own = (d.image as string) || ""; if (/^https?:\/\//i.test(own)) return own;
+    for (const e of rf.getEdges().filter((x) => x.target === id)) { const sd = (rf.getNode(e.source)?.data as ND) || {}; const u = (sd.url as string) || (sd.__result as string) || ""; if (/^https?:\/\//i.test(u)) return u; }
+    return "";
+  }
+  async function gen() {
+    const img = resolveImage();
+    if (!img) { toast.error("Conecte um Reference Image (ou envie uma imagem) antes de gerar."); return; }
+    setBusy(true);
+    try {
+      const r = await fetch("/api/storyboard", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image_url: img, count: 4, aspect_ratio: d.aspectRatio }) });
+      const dt = await r.json().catch(() => null); if (!r.ok) throw new Error(dt?.error || "Falha");
+      rf.updateNodeData(id, { prompts: dt.prompts }); toast.success(`${dt.prompts.length} prompts gerados \u2728`);
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Erro"); } finally { setBusy(false); }
+  }
+  return (<NodeShell id={id} type="storyboard" title={(d.title as string) || "Storyboard"} status={d.__status as string} selected={selected} width={276} subtitle={<span className="text-[9px] text-[color:var(--fx-subtle)]">{prompts.length} prompts</span>}>
+    <p className="mb-2 text-[10px] text-[color:var(--fx-muted)]">O LLM analisa a imagem conectada (ou enviada) e gera os prompts.</p>
+    <div className="mb-2"><FrameUpload id={id} field="image" url={(d.image as string) || ""} /></div>
+    <div className="mb-2 grid grid-cols-2 gap-2"><FSelect value={(d.aspectRatio as string) || "1:1"} onChange={(e) => rf.updateNodeData(id, { aspectRatio: e.target.value })}>{["1:1", "16:9", "9:16"].map((a) => <option key={a} value={a}>{a}</option>)}</FSelect><FSelect value={(d.resolution as string) || "1K"} onChange={(e) => rf.updateNodeData(id, { resolution: e.target.value })}>{["1K", "2K"].map((r) => <option key={r} value={r}>{r}</option>)}</FSelect></div>
+    <FButton onClick={gen} disabled={busy}>{busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 text-[#D8ED19]" />}Generate Prompts</FButton>
+    {prompts.length > 0 && <div className="mt-2 space-y-1">{prompts.map((pr, i) => <div key={i} className="rounded-md px-2 py-1 text-[9px] leading-snug text-[color:var(--fx-muted)]" style={{ background: "rgba(0,0,0,.28)" }}>{i + 1}. {pr}</div>)}</div>}
     <Handle type="target" position={Position.Left} id="in" style={{ background: "#F97316" }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.storyboard }} />
   </NodeShell>);
 }
@@ -303,7 +320,7 @@ function Editor() {
         if (node.type === "prompt") { out.set(id, (d.text as string) || ""); continue; }
         if (node.type === "refImage") { out.set(id, (d.url as string) || ""); continue; }
         if (node.type === "output") { const v = inc.map((e) => out.get(e.source)).find(Boolean) || ""; out.set(id, v); setNS(id, { __status: v ? "done" : "failed", __result: v || undefined }); continue; }
-        if (node.type === "storyboard") { out.set(id, pText || refs[0] || ""); setNS(id, { __status: "done" }); continue; }
+        if (node.type === "storyboard") { const ps = Array.isArray(d.prompts) ? (d.prompts as string[]) : []; out.set(id, ps.length ? ps[0] : (pText || refs[0] || "")); setNS(id, { __status: ps.length ? "done" : "failed" }); if (!ps.length) throw new Error(`"${d.title || "Storyboard"}" precisa gerar os prompts primeiro (Generate Prompts).`); continue; }
         if (node.type === "removeBg" || node.type === "upscale") {
           const src = refs[0]; if (!src) { setNS(id, { __status: "failed" }); throw new Error(`Conecte uma imagem ao "${d.title || node.type}".`); }
           setNS(id, { __status: "running" }); await sleep(400); out.set(id, src); setNS(id, { __status: "done", __result: src });
