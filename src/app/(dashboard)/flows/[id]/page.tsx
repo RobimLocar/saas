@@ -53,6 +53,10 @@ const FLOW_CSS = `
 .fx-bar::after{content:"";position:absolute;left:-40%;top:0;height:100%;width:40%;border-radius:999px;background:var(--dot,#F97316);animation:fxslide 1.2s ease-in-out infinite}
 @keyframes fxslide{0%{left:-40%}100%{left:110%}}
 @media (prefers-reduced-motion: reduce){.fx-dots span{animation:none;opacity:.55}.fx-bar::after{animation:none;left:0;width:100%;opacity:.5}}
+.fx-edge-active{stroke-dasharray:5 7;stroke-linecap:round;animation:fxdash .7s linear infinite}
+@keyframes fxdash{to{stroke-dashoffset:-24}}
+@media (prefers-reduced-motion: reduce){.fx-edge-active{animation:none;opacity:.5}}
+.fx-checker{background-color:#0f0f10;background-image:linear-gradient(45deg,#1c1c1f 25%,transparent 25%),linear-gradient(-45deg,#1c1c1f 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#1c1c1f 75%),linear-gradient(-45deg,transparent 75%,#1c1c1f 75%);background-size:14px 14px;background-position:0 0,0 7px,7px -7px,-7px 0}
 `;
 
 type ND = Record<string, unknown>;
@@ -108,8 +112,8 @@ function ResultThumb({ url }: { url?: string }) {
   // eslint-disable-next-line @next/next/no-img-element
   return <img src={url} alt="result" className="mt-2 h-28 w-full rounded-[8px] object-cover" />;
 }
-function NodeShell({ id, type, title, status, selected, runnable, width = 288, subtitle, noPad, children }: {
-  id: string; type: string; title: string; status?: string; selected?: boolean; runnable?: boolean; width?: number; subtitle?: React.ReactNode; noPad?: boolean; children?: React.ReactNode;
+function NodeShell({ id, type, title, status, selected, runnable, width = 288, subtitle, noPad, glow, children }: {
+  id: string; type: string; title: string; status?: string; selected?: boolean; runnable?: boolean; width?: number; subtitle?: React.ReactNode; noPad?: boolean; glow?: string; children?: React.ReactNode;
 }) {
   const rf = useReactFlow(); const { runNode, running } = useContext(ActionsCtx);
   const reg = REGISTRY.find((r) => r.type === type)!; const accent = reg.accent;
@@ -117,7 +121,7 @@ function NodeShell({ id, type, title, status, selected, runnable, width = 288, s
   useEffect(() => { if (!info) return; const h = () => setInfo(false); const k = (e: KeyboardEvent) => { if (e.key === "Escape") setInfo(false); }; window.addEventListener("mousedown", h); window.addEventListener("keydown", k); return () => { window.removeEventListener("mousedown", h); window.removeEventListener("keydown", k); }; }, [info]);
   function openInfo(e: React.MouseEvent) { e.stopPropagation(); const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); const w = 280; let x = r.right + 8; if (x + w > window.innerWidth - 12) x = r.left - w - 8; let y = r.top; if (y + 140 > window.innerHeight - 12) y = window.innerHeight - 152; setIpos({ x, y }); setInfo((v) => !v); }
   return (
-    <div className="fx-card group relative" style={{ width, ...(selected ? { borderColor: accent, boxShadow: `0 0 16px ${accent}22, 0 8px 28px rgba(0,0,0,.45)` } : {}) }}>
+    <div className="fx-card group relative" style={{ width, ...(selected ? { borderColor: accent, boxShadow: `0 0 16px ${accent}22, 0 8px 28px rgba(0,0,0,.45)` } : glow ? { borderColor: `${glow}99`, boxShadow: `0 0 0 1px ${glow}55, 0 0 18px ${glow}44` } : {}) }}>
       <div className="relative flex h-[34px] items-center gap-2 border-b px-2.5" style={{ borderColor: "var(--fx-border)" }}>
         <span className="flex h-4 w-4 items-center justify-center" style={{ color: accent }}><reg.Icon className="h-3.5 w-3.5" /></span>
         <span className="flex-1 truncate text-[11px] font-semibold" style={{ color: accent }}>{title}</span>
@@ -283,7 +287,7 @@ function ImageGenNode({ id, data, selected }: NodeProps) {
   if (vstate === "error") {
     return (<NodeShell id={id} type="imageGen" title={title} status={status} selected={selected} width={300}>
       <p className="text-[12px] font-medium text-[#FCA5A5]">Falha na geração</p>
-      <p className="mt-1 text-[10px] text-[color:var(--fx-muted)]">Não foi possível concluir. Tente novamente ou ajuste os parâmetros.</p>
+      <p className="mt-1 text-[10px] text-[color:var(--fx-muted)]">{(d.__error as string) || "Não foi possível concluir. Tente novamente ou ajuste os parâmetros."}</p>
       <div className="mt-3 flex gap-2"><FButton onClick={() => runNode(id)} disabled={running}><Play className="h-3 w-3" fill="currentColor" />Retry</FButton><FButton onClick={() => rf.updateNodeData(id, { __status: undefined, __editing: true })}>Editar parâmetros</FButton></div>
       {handles}
     </NodeShell>);
@@ -400,22 +404,70 @@ function StoryboardNode({ id, data, selected }: NodeProps) {
     <Handle type="target" position={Position.Left} id="in" style={{ background: "#F97316" }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.storyboard }} />
   </NodeShell>);
 }
+function ProcessedResult({ id, url, aspect, accent, checker, provLabel, badge }: { id: string; url: string; aspect: string; accent: string; checker?: boolean; provLabel: string; badge?: string }) {
+  const rf = useReactFlow(); const models = useContext(ModelsCtx); const { markDirty } = useContext(ActionsCtx);
+  const [aw, ah] = aspect.split(":").map(Number); const h = Math.max(150, Math.min(380, Math.round(248 * ((ah || 1) / (aw || 1)))));
+  function linked(type: string, patch: ND, targetHandle: string) {
+    const pos = rf.getNode(id)?.position || { x: 0, y: 0 };
+    const nid = type + "_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+    const base = JSON.parse(JSON.stringify(DEFAULTS[type])) as ND;
+    rf.setNodes((n) => [...n, { id: nid, type, position: { x: pos.x + 300, y: pos.y }, data: { ...base, ...patch } } as Node]);
+    rf.setEdges((e) => addEdge({ source: id, target: nid, sourceHandle: "out", targetHandle, type: "grad" }, e)); markDirty();
+  }
+  function novaCriacao() { const m = models.image[0]; linked("imageGen", { title: "Image Generator", prompt: "", model: m?.id || "", modelName: m?.name || "", aspectRatio: aspect, resolution: "1K", refs: [url] }, "reference"); toast.success("Nova imagem criada com esta imagem como referência."); }
+  function animate() { const m = models.video[0]; linked("videoGen", { title: "Video Generator", startFrame: url, model: m?.id || "", modelName: m?.name || "" }, "reference"); toast.success("Video Generator criado com a imagem como start frame."); }
+  async function download() { try { const r = await fetch(url); const b = await r.blob(); const l = URL.createObjectURL(b); const a = document.createElement("a"); a.href = l; a.download = "fluxyra-" + Date.now() + ".png"; a.click(); URL.revokeObjectURL(l); } catch { window.open(url, "_blank"); } }
+  return (<div className={`relative overflow-hidden rounded-b-[11px] ${checker ? "fx-checker" : ""}`} style={{ height: h, background: checker ? undefined : "#0a0a0b" }}>
+    {/* eslint-disable-next-line @next/next/no-img-element */}
+    <img src={url} alt="" draggable onDragStart={(e) => { e.dataTransfer.setData("application/flowasset", JSON.stringify({ url, aspectRatio: aspect, model: provLabel })); e.dataTransfer.effectAllowed = "all"; }} className={`nodrag h-full w-full ${checker ? "object-contain" : "object-cover"}`} />
+    <div className="absolute left-2 top-2 flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium text-white" style={{ background: "rgba(0,0,0,.5)" }}><span className="h-1.5 w-1.5 rounded-full" style={{ background: accent }} />{provLabel}</div>
+    {badge ? <div className="absolute right-2 top-2 rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.5)" }}>{badge}</div> : null}
+    <div className="absolute inset-x-0 bottom-0 flex flex-wrap gap-1.5 p-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100" style={{ backgroundImage: "linear-gradient(to top, rgba(0,0,0,.9), rgba(0,0,0,.45) 55%, transparent)" }}>
+      <button type="button" onMouseDown={(e) => e.stopPropagation()} onClick={download} title="Baixar" className="nodrag flex h-[26px] items-center gap-1 rounded-[7px] px-2 text-[10px] font-medium text-white" style={{ background: "rgba(255,255,255,.14)" }}><Download className="h-3 w-3" /></button>
+      <button type="button" onMouseDown={(e) => e.stopPropagation()} onClick={novaCriacao} className="nodrag flex h-[26px] items-center gap-1 rounded-[7px] px-2 text-[10px] font-medium text-white" style={{ background: "rgba(255,255,255,.14)" }}><Sparkles className="h-3 w-3" />Nova criação</button>
+      <button type="button" onMouseDown={(e) => e.stopPropagation()} onClick={animate} className="nodrag flex h-[26px] items-center gap-1 rounded-[7px] px-2 text-[10px] font-medium text-white" style={{ background: "rgba(255,255,255,.14)" }}><Film className="h-3 w-3" />Animate</button>
+    </div>
+  </div>);
+}
+
 function RemoveBgNode({ id, data, selected }: NodeProps) {
   const rf = useReactFlow(); const d = data as ND;
-  return (<NodeShell id={id} type="removeBg" title={(d.title as string) || "Remove BG"} status={d.__status as string} selected={selected} width={248} runnable>
+  const status = d.__status as string | undefined; const result = d.__result as string | undefined; const aspect = (d.aspectRatio as string) || "1:1";
+  const upd = useUpdateNodeInternals(); useEffect(() => { upd(id); }, [status, result, id, upd]);
+  const handles = (<><Handle type="target" position={Position.Left} id="reference" style={{ background: "#F97316" }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.removeBg }} /></>);
+  if (status === "running") {
+    return (<NodeShell id={id} type="removeBg" title={(d.title as string) || "Remove BG"} status={status} selected={selected} glow={ACCENT.removeBg} noPad width={248}>
+      <div className="relative flex items-center justify-center rounded-b-[11px]" style={{ height: 150, background: "#0a0a0b" }}><DotLoader accent={ACCENT.removeBg} /><span className="absolute bottom-2.5 left-2.5 text-[10px] font-medium text-white">Removendo fundo…</span></div>{handles}
+    </NodeShell>);
+  }
+  if (result) {
+    return (<NodeShell id={id} type="removeBg" title={(d.title as string) || "Remove BG"} status={status} selected={selected} noPad width={248}>
+      <ProcessedResult id={id} url={result} aspect={aspect} accent={ACCENT.removeBg} checker provLabel="Remove BG" badge="PNG" />{handles}
+    </NodeShell>);
+  }
+  return (<NodeShell id={id} type="removeBg" title={(d.title as string) || "Remove BG"} status={status} selected={selected} width={248} runnable>
     <div className="mb-2"><FSelect value={(d.rmbgModel as string) || "RMBG-2.0"} onChange={(e) => rf.updateNodeData(id, { rmbgModel: e.target.value })}>{["RMBG-2.0", "RMBG-1.4", "BEN2"].map((m) => <option key={m} value={m}>{m}</option>)}</FSelect></div>
-    <p className="text-[10px] text-[color:var(--fx-muted)]">Conecte uma imagem e rode para remover o fundo.</p>
-    <ResultThumb url={d.__result as string} />
-    <Handle type="target" position={Position.Left} id="reference" style={{ background: "#F97316" }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.removeBg }} />
+    <p className="text-[10px] text-[color:var(--fx-muted)]">Conecte uma imagem e rode para remover o fundo.</p>{handles}
   </NodeShell>);
 }
 function UpscaleNode({ id, data, selected }: NodeProps) {
   const rf = useReactFlow(); const d = data as ND;
-  return (<NodeShell id={id} type="upscale" title={(d.title as string) || "Upscale"} status={d.__status as string} selected={selected} width={256} runnable>
-    <div className="mb-2 grid grid-cols-2 gap-2"><FSelect value={(d.scale as string) || "2x"} onChange={(e) => rf.updateNodeData(id, { scale: e.target.value })}>{["2x", "4x"].map((sc) => <option key={sc} value={sc}>{sc}</option>)}</FSelect><FSwitch label="Face enhance" on={Boolean(d.faceEnhance)} onToggle={() => rf.updateNodeData(id, { faceEnhance: !d.faceEnhance })} /></div>
-    <p className="text-[10px] text-[color:var(--fx-muted)]">Conecte uma imagem, escolha a escala e rode.</p>
-    <ResultThumb url={d.__result as string} />
-    <Handle type="target" position={Position.Left} id="reference" style={{ background: "#F97316" }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.upscale }} />
+  const status = d.__status as string | undefined; const result = d.__result as string | undefined; const aspect = (d.aspectRatio as string) || "1:1"; const scale = (d.scale as string) || "2x";
+  const upd = useUpdateNodeInternals(); useEffect(() => { upd(id); }, [status, result, id, upd]);
+  const handles = (<><Handle type="target" position={Position.Left} id="reference" style={{ background: "#F97316" }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.upscale }} /></>);
+  if (status === "running") {
+    return (<NodeShell id={id} type="upscale" title={(d.title as string) || "Upscale"} status={status} selected={selected} glow={ACCENT.upscale} noPad width={256}>
+      <div className="relative flex items-center justify-center rounded-b-[11px]" style={{ height: 150, background: "#0a0a0b" }}><DotLoader accent={ACCENT.upscale} /><span className="absolute bottom-2.5 left-2.5 text-[10px] font-medium text-white">Ampliando…</span></div>{handles}
+    </NodeShell>);
+  }
+  if (result) {
+    return (<NodeShell id={id} type="upscale" title={(d.title as string) || "Upscale"} status={status} selected={selected} noPad width={256}>
+      <ProcessedResult id={id} url={result} aspect={aspect} accent={ACCENT.upscale} provLabel="Upscale" badge={scale} />{handles}
+    </NodeShell>);
+  }
+  return (<NodeShell id={id} type="upscale" title={(d.title as string) || "Upscale"} status={status} selected={selected} width={256} runnable>
+    <div className="mb-2 grid grid-cols-2 gap-2"><FSelect value={scale} onChange={(e) => rf.updateNodeData(id, { scale: e.target.value })}>{["2x", "4x"].map((sc) => <option key={sc} value={sc}>{sc}</option>)}</FSelect><FSwitch label="Face enhance" on={Boolean(d.faceEnhance)} onToggle={() => rf.updateNodeData(id, { faceEnhance: !d.faceEnhance })} /></div>
+    <p className="text-[10px] text-[color:var(--fx-muted)]">Conecte uma imagem, escolha a escala e rode.</p>{handles}
   </NodeShell>);
 }
 function OutputNode({ id, data, selected }: NodeProps) { const d = data as ND; return (<NodeShell id={id} type="output" title={(d.title as string) || "Output"} status={d.__status as string} selected={selected} width={256}>{d.__result ? <ResultThumb url={d.__result as string} /> : <p className="text-[10px] text-[color:var(--fx-subtle)]">O resultado final aparece aqui após o Run.</p>}<Handle type="target" position={Position.Left} id="in" style={{ background: ACCENT.output }} /></NodeShell>); }
@@ -446,15 +498,17 @@ function ImageAssetNode({ id, data, selected }: NodeProps) {
 const nodeTypes: NodeTypes = { prompt: memo(PromptNode), refImage: memo(RefImageNode), imageGen: memo(ImageGenNode), videoGen: memo(VideoGenNode), audioGen: memo(AudioGenNode), storyboard: memo(StoryboardNode), removeBg: memo(RemoveBgNode), upscale: memo(UpscaleNode), output: memo(OutputNode), imageAsset: memo(ImageAssetNode) };
 
 /* ── EDGE COM GRADIENTE POR CATEGORIA ────────────────────────────────────── */
-function GradientEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, source, target }: EdgeProps) {
+function GradientEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, source, target, data }: EdgeProps) {
   const rf = useReactFlow();
   const [path] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
   const c1 = ACCENT[rf.getNode(source)?.type || ""] || "#7C3AED";
   const c2 = ACCENT[rf.getNode(target)?.type || ""] || "#7C3AED";
   const gid = `fxg-${id}`;
+  const active = Boolean((data as { active?: boolean } | undefined)?.active);
   return (<>
     <defs><linearGradient id={gid} gradientUnits="userSpaceOnUse" x1={sourceX} y1={sourceY} x2={targetX} y2={targetY}><stop offset="0%" stopColor={c1} /><stop offset="100%" stopColor={c2} /></linearGradient></defs>
-    <path id={id} d={path} fill="none" stroke={`url(#${gid})`} strokeWidth={2} className="react-flow__edge-path" />
+    <path id={id} d={path} fill="none" stroke={`url(#${gid})`} strokeWidth={2} className="react-flow__edge-path" style={active ? { filter: `drop-shadow(0 0 5px ${c2}99)` } : undefined} />
+    {active && <path d={path} fill="none" stroke={`url(#${gid})`} strokeWidth={2.5} className="fx-edge-active" style={{ opacity: 0.95 }} />}
   </>);
 }
 const edgeTypes: EdgeTypes = { grad: GradientEdge };
@@ -485,18 +539,34 @@ function Editor() {
   const counter = useRef(0); const savingRef = useRef(false);
 
   const markDirty = useCallback(() => setSaveState((s) => (s === "saving" ? s : "dirty")), []);
+  const markEdgesActive = useCallback((tid: string, on: boolean) => rf.setEdges((eds) => eds.map((e) => e.target === tid ? { ...e, data: { ...(e.data || {}), active: on } } : e)), [rf]);
+  const resumePoll = useCallback(async (nid: string, gid: string) => {
+    markEdgesActive(nid, true); rf.updateNodeData(nid, { __status: "running" }); let resolved = false;
+    try {
+      for (let i = 0; i < 200; i++) {
+        await sleep(3000);
+        const r = await fetch(`/api/generate/status?id=${gid}`, { cache: "no-store" });
+        const d = await r.json().catch(() => null); if (!d) continue;
+        if (d.status === "completed" && d.result_url) { const nd = (rf.getNode(nid)?.data as ND) || {}; rf.updateNodeData(nid, { __status: "done", __result: d.result_url, __resultMeta: nd.model ? { modelName: (nd.modelName as string) || (nd.model as string), aspectRatio: nd.aspectRatio, resolution: nd.resolution } : undefined }); resolved = true; break; }
+        if (d.status === "failed") { rf.updateNodeData(nid, { __status: "failed", __error: d.error_message || "Falhou." }); resolved = true; break; }
+      }
+      if (!resolved) rf.updateNodeData(nid, { __status: "failed", __error: "Execução interrompida." });
+    } catch { rf.updateNodeData(nid, { __status: "failed", __error: "Execução interrompida." }); }
+    finally { markEdgesActive(nid, false); }
+  }, [rf, markEdgesActive]);
   const onNodesChange = useCallback((c: Parameters<typeof onNodesChangeRaw>[0]) => { onNodesChangeRaw(c); markDirty(); }, [onNodesChangeRaw, markDirty]);
   const onEdgesChange = useCallback((c: Parameters<typeof onEdgesChangeRaw>[0]) => { onEdgesChangeRaw(c); markDirty(); }, [onEdgesChangeRaw, markDirty]);
 
   useEffect(() => { (async () => { const load = async (t: string) => { const r = await fetch(`/api/models?type=${t}`, { cache: "no-store" }).then((x) => x.json()).catch(() => null); return Array.isArray(r?.models) ? r.models.map((m: { id: string; name: string; credit_cost?: number }) => ({ id: m.id, name: m.name, cost: typeof m.credit_cost === "number" ? m.credit_cost : 0 })) : []; }; const [im, vm, am] = await Promise.all([load("image"), load("video"), load("audio")]); setImageModels(im); setVideoModels(vm); setAudioModels(am); try { const me = await fetch("/api/me", { cache: "no-store" }).then((r) => r.json()).catch(() => null); if (typeof me?.credits === "number") setCredits(me.credits); } catch { /* noop */ } })(); }, []);
 
-  useEffect(() => { let alive = true; (async () => { setLoading(true); try { const res = await fetch(`/api/flows/${flowId}`, { cache: "no-store" }); const data = await res.json().catch(() => null); if (!res.ok) throw new Error(data?.error || "Falha ao carregar."); if (!alive) return; setName(data.flow.name || "Novo Flow"); const def = data.flow.definition || {}; setNodes(Array.isArray(def.nodes) ? def.nodes : []); setEdges(Array.isArray(def.edges) ? def.edges : []); setSaveState("saved"); } catch (err) { toast.error(err instanceof Error ? err.message : "Erro ao carregar."); } finally { if (alive) setLoading(false); } })(); return () => { alive = false; }; }, [flowId, setNodes, setEdges]);
+  useEffect(() => { let alive = true; (async () => { setLoading(true); try { const res = await fetch(`/api/flows/${flowId}`, { cache: "no-store" }); const data = await res.json().catch(() => null); if (!res.ok) throw new Error(data?.error || "Falha ao carregar."); if (!alive) return; setName(data.flow.name || "Novo Flow"); const def = data.flow.definition || {}; setNodes(Array.isArray(def.nodes) ? def.nodes : []); const defNodes = (Array.isArray(def.nodes) ? def.nodes : []) as Node[]; setEdges(Array.isArray(def.edges) ? def.edges : []); setSaveState("saved"); setTimeout(() => { defNodes.forEach((n) => { const dd = (n.data || {}) as ND; if (dd.__gen && !dd.__result) void resumePoll(n.id, String(dd.__gen)); }); }, 0); } catch (err) { toast.error(err instanceof Error ? err.message : "Erro ao carregar."); } finally { if (alive) setLoading(false); } })(); return () => { alive = false; }; }, [flowId, setNodes, setEdges]);
 
   const onConnect = useCallback((c: Connection) => { setEdges((eds) => addEdge({ ...c, type: "grad", animated: true }, eds)); markDirty(); }, [setEdges, markDirty]);
 
   const save = useCallback(async () => {
     if (savingRef.current) return; savingRef.current = true; setSaveState("saving");
-    try { const obj = rf.toObject(); const clean = obj.nodes.map((n) => { const dd = { ...(n.data as ND) }; delete dd.__status; delete dd.__editing; return { ...n, data: dd }; }); const res = await fetch(`/api/flows/${flowId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, definition: { ...obj, nodes: clean } }) }); if (!res.ok) throw new Error(); setSaveState("saved"); } catch { setSaveState("error"); } finally { savingRef.current = false; }
+    try { const obj = rf.toObject(); const clean = obj.nodes.map((n) => { const dd = { ...(n.data as ND) }; delete dd.__status; delete dd.__editing; return { ...n, data: dd }; });
+      const cleanEdges = obj.edges.map((e) => { if (!e.data) return e; const ed = { ...(e.data as Record<string, unknown>) }; delete ed.active; return { ...e, data: ed }; }); const res = await fetch(`/api/flows/${flowId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, definition: { ...obj, nodes: clean, edges: cleanEdges } }) }); if (!res.ok) throw new Error(); setSaveState("saved"); } catch { setSaveState("error"); } finally { savingRef.current = false; }
   }, [rf, flowId, name]);
 
   // auto-save
@@ -521,6 +591,7 @@ function Editor() {
 
   const runFlow = useCallback(async (targetId?: string) => {
     const sn = rf.getNodes(); const se = rf.getEdges();
+    const setEdgeActive = markEdgesActive;
     if (!sn.length) { toast.error("Adicione nós antes de rodar."); return; }
     const indeg = new Map<string, number>(); const adj = new Map<string, string[]>();
     sn.forEach((n) => { indeg.set(n.id, 0); adj.set(n.id, []); });
@@ -532,10 +603,12 @@ function Editor() {
     if (targetId) { const radj = new Map<string, string[]>(); sn.forEach((n) => radj.set(n.id, [])); se.forEach((e) => radj.get(e.target)?.push(e.source)); allowed = new Set(); const s = [targetId]; while (s.length) { const x = s.shift()!; if (allowed.has(x)) continue; allowed.add(x); for (const p of radj.get(x) || []) s.push(p); } }
     const runOrder = allowed ? order.filter((id) => allowed!.has(id)) : order;
     const byId = new Map(sn.map((n) => [n.id, n])); const out = new Map<string, string>();
-    runOrder.forEach((id) => rf.updateNodeData(id, { __status: undefined, __result: undefined, __editing: undefined }));
+    runOrder.forEach((id) => rf.updateNodeData(id, { __status: undefined, __result: undefined, __editing: undefined, __error: undefined, __gen: undefined }));
     setRunning(true);
     try {
       for (const id of runOrder) {
+        try {
+        setEdgeActive(id, true);
         const node = byId.get(id)!; const d = node.data as ND;
         const inc = se.filter((e) => e.target === id); let pText = ""; const refs: string[] = [];
         for (const e of inc) { const v = out.get(e.source); if (!v) continue; const isUrl = /^https?:\/\//i.test(v); if (e.targetHandle === "reference" || isUrl) refs.push(v); else pText = pText ? `${pText} ${v}` : v; }
@@ -552,7 +625,7 @@ function Editor() {
             : { image_url: src, rmbg_model: (d.rmbgModel as string) || "RMBG-2.0" };
           const rr = await fetch(`/api/generate/${isUp ? "upscale" : "removebg"}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
           const dtt = await rr.json().catch(() => null); if (!rr.ok) { setNS(id, { __status: "failed" }); throw new Error(dtt?.error || "Falha ao processar."); }
-          let uu = dtt?.result_url as string | undefined; if (dtt?.status !== "completed" || !uu) uu = await pollGen(String(dtt.generation_id));
+          if (dtt?.generation_id) setNS(id, { __gen: String(dtt.generation_id) }); let uu = dtt?.result_url as string | undefined; if (dtt?.status !== "completed" || !uu) uu = await pollGen(String(dtt.generation_id));
           out.set(id, uu); setNS(id, { __status: "done", __result: uu }); continue;
         }
         if (node.type === "audioGen") {
@@ -562,7 +635,7 @@ function Editor() {
           setNS(id, { __status: "running", __result: undefined });
           const r = await fetch("/api/generate/audio", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: text, model_uuid: d.model, voice_id: d.voice }) });
           const dt = await r.json().catch(() => null); if (!r.ok) { setNS(id, { __status: "failed" }); throw new Error(dt?.error || "Falha ao gerar áudio."); }
-          let u = dt?.result_url as string | undefined; if (dt?.status !== "completed" || !u) u = await pollGen(String(dt.generation_id)); out.set(id, u); setNS(id, { __status: "done", __result: u, __resultMeta: { modelName: (d.modelName as string) || (d.model as string), aspectRatio: d.aspectRatio, resolution: d.resolution } }); continue;
+          if (dt?.generation_id) setNS(id, { __gen: String(dt.generation_id) }); let u = dt?.result_url as string | undefined; if (dt?.status !== "completed" || !u) u = await pollGen(String(dt.generation_id)); out.set(id, u); setNS(id, { __status: "done", __result: u, __resultMeta: { modelName: (d.modelName as string) || (d.model as string), aspectRatio: d.aspectRatio, resolution: d.resolution } }); continue;
         }
         if (node.type === "imageGen" || node.type === "videoGen") {
           const gl = (d.title as string) || (node.type === "imageGen" ? "Image Generator" : "Video Generator");
@@ -577,12 +650,13 @@ function Editor() {
           if (all.length) { body.reference_images = all; body.reference_image_url = all[0]; } if (!isImg) body.duration = d.duration;
           const r = await fetch(`/api/generate/${isImg ? "image" : "video"}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
           const dt = await r.json().catch(() => null); if (!r.ok) { setNS(id, { __status: "failed" }); throw new Error(dt?.error || "Falha ao iniciar."); }
-          let u = dt?.result_url as string | undefined; if (dt?.status !== "completed" || !u) u = await pollGen(String(dt.generation_id)); out.set(id, u); setNS(id, { __status: "done", __result: u, __resultMeta: { modelName: (d.modelName as string) || (d.model as string), aspectRatio: d.aspectRatio, resolution: d.resolution } });
+          if (dt?.generation_id) setNS(id, { __gen: String(dt.generation_id) }); let u = dt?.result_url as string | undefined; if (dt?.status !== "completed" || !u) u = await pollGen(String(dt.generation_id)); out.set(id, u); setNS(id, { __status: "done", __result: u, __resultMeta: { modelName: (d.modelName as string) || (d.model as string), aspectRatio: d.aspectRatio, resolution: d.resolution } });
         }
+        } catch (nodeErr) { setNS(id, { __status: "failed", __error: nodeErr instanceof Error ? nodeErr.message : "Erro" }); throw nodeErr; } finally { setEdgeActive(id, false); }
       }
       toast.success("Fluxo executado ✓");
     } catch (err) { toast.error(err instanceof Error ? err.message : "Erro ao executar."); } finally { setRunning(false); }
-  }, [rf, setNS]);
+  }, [rf, setNS, markEdgesActive]);
 
   function clearAll() { if (!nodes.length) return; if (!window.confirm("Limpar todos os nós?")) return; setNodes([]); setEdges([]); markDirty(); }
   const zoomPct = Math.round(zoom * 100);
