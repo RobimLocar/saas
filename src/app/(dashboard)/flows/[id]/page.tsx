@@ -31,7 +31,6 @@ const FLOW_CSS = `
 .flow-root .react-flow__node:hover .react-flow__handle{opacity:1}
 .flow-root .react-flow__handle:hover{opacity:1;transform:scale(1.3)}
 .flow-root .react-flow__handle::after{content:"";position:absolute;inset:-8px;border-radius:999px}
-.flow-root .react-flow__edge-path{filter:drop-shadow(0 0 3px rgba(124,58,237,.28))}
 .fx-ctrl{background:var(--fx-ctrl);border:1px solid var(--fx-border);color:var(--fx-text);border-radius:var(--fx-ctrl-r);transition:border-color .14s,background .14s;outline:none}
 .fx-ctrl:hover{border-color:var(--fx-border-h)}
 .fx-ctrl:focus{border-color:#7C3AED}
@@ -434,7 +433,7 @@ function RemoveBgNode({ id, data, selected }: NodeProps) {
   const rf = useReactFlow(); const d = data as ND; const [cfg, setCfg] = useState(false);
   const status = d.__status as string | undefined; const result = d.__result as string | undefined; const aspect = (d.aspectRatio as string) || "1:1";
   const upd = useUpdateNodeInternals(); useEffect(() => { const raf = requestAnimationFrame(() => upd(id)); return () => cancelAnimationFrame(raf); }, [status, result, id, upd]);
-  const handles = (<><Handle type="target" position={Position.Left} id="reference" style={{ background: "#F97316" }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.removeBg }} /></>);
+  const handles = (<><Handle type="target" position={Position.Left} id="reference" style={{ background: ACCENT.removeBg }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.removeBg }} /></>);
   if (status === "running") {
     return (<NodeShell id={id} type="removeBg" title={(d.title as string) || "Remove BG"} status={status} selected={selected} glow={ACCENT.removeBg} noPad width={248}>
       <div className="relative flex items-center justify-center rounded-b-[11px]" style={{ height: 150, background: "#0a0a0b" }}><DotLoader accent={ACCENT.removeBg} /><span className="absolute bottom-2.5 left-2.5 text-[10px] font-medium text-white">Removendo fundo…</span></div>{handles}
@@ -457,7 +456,7 @@ function UpscaleNode({ id, data, selected }: NodeProps) {
   const rf = useReactFlow(); const d = data as ND;
   const status = d.__status as string | undefined; const result = d.__result as string | undefined; const aspect = (d.aspectRatio as string) || "1:1"; const scale = (d.scale as string) || "2x";
   const upd = useUpdateNodeInternals(); useEffect(() => { const raf = requestAnimationFrame(() => upd(id)); return () => cancelAnimationFrame(raf); }, [status, result, id, upd]);
-  const handles = (<><Handle type="target" position={Position.Left} id="reference" style={{ background: "#F97316" }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.upscale }} /></>);
+  const handles = (<><Handle type="target" position={Position.Left} id="reference" style={{ background: ACCENT.upscale }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.upscale }} /></>);
   if (status === "running") {
     return (<NodeShell id={id} type="upscale" title={(d.title as string) || "Upscale"} status={status} selected={selected} glow={ACCENT.upscale} noPad width={256}>
       <div className="relative flex items-center justify-center rounded-b-[11px]" style={{ height: 150, background: "#0a0a0b" }}><DotLoader accent={ACCENT.upscale} /><span className="absolute bottom-2.5 left-2.5 text-[10px] font-medium text-white">Ampliando…</span></div>{handles}
@@ -510,8 +509,8 @@ function GradientEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, 
   const active = Boolean((data as { active?: boolean } | undefined)?.active);
   return (<>
     <defs><linearGradient id={gid} gradientUnits="userSpaceOnUse" x1={sourceX} y1={sourceY} x2={targetX} y2={targetY}><stop offset="0%" stopColor={c1} /><stop offset="100%" stopColor={c2} /></linearGradient></defs>
-    <path id={id} d={path} fill="none" stroke={`url(#${gid})`} strokeWidth={2} className="react-flow__edge-path" style={active ? { filter: `drop-shadow(0 0 5px ${c2}99)` } : undefined} />
-    {active && <path d={path} fill="none" stroke={`url(#${gid})`} strokeWidth={2.5} className="fx-edge-active" style={{ opacity: 0.95 }} />}
+    <path id={id} d={path} fill="none" strokeWidth={active ? 2.5 : 2} className="react-flow__edge-path" style={{ stroke: `url(#${gid})`, strokeOpacity: active ? 1 : 0.7, ...(active ? { filter: `drop-shadow(0 0 5px ${c2}99)` } : {}) }} />
+    {active && <path d={path} fill="none" strokeWidth={2.5} className="fx-edge-active" style={{ stroke: `url(#${gid})`, opacity: 0.95 }} />}
   </>);
 }
 const edgeTypes: EdgeTypes = { grad: GradientEdge };
