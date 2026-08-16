@@ -67,7 +67,7 @@ const DEFAULTS: Record<string, ND> = {
   imageGen: { prompt: "", model: "", modelName: "", aspectRatio: "1:1", resolution: "720p", refs: [] },
   videoGen: { prompt: "", model: "", modelName: "", duration: 8, resolution: "720p", aspectRatio: "9:16", startFrame: "", endFrame: "", audioOn: true, multiShot: false },
   audioGen: { prompt: "", model: "", modelName: "", voice: "", mode: "TTS" },
-  prompt: { text: "" }, storyboard: { aspectRatio: "1:1", resolution: "1K", image: "", prompts: [] }, removeBg: {}, upscale: { style: "Sharp", scale: "2x" }, output: {},
+  prompt: { text: "" }, storyboard: { aspectRatio: "1:1", resolution: "1K", image: "", prompts: [], model: "", modelName: "", results: [] }, removeBg: {}, upscale: { style: "Sharp", scale: "2x" }, output: {},
 };
 
 const ModelsCtx = createContext<{ image: ModelOpt[]; video: ModelOpt[]; audio: ModelOpt[] }>({ image: [], video: [], audio: [] });
@@ -177,29 +177,54 @@ function AudioGenNode({ id, data, selected }: NodeProps) {
   </NodeShell>);
 }
 function StoryboardNode({ id, data, selected }: NodeProps) {
-  const rf = useReactFlow(); const d = data as ND; const [busy, setBusy] = useState(false);
+  const rf = useReactFlow(); const d = data as ND; const models = useContext(ModelsCtx).image;
+  const [genBusy, setGenBusy] = useState(false); const [allBusy, setAllBusy] = useState(false); const [scene, setScene] = useState<number | null>(null);
   const prompts = Array.isArray(d.prompts) ? (d.prompts as string[]) : [];
+  const results = Array.isArray(d.results) ? (d.results as string[]) : [];
   function resolveImage(): string {
     const own = (d.image as string) || ""; if (/^https?:\/\//i.test(own)) return own;
     for (const e of rf.getEdges().filter((x) => x.target === id)) { const sd = (rf.getNode(e.source)?.data as ND) || {}; const u = (sd.url as string) || (sd.__result as string) || ""; if (/^https?:\/\//i.test(u)) return u; }
     return "";
   }
-  async function gen() {
+  async function poll(gid: string): Promise<string> { for (let i = 0; i < 120; i++) { await sleep(3000); const r = await fetch(`/api/generate/status?id=${gid}`, { cache: "no-store" }); const dt = await r.json().catch(() => null); if (dt?.status === "completed" && dt.result_url) return dt.result_url; if (dt?.status === "failed") throw new Error(dt.error_message || "Geração falhou."); } throw new Error("Tempo esgotado."); }
+  async function genPrompts() {
     const img = resolveImage();
     if (!img) { toast.error("Conecte um Reference Image (ou envie uma imagem) antes de gerar."); return; }
-    setBusy(true);
+    setGenBusy(true);
     try {
       const r = await fetch("/api/storyboard", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image_url: img, count: 4, aspect_ratio: d.aspectRatio }) });
       const dt = await r.json().catch(() => null); if (!r.ok) throw new Error(dt?.error || "Falha");
-      rf.updateNodeData(id, { prompts: dt.prompts }); toast.success(`${dt.prompts.length} prompts gerados \u2728`);
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Erro"); } finally { setBusy(false); }
+      rf.updateNodeData(id, { prompts: dt.prompts, results: [] }); toast.success(`${dt.prompts.length} prompts gerados \u2728`);
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Erro"); } finally { setGenBusy(false); }
   }
-  return (<NodeShell id={id} type="storyboard" title={(d.title as string) || "Storyboard"} status={d.__status as string} selected={selected} width={276} subtitle={<span className="text-[9px] text-[color:var(--fx-subtle)]">{prompts.length} prompts</span>}>
-    <p className="mb-2 text-[10px] text-[color:var(--fx-muted)]">O LLM analisa a imagem conectada (ou enviada) e gera os prompts.</p>
+  async function genScene(i: number) {
+    const cur = (rf.getNode(id)?.data as ND) || {}; const ps = Array.isArray(cur.prompts) ? (cur.prompts as string[]) : [];
+    if (!cur.model) { toast.error("Escolha um modelo de imagem."); return; }
+    if (!ps[i]) return; setScene(i);
+    try {
+      const body = { prompt: ps[i], model_uuid: cur.model, aspect_ratio: cur.aspectRatio, quality: "high", resolution: cur.resolution };
+      const r = await fetch("/api/generate/image", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const dt = await r.json().catch(() => null); if (!r.ok) throw new Error(dt?.error || "Falha ao gerar cena.");
+      let u = dt?.result_url as string | undefined; if (dt?.status !== "completed" || !u) u = await poll(String(dt.generation_id));
+      const fresh = (rf.getNode(id)?.data as ND) || {}; const rs = Array.isArray(fresh.results) ? [...(fresh.results as string[])] : [];
+      rs[i] = u; rf.updateNodeData(id, { results: rs }); toast.success(`Cena ${i + 1} gerada \u2713`);
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Erro"); } finally { setScene(null); }
+  }
+  async function genAll() { setAllBusy(true); const n = ((rf.getNode(id)?.data as ND)?.prompts as string[] | undefined)?.length || 0; for (let i = 0; i < n; i++) await genScene(i); setAllBusy(false); }
+  const anyBusy = allBusy || scene !== null;
+  return (<NodeShell id={id} type="storyboard" title={(d.title as string) || "Storyboard"} status={d.__status as string} selected={selected} width={300} subtitle={<span className="text-[9px] text-[color:var(--fx-subtle)]">{prompts.length} prompts</span>}>
+    <p className="mb-2 text-[10px] text-[color:var(--fx-muted)]">O LLM analisa a imagem e gera prompts. Cada cena vira uma imagem só quando voc\u00ea clicar.</p>
     <div className="mb-2"><FrameUpload id={id} field="image" url={(d.image as string) || ""} /></div>
+    <div className="mb-2"><FSelect value={(d.model as string) || ""} onChange={(e) => rf.updateNodeData(id, { model: e.target.value, modelName: models.find((m) => m.id === e.target.value)?.name || "" })}><option value="">— modelo de imagem —</option>{models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</FSelect></div>
     <div className="mb-2 grid grid-cols-2 gap-2"><FSelect value={(d.aspectRatio as string) || "1:1"} onChange={(e) => rf.updateNodeData(id, { aspectRatio: e.target.value })}>{["1:1", "16:9", "9:16"].map((a) => <option key={a} value={a}>{a}</option>)}</FSelect><FSelect value={(d.resolution as string) || "1K"} onChange={(e) => rf.updateNodeData(id, { resolution: e.target.value })}>{["1K", "2K"].map((r) => <option key={r} value={r}>{r}</option>)}</FSelect></div>
-    <FButton onClick={gen} disabled={busy}>{busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 text-[#D8ED19]" />}Generate Prompts</FButton>
-    {prompts.length > 0 && <div className="mt-2 space-y-1">{prompts.map((pr, i) => <div key={i} className="rounded-md px-2 py-1 text-[9px] leading-snug text-[color:var(--fx-muted)]" style={{ background: "rgba(0,0,0,.28)" }}>{i + 1}. {pr}</div>)}</div>}
+    <FButton onClick={genPrompts} disabled={genBusy}>{genBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 text-[#D8ED19]" />}Generate Prompts</FButton>
+    {prompts.length > 0 && <>
+      <div className="mt-2"><FButton onClick={genAll} disabled={anyBusy || !d.model}>{allBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3 w-3" fill="currentColor" />}Gerar todas as cenas</FButton></div>
+      <div className="mt-2 space-y-1.5">{prompts.map((pr, i) => <div key={i} className="rounded-md p-1.5" style={{ background: "rgba(0,0,0,.28)" }}>
+        <div className="flex items-start gap-1.5"><span className="flex-1 text-[9px] leading-snug text-[color:var(--fx-muted)]">{i + 1}. {pr}</span><button type="button" onClick={() => genScene(i)} disabled={anyBusy} className="nodrag flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white text-[#0A0A0A] transition hover:bg-white/90 disabled:opacity-40" title="Gerar esta cena">{scene === i ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" fill="currentColor" />}</button></div>
+        {results[i] ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={results[i]} alt="" className="mt-1.5 h-20 w-full rounded object-cover" />) : null}
+      </div>)}</div>
+    </>}
     <Handle type="target" position={Position.Left} id="in" style={{ background: "#F97316" }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.storyboard }} />
   </NodeShell>);
 }
@@ -287,6 +312,7 @@ function Editor() {
     const dft: ND = JSON.parse(JSON.stringify(DEFAULTS[type])); dft.title = `${label} ${same + 1}`;
     if (type === "imageGen" && imageModels[0]) { dft.model = imageModels[0].id; dft.modelName = imageModels[0].name; }
     if (type === "videoGen" && videoModels[0]) { dft.model = videoModels[0].id; dft.modelName = videoModels[0].name; }
+    if (type === "storyboard" && imageModels[0]) { dft.model = imageModels[0].id; dft.modelName = imageModels[0].name; }
     if (type === "audioGen") { if (audioModels[0]) { dft.model = audioModels[0].id; dft.modelName = audioModels[0].name; } if (TTS_VOICES[0]) dft.voice = TTS_VOICES[0].id; }
     setNodes((nds) => [...nds, { id: nid, type, position, data: dft }]); markDirty();
   }, [imageModels, videoModels, audioModels, setNodes, rf, markDirty]);
@@ -320,7 +346,7 @@ function Editor() {
         if (node.type === "prompt") { out.set(id, (d.text as string) || ""); continue; }
         if (node.type === "refImage") { out.set(id, (d.url as string) || ""); continue; }
         if (node.type === "output") { const v = inc.map((e) => out.get(e.source)).find(Boolean) || ""; out.set(id, v); setNS(id, { __status: v ? "done" : "failed", __result: v || undefined }); continue; }
-        if (node.type === "storyboard") { const ps = Array.isArray(d.prompts) ? (d.prompts as string[]) : []; out.set(id, ps.length ? ps[0] : (pText || refs[0] || "")); setNS(id, { __status: ps.length ? "done" : "failed" }); if (!ps.length) throw new Error(`"${d.title || "Storyboard"}" precisa gerar os prompts primeiro (Generate Prompts).`); continue; }
+        if (node.type === "storyboard") { const ps = Array.isArray(d.prompts) ? (d.prompts as string[]) : []; const rs = Array.isArray(d.results) ? (d.results as string[]).filter(Boolean) : []; if (!ps.length) { setNS(id, { __status: "failed" }); throw new Error(`"${d.title || "Storyboard"}" precisa gerar os prompts primeiro (Generate Prompts).`); } out.set(id, rs[0] || ps[0]); setNS(id, { __status: "done" }); continue; }
         if (node.type === "removeBg" || node.type === "upscale") {
           const src = refs[0]; if (!src) { setNS(id, { __status: "failed" }); throw new Error(`Conecte uma imagem ao "${d.title || node.type}".`); }
           setNS(id, { __status: "running" }); await sleep(400); out.set(id, src); setNS(id, { __status: "done", __result: src });
