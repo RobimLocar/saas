@@ -353,7 +353,7 @@ function Editor() {
           {/* canvas full-screen */}
           <div ref={wrapRef} className="absolute inset-0" onDrop={onDrop} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}>
             <div className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(circle at 82% -6%, rgba(150,60,20,.22), transparent 46%)" }} />
-            <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} nodeTypes={nodeTypes} edgeTypes={edgeTypes} defaultEdgeOptions={{ type: "grad" }} fitView minZoom={0.2} onMove={(_e, vp: Viewport) => setZoom(vp.zoom)} onPaneClick={() => setInfoType(null)} proOptions={{ hideAttribution: true }}>
+            <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} nodeTypes={nodeTypes} edgeTypes={edgeTypes} defaultEdgeOptions={{ type: "grad" }} fitView fitViewOptions={{ padding: 0.22, maxZoom: 1 }} minZoom={0.2} onMove={(_e, vp: Viewport) => setZoom(vp.zoom)} onPaneClick={() => setInfoType(null)} proOptions={{ hideAttribution: true }}>
               <Background color="rgba(255,255,255,.06)" gap={16} size={0.8} />
             </ReactFlow>
           </div>
@@ -394,16 +394,16 @@ function Editor() {
 
           {/* painel de nós flutuante */}
           {panelOpen && (
-            <div className="absolute right-4 top-14 bottom-24 w-[264px] overflow-y-auto rounded-[22px] fx-panel p-3">
-              <div className="mb-3 flex items-center gap-2 px-1"><Workflow className="h-4 w-4 text-[#A78BFA]" /><p className="flex-1 text-xs font-semibold text-[color:var(--fx-text)]">Nós</p><button type="button" onClick={() => setPanelOpen(false)} className="flex h-6 w-6 items-center justify-center rounded-md text-[color:var(--fx-subtle)] hover:bg-white/5 hover:text-[color:var(--fx-muted)]"><XIcon className="h-4 w-4" /></button></div>
-              <p className="mb-1.5 px-1 text-[10px] font-semibold uppercase tracking-widest text-[color:var(--fx-subtle)]">Geradores</p>
-              <div className="space-y-1.5">{gens.map((r) => <PanelItem key={r.type} reg={r} onAdd={addAtCenter} onInfo={(t) => { setInfoTop(t); setInfoType((p) => (p === r.type ? null : r.type)); }} active={infoType === r.type} />)}</div>
-              <div className="my-3 h-px" style={{ background: "var(--fx-border)" }} />
-              <p className="mb-1.5 px-1 text-[10px] font-semibold uppercase tracking-widest text-[color:var(--fx-subtle)]">Utilitários</p>
-              <div className="space-y-1.5">{utils.map((r) => <PanelItem key={r.type} reg={r} onAdd={addAtCenter} onInfo={(t) => { setInfoTop(t); setInfoType((p) => (p === r.type ? null : r.type)); }} active={infoType === r.type} />)}</div>
-              <div className="my-3 h-px" style={{ background: "var(--fx-border)" }} />
-              <button type="button" onClick={() => setGalleryOpen((v) => !v)} className="fx-item flex h-[46px] w-full items-center gap-2.5 px-3"><span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: "#4ADE8022", color: "#4ADE80" }}><Images className="h-4 w-4" /></span><span className="flex-1 text-left text-xs font-medium text-[color:var(--fx-text)]">Add Gallery</span>{galleryOpen ? <ChevronUp className="h-4 w-4 text-[color:var(--fx-subtle)]" /> : <ChevronDown className="h-4 w-4 text-[color:var(--fx-subtle)]" />}</button>
-              {galleryOpen && <div className="mt-1.5 space-y-1.5 pl-3">{[["Image Gallery", ImageIcon], ["Video Gallery", Film]].map(([lb, Ic]) => { const I = Ic as typeof ImageIcon; return <button key={lb as string} type="button" onClick={() => toast("Galerias em breve.")} className="fx-item flex h-[42px] w-full items-center gap-2.5 px-3"><span className="flex h-6 w-6 items-center justify-center rounded-md text-[color:var(--fx-muted)]"><I className="h-3.5 w-3.5" /></span><span className="flex-1 text-left text-[11px] text-[color:var(--fx-muted)]">{lb as string}</span></button>; })}</div>}
+            <div className="absolute right-4 top-14 flex max-h-[calc(100vh-7rem)] w-[258px] flex-col rounded-[22px] fx-panel p-2.5">
+              <div className="mb-2 flex items-center gap-2 px-1"><Workflow className="h-4 w-4 text-[#A78BFA]" /><p className="flex-1 text-xs font-semibold text-[color:var(--fx-text)]">Nós</p><button type="button" onClick={() => setPanelOpen(false)} className="flex h-6 w-6 items-center justify-center rounded-md text-[color:var(--fx-subtle)] hover:bg-white/5 hover:text-[color:var(--fx-muted)]"><XIcon className="h-4 w-4" /></button></div>
+              <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-widest text-[color:var(--fx-subtle)]">Geradores</p>
+              <div className="space-y-1">{gens.map((r) => <PanelItem key={r.type} reg={r} onAdd={addAtCenter} onInfo={(t) => { setInfoTop(t); setInfoType((p) => (p === r.type ? null : r.type)); }} active={infoType === r.type} />)}</div>
+              <div className="my-2 h-px" style={{ background: "var(--fx-border)" }} />
+              <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-widest text-[color:var(--fx-subtle)]">Utilitários</p>
+              <div className="space-y-1">{utils.map((r) => <PanelItem key={r.type} reg={r} onAdd={addAtCenter} onInfo={(t) => { setInfoTop(t); setInfoType((p) => (p === r.type ? null : r.type)); }} active={infoType === r.type} />)}</div>
+              <div className="my-2 h-px" style={{ background: "var(--fx-border)" }} />
+              <button type="button" onClick={() => setGalleryOpen((v) => !v)} className="fx-item flex h-10 w-full items-center gap-2 px-2.5"><span className="flex h-6 w-6 items-center justify-center rounded-lg" style={{ background: "#4ADE8022", color: "#4ADE80" }}><Images className="h-4 w-4" /></span><span className="flex-1 text-left text-xs font-medium text-[color:var(--fx-text)]">Add Gallery</span>{galleryOpen ? <ChevronUp className="h-4 w-4 text-[color:var(--fx-subtle)]" /> : <ChevronDown className="h-4 w-4 text-[color:var(--fx-subtle)]" />}</button>
+              {galleryOpen && <div className="mt-1 space-y-1 pl-3">{[["Image Gallery", ImageIcon], ["Video Gallery", Film]].map(([lb, Ic]) => { const I = Ic as typeof ImageIcon; return <button key={lb as string} type="button" onClick={() => toast("Galerias em breve.")} className="fx-item flex h-9 w-full items-center gap-2 px-2.5"><span className="flex h-5 w-5 items-center justify-center rounded-md text-[color:var(--fx-muted)]"><I className="h-3.5 w-3.5" /></span><span className="flex-1 text-left text-[11px] text-[color:var(--fx-muted)]">{lb as string}</span></button>; })}</div>}
             </div>
           )}
 
@@ -417,8 +417,8 @@ function Editor() {
 function PanelItem({ reg, onAdd, onInfo, active }: { reg: RegEntry; onAdd: (t: string) => void; onInfo: (top: number) => void; active: boolean }) {
   return (
     <div draggable onDragStart={(e) => { e.dataTransfer.setData("application/flownode", reg.type); e.dataTransfer.effectAllowed = "move"; }} onClick={() => onAdd(reg.type)}
-      className="fx-item flex h-[48px] cursor-grab items-center gap-2.5 px-3 active:cursor-grabbing" style={active ? { borderColor: reg.accent, background: `${reg.accent}14` } : {}}>
-      <span className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ backgroundColor: `${reg.accent}22`, color: reg.accent }}><reg.Icon className="h-4 w-4" /></span>
+      className="fx-item flex h-10 cursor-grab items-center gap-2 px-2.5 active:cursor-grabbing" style={active ? { borderColor: reg.accent, background: `${reg.accent}14` } : {}}>
+      <span className="flex h-6 w-6 items-center justify-center rounded-lg" style={{ backgroundColor: `${reg.accent}22`, color: reg.accent }}><reg.Icon className="h-3.5 w-3.5" /></span>
       <span className="flex-1 text-xs font-medium" style={{ color: active ? reg.accent : "var(--fx-text)" }}>{reg.label}</span>
       <button type="button" onClick={(e) => { e.stopPropagation(); onInfo((e.currentTarget as HTMLElement).getBoundingClientRect().top - 20); }} className="flex h-5 w-5 items-center justify-center rounded text-[color:var(--fx-subtle)] transition hover:text-[color:var(--fx-muted)]" title={`Sobre ${reg.label}`}><Info className="h-3.5 w-3.5" /></button>
     </div>
