@@ -480,7 +480,7 @@ function ImageAssetNode({ id, data, selected }: NodeProps) {
   const [aw, ah] = aspect.split(":").map(Number); const w = 220; const h = Math.max(140, Math.min(360, Math.round(w * ((ah || 1) / (aw || 1)))));
   const [preview, setPreview] = useState(false);
   function del(e: React.MouseEvent) { e.stopPropagation(); rf.deleteElements({ nodes: [{ id }] }); markDirty(); }
-  function convert(e: React.MouseEvent) { e.stopPropagation(); const first = models[0]; const provModel = (d.provModel as string) || ""; const provRes = (d.provRes as string) || ""; rf.setNodes((nds) => nds.map((n) => n.id === id ? ({ ...n, type: "imageGen", data: { title: "Image Generator", prompt: "", model: first?.id || "", modelName: first?.name || "", aspectRatio: aspect, resolution: provRes || "1K", refs: [], __result: url, __collapsed: true, __resultMeta: { modelName: provModel || "Imported", aspectRatio: aspect, resolution: provRes || "" } } }) as Node : n)); markDirty(); setTimeout(() => upd(id), 0); toast.success("Convertido em Image Generator — imagem como resultado atual."); }
+  function convert(e: React.MouseEvent) { e.stopPropagation(); const first = models[0]; const provModel = (d.provModel as string) || ""; const provRes = (d.provRes as string) || ""; rf.setNodes((nds) => nds.map((n) => n.id === id ? ({ ...n, type: "imageGen", data: { title: "Image Generator", prompt: "", model: first?.id || "", modelName: first?.name || "", aspectRatio: aspect, resolution: provRes || "1K", refs: [], heldImage: url, __result: url, __collapsed: true, __resultMeta: { modelName: provModel || "Imported", aspectRatio: aspect, resolution: provRes || "" } } }) as Node : n)); markDirty(); setTimeout(() => upd(id), 0); toast.success("Convertido em Image Generator — imagem como resultado atual."); }
   return (
     <div className="fx-card group relative" style={{ width: w, ...(selected ? { borderColor: ACCENT.imageGen, boxShadow: `0 0 16px ${ACCENT.imageGen}22, 0 8px 28px rgba(0,0,0,.45)` } : {}) }}>
       <div className="relative overflow-hidden rounded-[11px]" style={{ height: h, background: "#0a0a0b" }}>
@@ -643,6 +643,7 @@ function Editor() {
         if (node.type === "imageGen" || node.type === "videoGen") {
           const gl = (d.title as string) || (node.type === "imageGen" ? "Image Generator" : "Video Generator");
           const fp = pText.trim() || String(d.prompt || "").trim();
+          if (!fp && node.type === "imageGen" && d.heldImage) { const hu = String(d.heldImage); out.set(id, hu); setNS(id, { __status: "done", __result: hu }); continue; }
           if (!d.model) { setNS(id, { __status: "failed" }); throw new Error(`"${gl}" precisa de um modelo.`); }
           if (!fp) { setNS(id, { __status: "failed" }); throw new Error(`"${gl}" precisa de um prompt — escreva nele ou conecte um Prompt.`); }
           setNS(id, { __status: "running", __result: undefined });
