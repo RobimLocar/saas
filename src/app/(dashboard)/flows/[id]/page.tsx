@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -112,20 +112,27 @@ function NodeShell({ id, type, title, status, selected, runnable, width = 288, s
   id: string; type: string; title: string; status?: string; selected?: boolean; runnable?: boolean; width?: number; subtitle?: React.ReactNode; noPad?: boolean; children?: React.ReactNode;
 }) {
   const rf = useReactFlow(); const { runNode, running } = useContext(ActionsCtx);
-  const reg = REGISTRY.find((r) => r.type === type)!; const accent = reg.accent; const [info, setInfo] = useState(false);
+  const reg = REGISTRY.find((r) => r.type === type)!; const accent = reg.accent;
+  const [info, setInfo] = useState(false); const [ipos, setIpos] = useState({ x: 0, y: 0 });
+  useEffect(() => { if (!info) return; const h = () => setInfo(false); const k = (e: KeyboardEvent) => { if (e.key === "Escape") setInfo(false); }; window.addEventListener("mousedown", h); window.addEventListener("keydown", k); return () => { window.removeEventListener("mousedown", h); window.removeEventListener("keydown", k); }; }, [info]);
+  function openInfo(e: React.MouseEvent) { e.stopPropagation(); const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); const w = 280; let x = r.right + 8; if (x + w > window.innerWidth - 12) x = r.left - w - 8; let y = r.top; if (y + 140 > window.innerHeight - 12) y = window.innerHeight - 152; setIpos({ x, y }); setInfo((v) => !v); }
   return (
-    <div className="fx-card group relative" style={{ width, ...(selected ? { borderColor: accent, boxShadow: `0 0 0 1px ${accent}66, 0 8px 28px rgba(0,0,0,.45)` } : {}) }}>
+    <div className="fx-card group relative" style={{ width, ...(selected ? { borderColor: accent, boxShadow: `0 0 16px ${accent}22, 0 8px 28px rgba(0,0,0,.45)` } : {}) }}>
       <div className="relative flex h-[34px] items-center gap-2 border-b px-2.5" style={{ borderColor: "var(--fx-border)" }}>
         <span className="flex h-4 w-4 items-center justify-center" style={{ color: accent }}><reg.Icon className="h-3.5 w-3.5" /></span>
         <span className="flex-1 truncate text-[11px] font-semibold" style={{ color: accent }}>{title}</span>
         {subtitle}
         <StatusDot status={status} />
-        <button type="button" className="nodrag flex h-5 w-5 items-center justify-center rounded text-[color:var(--fx-subtle)] transition hover:text-[color:var(--fx-muted)]" onMouseEnter={() => setInfo(true)} onMouseLeave={() => setInfo(false)} onClick={() => setInfo((v) => !v)} title="Sobre este nó"><Info className="h-3 w-3" /></button>
-        <button type="button" className="nodrag flex h-5 w-5 items-center justify-center rounded text-[color:var(--fx-subtle)] transition hover:text-[#FCA5A5]" onClick={() => rf.deleteElements({ nodes: [{ id }] })} title="Excluir nó"><Trash2 className="h-3 w-3" /></button>
-        {info && <div className="absolute right-1 top-8 z-50 w-[258px] rounded-xl p-3" style={{ background: "#17181b", border: "1px solid var(--fx-border-h)", boxShadow: "0 16px 44px rgba(0,0,0,.6)" }}><p className="mb-1 text-[11px] font-semibold" style={{ color: accent }}>{reg.label}</p><p className="text-[11px] leading-relaxed text-[color:var(--fx-muted)]">{reg.description}</p></div>}
+        <button type="button" className="nodrag flex h-5 w-5 items-center justify-center rounded text-[color:var(--fx-subtle)] transition hover:text-[color:var(--fx-muted)]" onMouseDown={(e) => e.stopPropagation()} onClick={openInfo} title="Sobre este nó"><Info className="h-3 w-3" /></button>
+        <button type="button" className="nodrag flex h-5 w-5 items-center justify-center rounded text-[color:var(--fx-subtle)] transition hover:text-[#FCA5A5]" onMouseDown={(e) => e.stopPropagation()} onClick={() => rf.deleteElements({ nodes: [{ id }] })} title="Excluir nó"><Trash2 className="h-3 w-3" /></button>
       </div>
       <div className={noPad ? "" : "p-2.5"}>{children}</div>
       {runnable ? <div className="flex justify-end border-t px-2.5 py-1.5" style={{ borderColor: "var(--fx-border)" }}><button type="button" disabled={running} onClick={() => runNode(id)} className="nodrag flex h-7 w-7 items-center justify-center rounded-full bg-white text-[#0A0A0A] transition hover:bg-white/90 disabled:opacity-50" title="Rodar este nó">{running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" fill="currentColor" />}</button></div> : null}
+      {info && typeof document !== "undefined" && createPortal(
+        <div className="fixed z-[90] w-[280px] rounded-xl p-3" style={{ left: ipos.x, top: ipos.y, background: "#17181b", border: "1px solid var(--fx-border-h)", boxShadow: "0 16px 44px rgba(0,0,0,.6)" }} onMouseDown={(e) => e.stopPropagation()}>
+          <p className="mb-1 text-[12px] font-semibold" style={{ color: accent }}>{reg.label}</p>
+          <p className="text-[12px] leading-relaxed text-[color:var(--fx-muted)]">{reg.description}</p>
+        </div>, document.body)}
     </div>
   );
 }
@@ -270,7 +277,7 @@ function ImageGenNode({ id, data, selected }: NodeProps) {
       <div className="relative overflow-hidden rounded-b-[11px]" style={{ height: resH, background: "#0a0a0b" }}>
         {!imgLoaded && <div className="absolute inset-0 flex items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-[color:var(--fx-subtle)]" /></div>}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={result} alt="" onLoad={() => setImgLoaded(true)} draggable onDragStart={(e) => { e.dataTransfer.setData("application/flowasset", JSON.stringify({ url: result, aspectRatio: usedAspect })); e.dataTransfer.effectAllowed = "copy"; }} className="nodrag h-full w-full object-cover" style={{ opacity: imgLoaded ? 1 : 0, transition: "opacity .2s" }} />
+        <img src={result} alt="" onLoad={() => setImgLoaded(true)} draggable onDragStart={(e) => { e.dataTransfer.setData("application/flowasset", JSON.stringify({ url: result, aspectRatio: usedAspect })); e.dataTransfer.effectAllowed = "all"; }} className="nodrag h-full w-full object-cover" style={{ opacity: imgLoaded ? 1 : 0, transition: "opacity .2s" }} />
         <div className="absolute left-2 top-2 z-10 flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium text-white" style={{ background: "rgba(0,0,0,.5)" }}><span className="h-1.5 w-1.5 rounded-full" style={{ background: ACCENT.imageGen }} />{usedModel || "Modelo"}</div>
         <div className="absolute right-2 top-2 z-10 flex gap-1"><span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.5)" }}>{usedAspect}</span><span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.5)" }}>{usedRes}</span></div>
       </div>
@@ -285,7 +292,7 @@ function ImageGenNode({ id, data, selected }: NodeProps) {
       </div>
       {!collapsed && <div className="space-y-2 border-t p-2.5" style={{ borderColor: "var(--fx-border)" }}>
         {cfg}
-        {tray.length > 0 && <div><p className="mb-1 text-[9px] font-semibold uppercase tracking-widest text-[color:var(--fx-subtle)]">Generated</p><div className="flex flex-wrap gap-1.5">{tray.map((u, i) => <div key={i} className="group/thumb relative h-14 w-14 overflow-hidden rounded-md ring-1 ring-white/10">{/* eslint-disable-next-line @next/next/no-img-element */}<img src={u} alt="" draggable onDragStart={(e) => { e.dataTransfer.setData("application/flowasset", JSON.stringify({ url: u, aspectRatio: usedAspect })); e.dataTransfer.effectAllowed = "copy"; }} className="nodrag h-full w-full cursor-grab object-cover" /><button type="button" onClick={() => download(u)} className="nodrag absolute bottom-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded bg-black/70 text-white opacity-0 transition group-hover/thumb:opacity-100"><Download className="h-2.5 w-2.5" /></button></div>)}</div></div>}
+        {tray.length > 0 && <div><p className="mb-1 text-[9px] font-semibold uppercase tracking-widest text-[color:var(--fx-subtle)]">Generated</p><div className="flex flex-wrap gap-1.5">{tray.map((u, i) => <div key={i} className="group/thumb relative h-14 w-14 overflow-hidden rounded-md ring-1 ring-white/10">{/* eslint-disable-next-line @next/next/no-img-element */}<img src={u} alt="" draggable onDragStart={(e) => { e.dataTransfer.setData("application/flowasset", JSON.stringify({ url: u, aspectRatio: usedAspect })); e.dataTransfer.effectAllowed = "all"; }} className="nodrag h-full w-full cursor-grab object-cover" /><button type="button" onClick={() => download(u)} className="nodrag absolute bottom-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded bg-black/70 text-white opacity-0 transition group-hover/thumb:opacity-100"><Download className="h-2.5 w-2.5" /></button></div>)}</div></div>}
       </div>}
       {promptOpen && <PromptModal value={(d.prompt as string) || ""} onChange={(v) => rf.updateNodeData(id, { prompt: v })} onClose={() => setPromptOpen(false)} />}
       {handles}
@@ -401,13 +408,13 @@ function ImageAssetNode({ id, data, selected }: NodeProps) {
   const h = Math.max(120, Math.min(340, Math.round(200 * ((ah || 1) / (aw || 1)))));
   return (<NodeShell id={id} type="imageAsset" title={(d.title as string) || "Image Asset"} selected={selected} noPad width={200}>
     <div className="relative overflow-hidden rounded-b-[11px]" style={{ height: h, background: "#0a0a0b" }}>
-      {url ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={url} alt="" draggable onDragStart={(e) => { e.dataTransfer.setData("application/flowasset", JSON.stringify({ url, aspectRatio: (d.aspectRatio as string) || "1:1" })); e.dataTransfer.effectAllowed = "copy"; }} className="nodrag h-full w-full object-cover" />) : <div className="flex h-full items-center justify-center text-[10px] text-[color:var(--fx-subtle)]">Vazio</div>}
+      {url ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={url} alt="" draggable onDragStart={(e) => { e.dataTransfer.setData("application/flowasset", JSON.stringify({ url, aspectRatio: (d.aspectRatio as string) || "1:1" })); e.dataTransfer.effectAllowed = "all"; }} className="nodrag h-full w-full object-cover" />) : <div className="flex h-full items-center justify-center text-[10px] text-[color:var(--fx-subtle)]">Vazio</div>}
       <Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.imageGen }} />
     </div>
   </NodeShell>);
 }
 
-const nodeTypes: NodeTypes = { prompt: PromptNode, refImage: RefImageNode, imageGen: ImageGenNode, videoGen: VideoGenNode, audioGen: AudioGenNode, storyboard: StoryboardNode, removeBg: RemoveBgNode, upscale: UpscaleNode, output: OutputNode, imageAsset: ImageAssetNode };
+const nodeTypes: NodeTypes = { prompt: memo(PromptNode), refImage: memo(RefImageNode), imageGen: memo(ImageGenNode), videoGen: memo(VideoGenNode), audioGen: memo(AudioGenNode), storyboard: memo(StoryboardNode), removeBg: memo(RemoveBgNode), upscale: memo(UpscaleNode), output: memo(OutputNode), imageAsset: memo(ImageAssetNode) };
 
 /* ── EDGE COM GRADIENTE POR CATEGORIA ────────────────────────────────────── */
 function GradientEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, source, target }: EdgeProps) {
@@ -547,14 +554,17 @@ function Editor() {
   const saveColor = saveState === "saved" ? { c: "#F97316", b: "rgba(249,115,22,.14)" } : saveState === "error" ? { c: "#FCA5A5", b: "rgba(220,60,60,.14)" } : { c: "#FBBF24", b: "rgba(245,158,11,.14)" };
   const gens = REGISTRY.filter((r) => r.group === "gen"); const utils = REGISTRY.filter((r) => r.group === "util");
   const infoReg = infoType ? REGISTRY.find((r) => r.type === infoType) : null;
+  const modelsValue = useMemo(() => ({ image: imageModels, video: videoModels, audio: audioModels }), [imageModels, videoModels, audioModels]);
+  const runNodeCb = useCallback((nid: string) => { void runFlow(nid); }, [runFlow]);
+  const actionsValue = useMemo(() => ({ runNode: runNodeCb, running }), [runNodeCb, running]);
 
   return (
-    <ModelsCtx.Provider value={{ image: imageModels, video: videoModels, audio: audioModels }}>
-      <ActionsCtx.Provider value={{ runNode: (id) => void runFlow(id), running }}>
+    <ModelsCtx.Provider value={modelsValue}>
+      <ActionsCtx.Provider value={actionsValue}>
         <div className="flow-root relative h-[calc(100vh-4rem)] min-h-[560px] overflow-hidden" style={{ background: "var(--fx-canvas)" }}>
           <style>{FLOW_CSS}</style>
           {/* canvas full-screen */}
-          <div ref={wrapRef} className="absolute inset-0" onDrop={onDrop} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}>
+          <div ref={wrapRef} className="absolute inset-0" onDrop={onDrop} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}>
             <div className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(circle at 82% -6%, rgba(150,60,20,.22), transparent 46%)" }} />
             <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} nodeTypes={nodeTypes} edgeTypes={edgeTypes} defaultEdgeOptions={{ type: "grad" }} fitView fitViewOptions={{ padding: 0.22, maxZoom: 1 }} minZoom={0.2} onMove={(_e, vp: Viewport) => setZoom(vp.zoom)} onPaneClick={() => setInfoType(null)} proOptions={{ hideAttribution: true }}>
               <Background color="rgba(255,255,255,.06)" gap={16} size={0.8} />
@@ -586,7 +596,7 @@ function Editor() {
           {nodes.length === 0 && !loading && <div className="pointer-events-none absolute inset-0 flex items-center justify-center"><p className="text-sm text-[color:var(--fx-subtle)]">Arraste um nó do painel para começar.</p></div>}
 
           {/* bottom bar flutuante */}
-          <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-2xl fx-panel p-1 shadow-[0_16px_50px_rgba(0,0,0,0.55)]">
+          <div className="absolute bottom-5 flex -translate-x-1/2 items-center gap-1 rounded-2xl fx-panel p-1 shadow-[0_16px_50px_rgba(0,0,0,0.55)]" style={{ left: panelOpen ? "calc(50% - 132px)" : "50%" }}>
             <button type="button" onClick={() => void runFlow()} disabled={running || loading} className="flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-[#0A0A0A] transition hover:bg-white/90 disabled:opacity-50">{running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" fill="currentColor" />}{running ? "Rodando…" : "Run Flow"}</button>
             <button type="button" onClick={clearAll} className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm text-[color:var(--fx-muted)] transition hover:bg-white/5"><Eraser className="h-4 w-4" /> Limpar</button>
             <button type="button" onClick={() => rf.fitView({ duration: 300 })} className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm text-[color:var(--fx-muted)] transition hover:bg-white/5"><Crosshair className="h-4 w-4" /> Centralizar</button>
@@ -619,7 +629,7 @@ function Editor() {
 
 function PanelItem({ reg, onAdd, onInfo, active }: { reg: RegEntry; onAdd: (t: string) => void; onInfo: (top: number) => void; active: boolean }) {
   return (
-    <div draggable onDragStart={(e) => { e.dataTransfer.setData("application/flownode", reg.type); e.dataTransfer.effectAllowed = "move"; }} onClick={() => onAdd(reg.type)}
+    <div draggable onDragStart={(e) => { e.dataTransfer.setData("application/flownode", reg.type); e.dataTransfer.effectAllowed = "all"; }} onClick={() => onAdd(reg.type)}
       className="fx-item flex h-10 cursor-grab items-center gap-2 px-2.5 active:cursor-grabbing" style={active ? { borderColor: reg.accent, background: `${reg.accent}14` } : {}}>
       <span className="flex h-6 w-6 items-center justify-center rounded-lg" style={{ backgroundColor: `${reg.accent}22`, color: reg.accent }}><reg.Icon className="h-3.5 w-3.5" /></span>
       <span className="flex-1 text-xs font-medium" style={{ color: active ? reg.accent : "var(--fx-text)" }}>{reg.label}</span>
