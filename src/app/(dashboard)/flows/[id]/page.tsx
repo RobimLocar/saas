@@ -76,7 +76,7 @@ const DEFAULTS: Record<string, ND> = {
   imageGen: { prompt: "", model: "", modelName: "", aspectRatio: "1:1", resolution: "1K", refs: [] },
   videoGen: { prompt: "", model: "", modelName: "", duration: 8, resolution: "720p", aspectRatio: "9:16", startFrame: "", endFrame: "", audioOn: true, multiShot: false },
   audioGen: { prompt: "", model: "", modelName: "", voice: "", mode: "TTS" },
-  prompt: { text: "" }, storyboard: { aspectRatio: "1:1", resolution: "1K", image: "", prompts: [], model: "", modelName: "", results: [] }, removeBg: {}, upscale: { style: "Sharp", scale: "2x" }, output: {},
+  prompt: { text: "" }, storyboard: { aspectRatio: "1:1", resolution: "1K", image: "", prompts: [], model: "", modelName: "", results: [] }, removeBg: { rmbgModel: "RMBG-2.0" }, upscale: { scale: "2x", faceEnhance: false }, output: {},
 };
 
 const ModelsCtx = createContext<{ image: ModelOpt[]; video: ModelOpt[]; audio: ModelOpt[] }>({ image: [], video: [], audio: [] });
@@ -401,8 +401,9 @@ function StoryboardNode({ id, data, selected }: NodeProps) {
   </NodeShell>);
 }
 function RemoveBgNode({ id, data, selected }: NodeProps) {
-  const d = data as ND;
-  return (<NodeShell id={id} type="removeBg" title={(d.title as string) || "Remove BG"} status={d.__status as string} selected={selected} width={244} runnable>
+  const rf = useReactFlow(); const d = data as ND;
+  return (<NodeShell id={id} type="removeBg" title={(d.title as string) || "Remove BG"} status={d.__status as string} selected={selected} width={248} runnable>
+    <div className="mb-2"><FSelect value={(d.rmbgModel as string) || "RMBG-2.0"} onChange={(e) => rf.updateNodeData(id, { rmbgModel: e.target.value })}>{["RMBG-2.0", "RMBG-1.4", "BEN2"].map((m) => <option key={m} value={m}>{m}</option>)}</FSelect></div>
     <p className="text-[10px] text-[color:var(--fx-muted)]">Conecte uma imagem e rode para remover o fundo.</p>
     <ResultThumb url={d.__result as string} />
     <Handle type="target" position={Position.Left} id="reference" style={{ background: "#F97316" }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.removeBg }} />
@@ -411,7 +412,7 @@ function RemoveBgNode({ id, data, selected }: NodeProps) {
 function UpscaleNode({ id, data, selected }: NodeProps) {
   const rf = useReactFlow(); const d = data as ND;
   return (<NodeShell id={id} type="upscale" title={(d.title as string) || "Upscale"} status={d.__status as string} selected={selected} width={256} runnable>
-    <div className="mb-2 grid grid-cols-2 gap-2"><FSelect value={(d.style as string) || "Sharp"} onChange={(e) => rf.updateNodeData(id, { style: e.target.value })}>{["Sharp", "Soft"].map((s) => <option key={s} value={s}>{s}</option>)}</FSelect><FSelect value={(d.scale as string) || "2x"} onChange={(e) => rf.updateNodeData(id, { scale: e.target.value })}>{["2x", "4x"].map((s) => <option key={s} value={s}>{s}</option>)}</FSelect></div>
+    <div className="mb-2 grid grid-cols-2 gap-2"><FSelect value={(d.scale as string) || "2x"} onChange={(e) => rf.updateNodeData(id, { scale: e.target.value })}>{["2x", "4x"].map((sc) => <option key={sc} value={sc}>{sc}</option>)}</FSelect><FSwitch label="Face enhance" on={Boolean(d.faceEnhance)} onToggle={() => rf.updateNodeData(id, { faceEnhance: !d.faceEnhance })} /></div>
     <p className="text-[10px] text-[color:var(--fx-muted)]">Conecte uma imagem, escolha a escala e rode.</p>
     <ResultThumb url={d.__result as string} />
     <Handle type="target" position={Position.Left} id="reference" style={{ background: "#F97316" }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.upscale }} />
@@ -544,8 +545,15 @@ function Editor() {
         if (node.type === "storyboard") { const ps = Array.isArray(d.prompts) ? (d.prompts as string[]) : []; const rs = Array.isArray(d.results) ? (d.results as string[]).filter(Boolean) : []; if (!ps.length) { setNS(id, { __status: "failed" }); throw new Error(`"${d.title || "Storyboard"}" precisa gerar os prompts primeiro (Generate Prompts).`); } out.set(id, rs[0] || ps[0]); setNS(id, { __status: "done" }); continue; }
         if (node.type === "removeBg" || node.type === "upscale") {
           const src = refs[0]; if (!src) { setNS(id, { __status: "failed" }); throw new Error(`Conecte uma imagem ao "${d.title || node.type}".`); }
-          setNS(id, { __status: "running" }); await sleep(400); out.set(id, src); setNS(id, { __status: "done", __result: src });
-          toast(`${node.type === "removeBg" ? "Remove BG" : "Upscale"}: processamento real em breve — imagem repassada.`); continue;
+          setNS(id, { __status: "running", __result: undefined });
+          const isUp = node.type === "upscale";
+          const body: Record<string, unknown> = isUp
+            ? { image_url: src, scale: Number(String(d.scale || "2x").replace(/x/i, "")) || 2, face_enhance: Boolean(d.faceEnhance) }
+            : { image_url: src, rmbg_model: (d.rmbgModel as string) || "RMBG-2.0" };
+          const rr = await fetch(`/api/generate/${isUp ? "upscale" : "removebg"}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+          const dtt = await rr.json().catch(() => null); if (!rr.ok) { setNS(id, { __status: "failed" }); throw new Error(dtt?.error || "Falha ao processar."); }
+          let uu = dtt?.result_url as string | undefined; if (dtt?.status !== "completed" || !uu) uu = await pollGen(String(dtt.generation_id));
+          out.set(id, uu); setNS(id, { __status: "done", __result: uu }); continue;
         }
         if (node.type === "audioGen") {
           const text = String(d.prompt || "").trim() || pText.trim();
