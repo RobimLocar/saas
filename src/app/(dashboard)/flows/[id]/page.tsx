@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
   ReactFlow, ReactFlowProvider, Background, addEdge, useNodesState, useEdgesState,
-  useReactFlow, Handle, Position, getBezierPath,
+  useReactFlow, useUpdateNodeInternals, Handle, Position, getBezierPath,
   type Node, type Edge, type Connection, type NodeProps, type NodeTypes, type EdgeTypes, type EdgeProps, type Viewport,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -13,7 +13,7 @@ import {
   ArrowLeft, Play, Loader2, Check, X as XIcon, Trash2, Info, ChevronDown, ChevronUp,
   Type as TypeIcon, Image as ImageIcon, Film, FileImage, CircleDot, Workflow,
   Crosshair, Eraser, Plus, Maximize2, Minus, Upload, Sparkles, Music, Zap,
-  PanelRightOpen, Layers, Scissors, ArrowUpToLine, Images,
+  PanelRightOpen, Layers, Scissors, ArrowUpToLine, Images, Download,
 } from "lucide-react";
 import { toast } from "sonner";
 import { TTS_VOICES } from "@/lib/tts-voices";
@@ -45,6 +45,13 @@ const FLOW_CSS = `
 .fx-item:hover{border-color:var(--fx-border-h);background:#202024}
 .fx-seg{background:var(--fx-ctrl);border:1px solid var(--fx-border);border-radius:8px}
 .fx-panel{background:rgba(16,16,19,.92);border:1px solid var(--fx-border);backdrop-filter:blur(12px)}
+.fx-dots{display:grid;grid-template-columns:repeat(4,6px);gap:7px}
+.fx-dots span{width:6px;height:6px;border-radius:999px;background:var(--dot,#F97316);opacity:.22;animation:fxpulse 1.15s ease-in-out infinite}
+@keyframes fxpulse{0%,100%{opacity:.18}50%{opacity:1}}
+.fx-bar{position:relative;height:3px;width:100%;border-radius:999px;overflow:hidden;background:rgba(255,255,255,.08)}
+.fx-bar::after{content:"";position:absolute;left:-40%;top:0;height:100%;width:40%;border-radius:999px;background:var(--dot,#F97316);animation:fxslide 1.2s ease-in-out infinite}
+@keyframes fxslide{0%{left:-40%}100%{left:110%}}
+@media (prefers-reduced-motion: reduce){.fx-dots span{animation:none;opacity:.55}.fx-bar::after{animation:none;left:0;width:100%;opacity:.5}}
 `;
 
 type ND = Record<string, unknown>;
@@ -64,7 +71,7 @@ const REGISTRY: RegEntry[] = [
 ];
 const ACCENT: Record<string, string> = Object.fromEntries(REGISTRY.map((r) => [r.type, r.accent]));
 const DEFAULTS: Record<string, ND> = {
-  imageGen: { prompt: "", model: "", modelName: "", aspectRatio: "1:1", resolution: "720p", refs: [] },
+  imageGen: { prompt: "", model: "", modelName: "", aspectRatio: "1:1", resolution: "1K", refs: [] },
   videoGen: { prompt: "", model: "", modelName: "", duration: 8, resolution: "720p", aspectRatio: "9:16", startFrame: "", endFrame: "", audioOn: true, multiShot: false },
   audioGen: { prompt: "", model: "", modelName: "", voice: "", mode: "TTS" },
   prompt: { text: "" }, storyboard: { aspectRatio: "1:1", resolution: "1K", image: "", prompts: [], model: "", modelName: "", results: [] }, removeBg: {}, upscale: { style: "Sharp", scale: "2x" }, output: {},
@@ -138,18 +145,114 @@ function EnhanceBtn({ id, modality, value, label }: { id: string; modality: stri
 /* ── NÓS ─────────────────────────────────────────────────────────────────── */
 function PromptNode({ id, data, selected }: NodeProps) { const rf = useReactFlow(); const d = data as ND; return (<NodeShell id={id} type="prompt" title={(d.title as string) || "Prompt"} status={d.__status as string} selected={selected} width={256}><FTextarea rows={3} value={(d.text as string) || ""} onChange={(e) => rf.updateNodeData(id, { text: e.target.value })} placeholder="Texto…" /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.prompt }} /></NodeShell>); }
 function RefImageNode({ id, data, selected }: NodeProps) { const rf = useReactFlow(); const d = data as ND; const u = (d.url as string) || ""; return (<NodeShell id={id} type="output" title={(d.title as string) || "Reference Image"} status={d.__status as string} selected={selected} width={256}><FInput value={u} onChange={(e) => rf.updateNodeData(id, { url: e.target.value })} placeholder="Cole a URL…" />{u ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={u} alt="" className="mt-2 h-24 w-full rounded-[8px] object-cover" />) : null}<Handle type="source" position={Position.Right} id="out" style={{ background: "#F97316" }} /></NodeShell>); }
+function FModelSelect({ value, options, onChange, placeholder }: { value: string; options: ModelOpt[]; onChange: (id: string) => void; placeholder?: string }) {
+  const [open, setOpen] = useState(false); const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (!open) return; const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as globalThis.Node)) setOpen(false); }; const k = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); }; window.addEventListener("mousedown", h); window.addEventListener("keydown", k); return () => { window.removeEventListener("mousedown", h); window.removeEventListener("keydown", k); }; }, [open]);
+  const sel = options.find((o) => o.id === value);
+  return (<div ref={ref} className="relative nodrag">
+    <button type="button" onClick={() => setOpen((o) => !o)} className="fx-ctrl flex h-[32px] w-full items-center justify-between px-2.5 text-[11px]"><span className={sel ? "truncate text-[color:var(--fx-text)]" : "truncate text-[color:var(--fx-subtle)]"}>{sel ? sel.name : (placeholder || "— modelo —")}</span><ChevronDown className="h-3 w-3 shrink-0 text-[color:var(--fx-subtle)]" /></button>
+    {open && <div className="nowheel absolute left-0 right-0 top-[36px] z-50 max-h-[220px] overflow-y-auto rounded-[10px] p-1" style={{ background: "var(--fx-elev)", border: "1px solid var(--fx-border-h)", boxShadow: "0 16px 40px rgba(0,0,0,.6)" }}>
+      {options.length === 0 && <div className="px-2.5 py-2 text-[11px] text-[color:var(--fx-subtle)]">Sem modelos</div>}
+      {options.map((o) => { const on = o.id === value; return (<button key={o.id} type="button" onClick={() => { onChange(o.id); setOpen(false); }} className="flex w-full items-center gap-2 rounded-[7px] px-2.5 py-1.5 text-left text-[11px] transition" style={on ? { background: "#F9731622", color: "#F97316" } : { color: "var(--fx-text)" }} onMouseEnter={(e) => { if (!on) e.currentTarget.style.background = "rgba(255,255,255,.05)"; }} onMouseLeave={(e) => { if (!on) e.currentTarget.style.background = "transparent"; }}><span className="flex-1 truncate">{o.name}</span>{on && <Check className="h-3.5 w-3.5 shrink-0" />}</button>); })}
+    </div>}
+  </div>);
+}
+function PromptModal({ value, onChange, onClose }: { value: string; onChange: (v: string) => void; onClose: () => void }) {
+  useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, [onClose]);
+  return (<div className="fixed inset-0 z-[100] flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,.55)", backdropFilter: "blur(6px)" }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="w-full max-w-[820px] rounded-[18px] p-5" style={{ background: "var(--fx-surface)", border: "1px solid var(--fx-border-h)", boxShadow: "0 30px 80px rgba(0,0,0,.6)" }}>
+      <div className="mb-1 flex items-center justify-between"><p className="text-[16px] font-semibold text-[color:var(--fx-text)]">Prompt</p><button type="button" onClick={onClose} className="text-[color:var(--fx-subtle)] transition hover:text-white"><XIcon className="h-4 w-4" /></button></div>
+      <p className="mb-3 text-[12px] text-[color:var(--fx-muted)]">As alterações salvam automaticamente — feche quando terminar.</p>
+      <textarea autoFocus value={value} onChange={(e) => onChange(e.target.value)} rows={12} className="fx-ctrl w-full resize-none px-3 py-2 text-[13px] leading-relaxed" placeholder="Descreva sua imagem…" />
+    </div>
+  </div>);
+}
+function DotLoader({ accent }: { accent: string }) {
+  return (<div className="fx-dots" style={{ ["--dot" as string]: accent } as React.CSSProperties}>{Array.from({ length: 16 }).map((_, i) => <span key={i} style={{ animationDelay: (((i % 4) + Math.floor(i / 4)) * 90) + "ms" }} />)}</div>);
+}
+function ActBtn({ children, onClick, title }: { children: React.ReactNode; onClick: () => void; title?: string }) {
+  return (<button type="button" onClick={onClick} title={title} className="nodrag flex h-[28px] items-center gap-1 rounded-[7px] px-2 text-[10px] font-medium text-[color:var(--fx-text)] transition" style={{ background: "var(--fx-elev)", border: "1px solid var(--fx-border)" }} onMouseEnter={(e) => { e.currentTarget.style.background = "#202024"; }} onMouseLeave={(e) => { e.currentTarget.style.background = "var(--fx-elev)"; }}>{children}</button>);
+}
+
 function ImageGenNode({ id, data, selected }: NodeProps) {
-  const rf = useReactFlow(); const models = useContext(ModelsCtx).image; const d = data as ND; const refs = Array.isArray(d.refs) ? (d.refs as string[]) : [];
-  return (<NodeShell id={id} type="imageGen" title={(d.title as string) || "Image Generator"} status={d.__status as string} selected={selected} runnable>
-    <div className="mb-2"><FSelect value={(d.model as string) || ""} onChange={(e) => rf.updateNodeData(id, { model: e.target.value, modelName: models.find((m) => m.id === e.target.value)?.name || "" })}><option value="">— modelo —</option>{models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</FSelect></div>
-    <div className="mb-2"><FTextarea rows={2} value={(d.prompt as string) || ""} onChange={(e) => rf.updateNodeData(id, { prompt: e.target.value })} placeholder="Descreva a imagem (ou conecte um Prompt)…" /></div>
+  const rf = useReactFlow(); const upd = useUpdateNodeInternals();
+  const models = useContext(ModelsCtx).image; const videoModels = useContext(ModelsCtx).video;
+  const { runNode, running } = useContext(ActionsCtx);
+  const d = data as ND; const [promptOpen, setPromptOpen] = useState(false); const [imgLoaded, setImgLoaded] = useState(false);
+  const refs = Array.isArray(d.refs) ? (d.refs as string[]) : [];
+  const status = d.__status as string | undefined; const result = d.__result as string | undefined; const editing = Boolean(d.__editing);
+  const vstate = status === "running" ? "generating" : status === "failed" ? "error" : (result && !editing) ? "result" : "config";
+  useEffect(() => { upd(id); }, [vstate, id, upd]);
+  const meta = (d.__resultMeta as ND) || {};
+  const usedModel = (meta.modelName as string) || (d.modelName as string) || (d.model as string) || "";
+  const usedAspect = (meta.aspectRatio as string) || (d.aspectRatio as string) || "1:1";
+  const usedRes = (meta.resolution as string) || (d.resolution as string) || "1K";
+  const [aw, ah] = ((d.aspectRatio as string) || "1:1").split(":").map(Number);
+  const genH = Math.max(150, Math.min(420, Math.round(276 * ((ah || 1) / (aw || 1)))));
+  const [uaw, uah] = usedAspect.split(":").map(Number);
+  const resH = Math.max(150, Math.min(440, Math.round(276 * ((uah || 1) / (uaw || 1)))));
+  const handles = (<><Handle type="target" position={Position.Left} id="prompt" style={{ top: 48, background: "#22D3EE" }} /><Handle type="target" position={Position.Left} id="reference" style={{ top: 88, background: "#F97316" }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.imageGen }} /></>);
+  function spawnLinked(type: string, patch: ND, targetHandle: string) {
+    const pos = rf.getNode(id)?.position || { x: 0, y: 0 };
+    const nid = type + "_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+    const base = JSON.parse(JSON.stringify(DEFAULTS[type])) as ND;
+    rf.setNodes((n) => [...n, { id: nid, type, position: { x: pos.x + 348, y: pos.y }, data: { ...base, ...patch } } as Node]);
+    rf.setEdges((e) => addEdge({ source: id, target: nid, sourceHandle: "out", targetHandle, type: "grad" }, e));
+  }
+  function animate() { if (!result) return; const vm = videoModels[0]; spawnLinked("videoGen", { title: "Video Generator", startFrame: result, model: vm?.id || "", modelName: vm?.name || "" }, "reference"); toast.success("Video Generator criado com a imagem como start frame."); }
+  function removeBg() { if (!result) return; spawnLinked("removeBg", { title: "Remove BG" }, "reference"); toast.success("Nó Remove BG criado e conectado."); }
+  async function download() { if (!result) return; try { const r = await fetch(result); const b = await r.blob(); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = "fluxyra-" + Date.now() + ".png"; a.click(); URL.revokeObjectURL(u); } catch { window.open(result, "_blank"); } }
+  const title = (d.title as string) || "Image Generator";
+
+  if (vstate === "generating") {
+    return (<NodeShell id={id} type="imageGen" title={title} status={status} selected={selected} width={300}>
+      <div className="mb-2 flex items-center justify-between"><span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium" style={{ background: "var(--fx-elev)", color: "var(--fx-text)" }}><span className="h-1.5 w-1.5 rounded-full" style={{ background: ACCENT.imageGen }} />{(d.modelName as string) || (d.model as string) || "Modelo"}</span><span className="rounded-full px-2 py-0.5 text-[9px] text-[color:var(--fx-muted)]" style={{ background: "var(--fx-elev)" }}>{(d.aspectRatio as string) || "1:1"}</span></div>
+      <div className="relative flex items-center justify-center overflow-hidden rounded-[10px]" style={{ height: genH, background: "#0a0a0b", backgroundImage: "radial-gradient(circle at 72% 14%, " + ACCENT.imageGen + "22, transparent 55%)" }}><DotLoader accent={ACCENT.imageGen} /></div>
+      <div className="mt-2 text-[10px] text-[color:var(--fx-text)]">Generating…</div>
+      <div className="mt-1 fx-bar" style={{ ["--dot" as string]: ACCENT.imageGen } as React.CSSProperties} />
+      {handles}
+    </NodeShell>);
+  }
+  if (vstate === "error") {
+    return (<NodeShell id={id} type="imageGen" title={title} status={status} selected={selected} width={300}>
+      <p className="text-[12px] font-medium text-[#FCA5A5]">Falha na geração</p>
+      <p className="mt-1 text-[10px] text-[color:var(--fx-muted)]">Não foi possível concluir. Tente novamente ou ajuste os parâmetros.</p>
+      <div className="mt-3 flex gap-2"><FButton onClick={() => runNode(id)} disabled={running}><Play className="h-3 w-3" fill="currentColor" />Retry</FButton><FButton onClick={() => rf.updateNodeData(id, { __status: undefined, __editing: true })}>Editar parâmetros</FButton></div>
+      {handles}
+    </NodeShell>);
+  }
+  if (vstate === "result") {
+    return (<NodeShell id={id} type="imageGen" title={title} status={status} selected={selected} width={300}>
+      <div className="relative overflow-hidden rounded-[10px]" style={{ height: resH, background: "#0a0a0b" }}>
+        {!imgLoaded && <div className="absolute inset-0 flex items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-[color:var(--fx-subtle)]" /></div>}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={result} alt="" onLoad={() => setImgLoaded(true)} className="h-full w-full object-cover" style={{ opacity: imgLoaded ? 1 : 0, transition: "opacity .2s" }} />
+        <div className="absolute left-2 top-2 flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium text-white" style={{ background: "rgba(0,0,0,.5)" }}><span className="h-1.5 w-1.5 rounded-full" style={{ background: ACCENT.imageGen }} />{usedModel || "Modelo"}</div>
+        <div className="absolute right-2 top-2 flex gap-1"><span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.5)" }}>{usedAspect}</span><span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.5)" }}>{usedRes}</span></div>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <ActBtn onClick={download} title="Baixar"><Download className="h-3 w-3" /></ActBtn>
+        <ActBtn onClick={animate}><Film className="h-3 w-3" />Animate</ActBtn>
+        <ActBtn onClick={removeBg}><Scissors className="h-3 w-3" />Remove BG</ActBtn>
+        <ActBtn onClick={() => toast("Variations em breve.")}><Layers className="h-3 w-3" />Variations</ActBtn>
+        <ActBtn onClick={() => toast("Angles em breve.")}><CircleDot className="h-3 w-3" />Angles</ActBtn>
+        <ActBtn onClick={() => rf.updateNodeData(id, { __editing: true })}><Sparkles className="h-3 w-3" />Edit</ActBtn>
+        <ActBtn onClick={() => runNode(id)}><Play className="h-3 w-3" fill="currentColor" />Recreate</ActBtn>
+      </div>
+      {handles}
+    </NodeShell>);
+  }
+  return (<NodeShell id={id} type="imageGen" title={title} status={status} selected={selected} runnable width={300}>
+    <div className="mb-2"><FModelSelect value={(d.model as string) || ""} options={models} placeholder="— modelo —" onChange={(mid) => rf.updateNodeData(id, { model: mid, modelName: models.find((m) => m.id === mid)?.name || "" })} /></div>
+    <div className="relative mb-2"><FTextarea rows={2} value={(d.prompt as string) || ""} onChange={(e) => rf.updateNodeData(id, { prompt: e.target.value })} placeholder="Descreva a imagem (ou conecte um Prompt)…" className="pr-7" /><button type="button" onClick={() => setPromptOpen(true)} className="nodrag absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded text-[color:var(--fx-subtle)] transition hover:text-[color:var(--fx-muted)]" title="Expandir"><Maximize2 className="h-3 w-3" /></button></div>
     <EnhanceBtn id={id} modality="image" value={(d.prompt as string) || ""} label="Wise enhance" />
     <MultiUpload id={id} refs={refs} />
-    <div className="grid grid-cols-2 gap-2"><FSelect value={(d.aspectRatio as string) || "1:1"} onChange={(e) => rf.updateNodeData(id, { aspectRatio: e.target.value })}>{["1:1", "16:9", "9:16", "4:3", "3:4"].map((a) => <option key={a} value={a}>{a}</option>)}</FSelect><FSelect value={(d.resolution as string) || "720p"} onChange={(e) => rf.updateNodeData(id, { resolution: e.target.value })}>{["720p", "1080p"].map((r) => <option key={r} value={r}>{r}</option>)}</FSelect></div>
-    <ResultThumb url={d.__result as string} />
-    <Handle type="target" position={Position.Left} id="prompt" style={{ top: 48, background: "#22D3EE" }} /><Handle type="target" position={Position.Left} id="reference" style={{ top: 88, background: "#F97316" }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.imageGen }} />
+    <div className="grid grid-cols-2 gap-2"><FSelect value={(d.aspectRatio as string) || "1:1"} onChange={(e) => rf.updateNodeData(id, { aspectRatio: e.target.value })}>{["1:1", "16:9", "9:16", "4:3", "3:4"].map((a) => <option key={a} value={a}>{a}</option>)}</FSelect><FSelect value={(d.resolution as string) || "1K"} onChange={(e) => rf.updateNodeData(id, { resolution: e.target.value })}>{["1K", "2K", "4K"].map((r) => <option key={r} value={r}>{r}</option>)}</FSelect></div>
+    {promptOpen && <PromptModal value={(d.prompt as string) || ""} onChange={(v) => rf.updateNodeData(id, { prompt: v })} onClose={() => setPromptOpen(false)} />}
+    {handles}
   </NodeShell>);
 }
+
 function VideoGenNode({ id, data, selected }: NodeProps) {
   const rf = useReactFlow(); const models = useContext(ModelsCtx).video; const d = data as ND;
   return (<NodeShell id={id} type="videoGen" title={(d.title as string) || "Video Generator"} status={d.__status as string} selected={selected} runnable width={294}>
@@ -300,7 +403,7 @@ function Editor() {
 
   const save = useCallback(async () => {
     if (savingRef.current) return; savingRef.current = true; setSaveState("saving");
-    try { const obj = rf.toObject(); const clean = obj.nodes.map((n) => { const dd = { ...(n.data as ND) }; delete dd.__status; delete dd.__result; return { ...n, data: dd }; }); const res = await fetch(`/api/flows/${flowId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, definition: { ...obj, nodes: clean } }) }); if (!res.ok) throw new Error(); setSaveState("saved"); } catch { setSaveState("error"); } finally { savingRef.current = false; }
+    try { const obj = rf.toObject(); const clean = obj.nodes.map((n) => { const dd = { ...(n.data as ND) }; delete dd.__status; delete dd.__editing; return { ...n, data: dd }; }); const res = await fetch(`/api/flows/${flowId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, definition: { ...obj, nodes: clean } }) }); if (!res.ok) throw new Error(); setSaveState("saved"); } catch { setSaveState("error"); } finally { savingRef.current = false; }
   }, [rf, flowId, name]);
 
   // auto-save
@@ -336,7 +439,7 @@ function Editor() {
     if (targetId) { const radj = new Map<string, string[]>(); sn.forEach((n) => radj.set(n.id, [])); se.forEach((e) => radj.get(e.target)?.push(e.source)); allowed = new Set(); const s = [targetId]; while (s.length) { const x = s.shift()!; if (allowed.has(x)) continue; allowed.add(x); for (const p of radj.get(x) || []) s.push(p); } }
     const runOrder = allowed ? order.filter((id) => allowed!.has(id)) : order;
     const byId = new Map(sn.map((n) => [n.id, n])); const out = new Map<string, string>();
-    runOrder.forEach((id) => rf.updateNodeData(id, { __status: undefined, __result: undefined }));
+    runOrder.forEach((id) => rf.updateNodeData(id, { __status: undefined, __result: undefined, __editing: undefined }));
     setRunning(true);
     try {
       for (const id of runOrder) {
@@ -359,7 +462,7 @@ function Editor() {
           setNS(id, { __status: "running", __result: undefined });
           const r = await fetch("/api/generate/audio", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: text, model_uuid: d.model, voice_id: d.voice }) });
           const dt = await r.json().catch(() => null); if (!r.ok) { setNS(id, { __status: "failed" }); throw new Error(dt?.error || "Falha ao gerar áudio."); }
-          let u = dt?.result_url as string | undefined; if (dt?.status !== "completed" || !u) u = await pollGen(String(dt.generation_id)); out.set(id, u); setNS(id, { __status: "done", __result: u }); continue;
+          let u = dt?.result_url as string | undefined; if (dt?.status !== "completed" || !u) u = await pollGen(String(dt.generation_id)); out.set(id, u); setNS(id, { __status: "done", __result: u, __resultMeta: { modelName: (d.modelName as string) || (d.model as string), aspectRatio: d.aspectRatio, resolution: d.resolution } }); continue;
         }
         if (node.type === "imageGen" || node.type === "videoGen") {
           const gl = (d.title as string) || (node.type === "imageGen" ? "Image Generator" : "Video Generator");
@@ -374,7 +477,7 @@ function Editor() {
           if (all.length) { body.reference_images = all; body.reference_image_url = all[0]; } if (!isImg) body.duration = d.duration;
           const r = await fetch(`/api/generate/${isImg ? "image" : "video"}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
           const dt = await r.json().catch(() => null); if (!r.ok) { setNS(id, { __status: "failed" }); throw new Error(dt?.error || "Falha ao iniciar."); }
-          let u = dt?.result_url as string | undefined; if (dt?.status !== "completed" || !u) u = await pollGen(String(dt.generation_id)); out.set(id, u); setNS(id, { __status: "done", __result: u });
+          let u = dt?.result_url as string | undefined; if (dt?.status !== "completed" || !u) u = await pollGen(String(dt.generation_id)); out.set(id, u); setNS(id, { __status: "done", __result: u, __resultMeta: { modelName: (d.modelName as string) || (d.model as string), aspectRatio: d.aspectRatio, resolution: d.resolution } });
         }
       }
       toast.success("Fluxo executado ✓");
