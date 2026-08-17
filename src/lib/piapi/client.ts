@@ -857,6 +857,8 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
     };
     if (negativePrompt) input.negative_prompt = negativePrompt;
     if (imageUrl) input.image_url = imageUrl;
+    // Veo 3/3.1 suporta end frame via last_frame (doc PiAPI, 16/08/2026).
+    if (endImageUrl) input.last_frame = endImageUrl;
     const defaultTask = backend === "veo3" ? "veo3-video" : "veo3.1-video";
     return {
       model: backend,
