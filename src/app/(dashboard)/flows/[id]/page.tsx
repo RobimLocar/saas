@@ -59,7 +59,7 @@ const FLOW_CSS = `
 `;
 
 type ND = Record<string, unknown>;
-interface ModelOpt { id: string; name: string; cost: number }
+interface ModelOpt { id: string; name: string; cost: number; backend?: string; durMin?: number; durMax?: number; resolution?: string; hasAudio?: boolean }
 
 /* ── NODE REGISTRY (metadata única: cor, ícone, descrição, exemplos) ─────── */
 interface RegEntry { type: string; label: string; Icon: typeof TypeIcon; accent: string; group: "gen" | "util" | "hidden"; description: string; examples: string[]; }
@@ -325,20 +325,88 @@ function ImageGenNode({ id, data, selected }: NodeProps) {
   </NodeShell>);
 }
 
+function videoCaps(m?: ModelOpt) {
+  const backend = m?.backend || "";
+  const durMin = m?.durMin ?? 4; const durMax = m?.durMax ?? 8;
+  const durationMode: "slider" | "segments" = durMax - durMin <= 6 ? "segments" : "slider";
+  const mid = Math.round((durMin + durMax) / 2);
+  const durationValues = Array.from(new Set([durMin, mid, durMax])).filter((v) => v >= durMin && v <= durMax);
+  const res = m?.resolution || "720p";
+  const resolutions = res === "1080p" ? ["720p", "1080p"] : res === "480p" ? ["480p", "720p"] : [res];
+  const endFrame = ["kling", "kling-turbo", "seedance", "veo3", "veo3.1"].includes(backend);
+  const multiShot = backend === "seedance" || backend === "kling";
+  const audio = Boolean(m?.hasAudio);
+  return { backend, durMin, durMax, durationMode, durationValues, resolutions, endFrame, multiShot, audio };
+}
+
 function VideoGenNode({ id, data, selected }: NodeProps) {
   const rf = useReactFlow(); const models = useContext(ModelsCtx).video; const d = data as ND;
-  return (<NodeShell id={id} type="videoGen" title={(d.title as string) || "Video Generator"} status={d.__status as string} selected={selected} runnable width={294}>
-    <div className="mb-2"><FSelect value={(d.model as string) || ""} onChange={(e) => rf.updateNodeData(id, { model: e.target.value, modelName: models.find((m) => m.id === e.target.value)?.name || "" })}><option value="">— modelo —</option>{models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</FSelect></div>
-    <div className="mb-2"><FTextarea rows={2} value={(d.prompt as string) || ""} onChange={(e) => rf.updateNodeData(id, { prompt: e.target.value })} placeholder="Descreva o movimento…" /></div>
+  const status = d.__status as string | undefined; const result = d.__result as string | undefined;
+  const model = models.find((m) => m.id === d.model); const caps = videoCaps(model);
+  const meta = (d.__resultMeta as ND) || {};
+  const [promptOpen, setPromptOpen] = useState(false);
+  const packed = useStore((s) => { const e = s.edges.find((ed) => ed.target === id && (ed.targetHandle === "reference" || !ed.targetHandle)); if (!e) return "0|0|"; const sd = (s.nodeLookup.get(e.source)?.data || {}) as ND; const u = (sd.__result as string) || (sd.url as string) || (sd.heldImage as string) || ""; return "1|" + (sd.__status === "running" ? "1" : "0") + "|" + (/^https?:\/\//i.test(u) ? u : ""); });
+  const parts = packed.split("|"); const srcRunning = parts[1] === "1"; const connImg = parts.slice(2).join("|");
+  const startFrame = (d.startFrame as string) || connImg;
+  const dur = Math.max(caps.durMin, Math.min(caps.durMax, Number(d.duration) || caps.durMin));
+  const audioOn = d.audioOn !== false;
+  const upd = useUpdateNodeInternals();
+  useEffect(() => { const r = requestAnimationFrame(() => upd(id)); return () => cancelAnimationFrame(r); }, [status, result, d.model, id, upd]);
+  const handles = (<><Handle type="target" position={Position.Left} id="prompt" style={{ top: 48, background: "#22D3EE" }} /><Handle type="target" position={Position.Left} id="reference" style={{ top: 88, background: "#F97316" }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.videoGen }} /></>);
+  function pickModel(mid: string) {
+    const m = models.find((x) => x.id === mid); const c = videoCaps(m);
+    let nd = Math.max(c.durMin, Math.min(c.durMax, Number(d.duration) || c.durMin));
+    if (c.durationMode === "segments") nd = c.durationValues.reduce((a, b) => (Math.abs(b - nd) < Math.abs(a - nd) ? b : a), c.durationValues[0]);
+    const patch: ND = { model: mid, modelName: m?.name || "", duration: nd };
+    if (!c.audio) patch.audioOn = false; if (!c.multiShot) patch.multiShot = false; if (!c.endFrame) patch.endFrame = "";
+    if (!c.resolutions.includes((d.resolution as string) || "")) patch.resolution = c.resolutions[c.resolutions.length - 1];
+    rf.updateNodeData(id, patch);
+  }
+  async function download() { if (!result) return; try { const r = await fetch(result); const b = await r.blob(); const l = URL.createObjectURL(b); const a = document.createElement("a"); a.href = l; a.download = "fluxyra-" + Date.now() + ".mp4"; a.click(); URL.revokeObjectURL(l); } catch { window.open(result, "_blank"); } }
+
+  if (status === "running") {
+    return (<NodeShell id={id} type="videoGen" title={(d.title as string) || "Video Generator"} status={status} selected={selected} glow={ACCENT.videoGen} noPad width={300}>
+      <div className="relative overflow-hidden" style={{ height: 260, background: "#0a0a0b" }}>
+        {startFrame ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={startFrame} alt="" className="h-full w-full scale-105 object-cover opacity-55 blur-sm" />) : null}
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2" style={{ background: "rgba(0,0,0,.42)" }}><Loader2 className="h-6 w-6 animate-spin" style={{ color: ACCENT.videoGen }} /><span className="text-[11px] font-medium text-white">Gerando vídeo…</span></div>
+      </div>{handles}
+    </NodeShell>);
+  }
+  if (status === "failed") {
+    return (<NodeShell id={id} type="videoGen" title={(d.title as string) || "Video Generator"} status={status} selected={selected} width={300} runnable>
+      <p className="text-[12px] font-medium text-[#FCA5A5]">Falha na geração de vídeo</p>
+      <p className="mt-1 text-[10px] text-[color:var(--fx-muted)]">{(d.__error as string) || "Não foi possível concluir. Tente novamente ou ajuste os parâmetros."}</p>{handles}
+    </NodeShell>);
+  }
+  if (result) {
+    return (<NodeShell id={id} type="videoGen" title={(d.title as string) || "Video Generator"} status={status} selected={selected} noPad width={300} runnable>
+      <div className="relative" style={{ background: "#000" }}>
+        <video src={result} controls playsInline className="nodrag block w-full" style={{ maxHeight: 360 }} />
+        <div className="pointer-events-none absolute left-2 top-2 z-10 flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium text-white" style={{ background: "rgba(0,0,0,.55)" }}><span className="h-1.5 w-1.5 rounded-full" style={{ background: ACCENT.videoGen }} />{(meta.modelName as string) || (d.modelName as string) || "Vídeo"}</div>
+        <div className="pointer-events-none absolute right-2 top-2 z-10 flex gap-1">{meta.aspectRatio ? <span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.55)" }}>{meta.aspectRatio as string}</span> : null}{meta.duration ? <span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.55)" }}>{meta.duration as number}s</span> : null}</div>
+      </div>
+      <div className="flex items-center gap-2 border-t p-2" style={{ borderColor: "var(--fx-border)" }}>
+        <button type="button" onMouseDown={(e) => e.stopPropagation()} onClick={download} title="Baixar" className="nodrag flex h-7 w-7 items-center justify-center rounded-lg bg-white text-[#0A0A0A]"><Download className="h-3.5 w-3.5" /></button>
+        <span className="text-[10px] text-[color:var(--fx-muted)]">{(meta.resolution as string) || (d.resolution as string)}</span>
+      </div>{handles}
+    </NodeShell>);
+  }
+
+  const startBlock = (<div><span className="mb-1 block text-[9px] uppercase tracking-wide text-[color:var(--fx-subtle)]">Start Frame</span>{(d.startFrame as string) ? <FrameUpload id={id} field="startFrame" url={(d.startFrame as string)} /> : connImg ? (<div className="relative h-14 overflow-hidden rounded-[8px]">{/* eslint-disable-next-line @next/next/no-img-element */}<img src={connImg} alt="" className="h-full w-full object-cover" /><span className="absolute right-1 top-1 rounded px-1 py-0.5 text-[8px] text-white" style={{ background: "rgba(0,0,0,.6)" }}>Conectado</span></div>) : <FrameUpload id={id} field="startFrame" url="" waiting={srcRunning} />}</div>);
+  return (<NodeShell id={id} type="videoGen" title={(d.title as string) || "Video Generator"} status={status} selected={selected} runnable width={300}>
+    <div className="mb-2"><FModelSelect value={(d.model as string) || ""} options={models} placeholder="— modelo —" onChange={pickModel} /></div>
+    <div className="relative mb-2"><FTextarea rows={2} value={(d.prompt as string) || ""} onChange={(e) => rf.updateNodeData(id, { prompt: e.target.value })} placeholder="Descreva o movimento…" className="pr-7" /><button type="button" onClick={() => setPromptOpen(true)} className="nodrag absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded text-[color:var(--fx-subtle)] transition hover:text-[color:var(--fx-muted)]" title="Expandir"><Maximize2 className="h-3 w-3" /></button></div>
     <EnhanceBtn id={id} modality="video" value={(d.prompt as string) || ""} label="Generate prompt for me" />
-    <div className="mb-2 grid grid-cols-2 gap-2"><div><span className="mb-1 block text-[9px] uppercase tracking-wide text-[color:var(--fx-subtle)]">Start Frame</span><FrameUpload id={id} field="startFrame" url={(d.startFrame as string) || ""} /></div><div><span className="mb-1 block text-[9px] uppercase tracking-wide text-[color:var(--fx-subtle)]">End Frame</span><FrameUpload id={id} field="endFrame" url={(d.endFrame as string) || ""} /></div></div>
-    <div className="mb-2 grid grid-cols-2 gap-2"><FSelect value={(d.aspectRatio as string) || "9:16"} onChange={(e) => rf.updateNodeData(id, { aspectRatio: e.target.value })}>{["9:16", "16:9", "1:1", "4:3", "3:4"].map((a) => <option key={a} value={a}>{a}</option>)}</FSelect><FSelect value={(d.resolution as string) || "720p"} onChange={(e) => rf.updateNodeData(id, { resolution: e.target.value })}>{["480p", "720p", "1080p"].map((r) => <option key={r} value={r}>{r}</option>)}</FSelect></div>
-    <div className="mb-2 flex items-center gap-2"><input type="range" min={4} max={30} value={(d.duration as number) || 8} onChange={(e) => rf.updateNodeData(id, { duration: Number(e.target.value) })} className="nodrag flex-1" /><span className="w-7 text-right text-[10px] text-[color:var(--fx-muted)]">{(d.duration as number) || 8}s</span></div>
-    <div className="flex gap-2"><FSwitch label="Audio" on={d.audioOn !== false} onToggle={() => rf.updateNodeData(id, { audioOn: d.audioOn === false })} /><FSwitch label="Multi-shot" on={Boolean(d.multiShot)} onToggle={() => rf.updateNodeData(id, { multiShot: !d.multiShot })} /></div>
-    <ResultThumb url={d.__result as string} />
-    <Handle type="target" position={Position.Left} id="prompt" style={{ top: 48, background: "#22D3EE" }} /><Handle type="target" position={Position.Left} id="reference" style={{ top: 88, background: "#F97316" }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.videoGen }} />
+    <p className="mb-2 text-[9px] leading-snug text-[color:var(--fx-subtle)]">Adicione ou conecte uma imagem como frame inicial{caps.endFrame ? "/final" : ""} para guiar o movimento.</p>
+    <div className={`mb-2 ${caps.endFrame ? "grid grid-cols-2 gap-2" : ""}`}>{startBlock}{caps.endFrame ? <div><span className="mb-1 block text-[9px] uppercase tracking-wide text-[color:var(--fx-subtle)]">End Frame</span><FrameUpload id={id} field="endFrame" url={(d.endFrame as string) || ""} /></div> : null}</div>
+    <div className="mb-2 grid grid-cols-2 gap-2"><FDrop value={(d.aspectRatio as string) || "9:16"} accent={ACCENT.videoGen} options={["16:9", "9:16", "1:1"].map((a) => ({ value: a, label: a }))} onChange={(v) => rf.updateNodeData(id, { aspectRatio: v })} /><FDrop value={(d.resolution as string) || caps.resolutions[caps.resolutions.length - 1]} accent={ACCENT.videoGen} options={caps.resolutions.map((r) => ({ value: r, label: r }))} onChange={(v) => rf.updateNodeData(id, { resolution: v })} /></div>
+    <div className="mb-2">{caps.durationMode === "segments" ? (<div className="flex gap-1.5">{caps.durationValues.map((v) => <button key={v} type="button" onClick={() => rf.updateNodeData(id, { duration: v })} className="nodrag h-[30px] flex-1 rounded-[8px] border text-[11px] font-medium transition" style={dur === v ? { background: ACCENT.videoGen, borderColor: ACCENT.videoGen, color: "#fff" } : { background: "var(--fx-ctrl)", borderColor: "var(--fx-border)", color: "var(--fx-muted)" }}>{v}s</button>)}</div>) : (<div className="flex items-center gap-2"><input type="range" min={caps.durMin} max={caps.durMax} value={dur} onChange={(e) => rf.updateNodeData(id, { duration: Number(e.target.value) })} className="nodrag flex-1" /><span className="w-8 text-right text-[10px] text-[color:var(--fx-muted)]">{dur}s</span></div>)}</div>
+    {(caps.audio || caps.multiShot) ? <div className="flex gap-2">{caps.audio ? <FSwitch label="Audio" on={audioOn} onToggle={() => rf.updateNodeData(id, { audioOn: !audioOn })} /> : null}{caps.multiShot ? <FSwitch label="Multi-shot" on={Boolean(d.multiShot)} onToggle={() => rf.updateNodeData(id, { multiShot: !d.multiShot })} /> : null}</div> : null}
+    {promptOpen && <PromptModal value={(d.prompt as string) || ""} onChange={(v) => rf.updateNodeData(id, { prompt: v })} onClose={() => setPromptOpen(false)} />}
+    {handles}
   </NodeShell>);
 }
+
 function AudioGenNode({ id, data, selected }: NodeProps) {
   const rf = useReactFlow(); const models = useContext(ModelsCtx).audio; const d = data as ND; const voice = TTS_VOICES.find((v) => v.id === (d.voice as string));
   return (<NodeShell id={id} type="audioGen" title={(d.title as string) || "Audio Generator"} status={d.__status as string} selected={selected} runnable>
@@ -625,7 +693,7 @@ function Editor() {
   const onNodesChange = useCallback((c: Parameters<typeof onNodesChangeRaw>[0]) => { onNodesChangeRaw(c); markDirty(); }, [onNodesChangeRaw, markDirty]);
   const onEdgesChange = useCallback((c: Parameters<typeof onEdgesChangeRaw>[0]) => { onEdgesChangeRaw(c); markDirty(); }, [onEdgesChangeRaw, markDirty]);
 
-  useEffect(() => { (async () => { const load = async (t: string) => { const r = await fetch(`/api/models?type=${t}`, { cache: "no-store" }).then((x) => x.json()).catch(() => null); return Array.isArray(r?.models) ? r.models.map((m: { id: string; name: string; credit_cost?: number }) => ({ id: m.id, name: m.name, cost: typeof m.credit_cost === "number" ? m.credit_cost : 0 })) : []; }; const [im, vm, am] = await Promise.all([load("image"), load("video"), load("audio")]); setImageModels(im); setVideoModels(vm); setAudioModels(am); try { const me = await fetch("/api/me", { cache: "no-store" }).then((r) => r.json()).catch(() => null); if (typeof me?.credits === "number") setCredits(me.credits); } catch { /* noop */ } })(); }, []);
+  useEffect(() => { (async () => { const load = async (t: string) => { const r = await fetch(`/api/models?type=${t}`, { cache: "no-store" }).then((x) => x.json()).catch(() => null); return Array.isArray(r?.models) ? r.models.map((m: { id: string; name: string; credit_cost?: number; backend?: string; dur_min?: number; dur_max?: number; resolution?: string; has_audio?: boolean }) => ({ id: m.id, name: m.name, cost: typeof m.credit_cost === "number" ? m.credit_cost : 0, backend: m.backend || undefined, durMin: typeof m.dur_min === "number" ? m.dur_min : undefined, durMax: typeof m.dur_max === "number" ? m.dur_max : undefined, resolution: m.resolution || undefined, hasAudio: Boolean(m.has_audio) })) : []; }; const [im, vm, am] = await Promise.all([load("image"), load("video"), load("audio")]); setImageModels(im); setVideoModels(vm); setAudioModels(am); try { const me = await fetch("/api/me", { cache: "no-store" }).then((r) => r.json()).catch(() => null); if (typeof me?.credits === "number") setCredits(me.credits); } catch { /* noop */ } })(); }, []);
 
   useEffect(() => { let alive = true; (async () => { setLoading(true); try { const res = await fetch(`/api/flows/${flowId}`, { cache: "no-store" }); const data = await res.json().catch(() => null); if (!res.ok) throw new Error(data?.error || "Falha ao carregar."); if (!alive) return; setName(data.flow.name || "Novo Flow"); const def = data.flow.definition || {}; setNodes(Array.isArray(def.nodes) ? def.nodes : []); const defNodes = (Array.isArray(def.nodes) ? def.nodes : []) as Node[]; setEdges(Array.isArray(def.edges) ? def.edges : []); setSaveState("saved"); setTimeout(() => { defNodes.forEach((n) => { const dd = (n.data || {}) as ND; if (dd.__gen && !dd.__result) void resumePoll(n.id, String(dd.__gen)); }); }, 0); } catch (err) { toast.error(err instanceof Error ? err.message : "Erro ao carregar."); } finally { if (alive) setLoading(false); } })(); return () => { alive = false; }; }, [flowId, setNodes, setEdges]);
 
@@ -704,7 +772,7 @@ function Editor() {
           setNS(id, { __status: "running", __result: undefined });
           const r = await fetch("/api/generate/audio", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: text, model_uuid: d.model, voice_id: d.voice }) });
           const dt = await r.json().catch(() => null); if (!r.ok) { setNS(id, { __status: "failed" }); throw new Error(dt?.error || "Falha ao gerar áudio."); }
-          if (dt?.generation_id) { setNS(id, { __gen: String(dt.generation_id) }); runGenRef.current[id] = String(dt.generation_id); } let u = dt?.result_url as string | undefined; if (dt?.status !== "completed" || !u) u = await pollGen(String(dt.generation_id)); out.set(id, u); if (applyGuard(id, String(dt?.generation_id || ""))) setNS(id, { __status: "done", __result: u, __resultMeta: { modelName: (d.modelName as string) || (d.model as string), aspectRatio: d.aspectRatio, resolution: d.resolution } }); continue;
+          if (dt?.generation_id) { setNS(id, { __gen: String(dt.generation_id) }); runGenRef.current[id] = String(dt.generation_id); } let u = dt?.result_url as string | undefined; if (dt?.status !== "completed" || !u) u = await pollGen(String(dt.generation_id)); out.set(id, u); if (applyGuard(id, String(dt?.generation_id || ""))) setNS(id, { __status: "done", __result: u, __resultMeta: { modelName: (d.modelName as string) || (d.model as string), aspectRatio: d.aspectRatio, resolution: d.resolution, duration: (node.type as string) === "videoGen" ? d.duration : undefined } }); continue;
         }
         if (node.type === "imageGen" || node.type === "videoGen") {
           const gl = (d.title as string) || (node.type === "imageGen" ? "Image Generator" : "Video Generator");
@@ -717,10 +785,10 @@ function Editor() {
           const up = isImg ? (Array.isArray(d.refs) ? (d.refs as string[]) : []) : [d.startFrame, d.endFrame].filter((x): x is string => typeof x === "string" && x.length > 0);
           const all = [...refs, ...up];
           const body: Record<string, unknown> = { prompt: fp, model_uuid: d.model, aspect_ratio: d.aspectRatio, quality: "high", resolution: d.resolution || "720p" };
-          if (all.length) { body.reference_images = all; body.reference_image_url = all[0]; } if (!isImg) body.duration = d.duration;
+          if (all.length) { body.reference_images = all; body.reference_image_url = all[0]; } if (!isImg) { body.duration = d.duration; const sf = (d.startFrame as string) || refs[0] || ""; if (sf) body.start_image_url = sf; if (d.endFrame) body.end_image_url = d.endFrame as string; body.with_audio = d.audioOn !== false; }
           const r = await fetch(`/api/generate/${isImg ? "image" : "video"}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
           const dt = await r.json().catch(() => null); if (!r.ok) { setNS(id, { __status: "failed" }); throw new Error(dt?.error || "Falha ao iniciar."); }
-          if (dt?.generation_id) { setNS(id, { __gen: String(dt.generation_id) }); runGenRef.current[id] = String(dt.generation_id); } let u = dt?.result_url as string | undefined; if (dt?.status !== "completed" || !u) u = await pollGen(String(dt.generation_id)); out.set(id, u); if (applyGuard(id, String(dt?.generation_id || ""))) setNS(id, { __status: "done", __result: u, __resultMeta: { modelName: (d.modelName as string) || (d.model as string), aspectRatio: d.aspectRatio, resolution: d.resolution } });
+          if (dt?.generation_id) { setNS(id, { __gen: String(dt.generation_id) }); runGenRef.current[id] = String(dt.generation_id); } let u = dt?.result_url as string | undefined; if (dt?.status !== "completed" || !u) u = await pollGen(String(dt.generation_id)); out.set(id, u); if (applyGuard(id, String(dt?.generation_id || ""))) setNS(id, { __status: "done", __result: u, __resultMeta: { modelName: (d.modelName as string) || (d.model as string), aspectRatio: d.aspectRatio, resolution: d.resolution, duration: (node.type as string) === "videoGen" ? d.duration : undefined } });
         }
         } catch (nodeErr) { setNS(id, { __status: "failed", __error: nodeErr instanceof Error ? nodeErr.message : "Erro" }); throw nodeErr; } finally { setEdgeActive(id, false); }
       }
