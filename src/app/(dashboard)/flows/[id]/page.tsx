@@ -224,6 +224,7 @@ function ImageGenNode({ id, data, selected }: NodeProps) {
   const refs = Array.isArray(d.refs) ? (d.refs as string[]) : [];
   const tray = Array.isArray(d.__tray) ? (d.__tray as string[]) : [];
   const status = d.__status as string | undefined; const result = d.__result as string | undefined; const editing = Boolean(d.__editing);
+  const lastResultRef = useRef(""); if (result) lastResultRef.current = result;
   const collapsed = d.__collapsed !== false;
   const vstate = status === "running" ? "generating" : status === "failed" ? "error" : (result && !editing) ? "result" : "config";
   useEffect(() => { upd(id); }, [vstate, id, upd, collapsed, tray.length]);
@@ -276,6 +277,7 @@ function ImageGenNode({ id, data, selected }: NodeProps) {
   if (vstate === "generating") {
     return (<NodeShell id={id} type="imageGen" title={title} status={status} selected={selected} noPad width={300}>
       <div className="relative overflow-hidden rounded-b-[11px]" style={{ height: genH, background: "#0a0a0b", backgroundImage: "radial-gradient(circle at 72% 14%, " + ACCENT.imageGen + "22, transparent 55%)" }}>
+        {lastResultRef.current ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={lastResultRef.current} alt="" className="absolute inset-0 h-full w-full object-cover opacity-40 blur-sm" />) : null}
         <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between p-2"><span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium text-white" style={{ background: "rgba(0,0,0,.5)" }}><span className="h-1.5 w-1.5 rounded-full" style={{ background: ACCENT.imageGen }} />{(d.modelName as string) || (d.model as string) || "Modelo"}</span><span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.5)" }}>{(d.aspectRatio as string) || "1:1"}</span></div>
         <div className="flex h-full items-center justify-center"><DotLoader accent={ACCENT.imageGen} /></div>
         <div className="absolute inset-x-0 bottom-0 p-2.5"><div className="mb-1 text-[10px] font-medium text-white">Generating…</div><div className="fx-bar" style={{ ["--dot" as string]: ACCENT.imageGen } as React.CSSProperties} /></div>
@@ -376,14 +378,15 @@ function normalizeVideo(d: ND, caps: VCaps): ND {
 }
 
 function VideoGenNode({ id, data, selected }: NodeProps) {
-  const rf = useReactFlow(); const models = useContext(ModelsCtx).video; const d = data as ND;
+  const rf = useReactFlow(); const models = useContext(ModelsCtx).video; const { runNode } = useContext(ActionsCtx); const d = data as ND;
   const status = d.__status as string | undefined; const result = d.__result as string | undefined;
   const model = models.find((m) => m.id === d.model); const caps = videoCapsFor(model);
   const meta = (d.__resultMeta as ND) || {};
   const [promptOpen, setPromptOpen] = useState(false);
   const packed = useStore((s) => { const e = s.edges.find((ed) => ed.target === id && (ed.targetHandle === "reference" || !ed.targetHandle)); if (!e) return "0|0|"; const sd = (s.nodeLookup.get(e.source)?.data || {}) as ND; const u = (sd.__result as string) || (sd.url as string) || (sd.heldImage as string) || ""; return "1|" + (sd.__status === "running" ? "1" : "0") + "|" + (/^https?:\/\//i.test(u) ? u : ""); });
-  const parts = packed.split("|"); const srcRunning = parts[1] === "1"; const connImg = parts.slice(2).join("|");
+  const parts = packed.split("|"); const hasEdge = parts[0] === "1"; const srcRunning = parts[1] === "1"; const connImg = parts.slice(2).join("|");
   const startFrame = (d.startFrame as string) || connImg;
+  const lastStartRef = useRef(""); if (startFrame) lastStartRef.current = startFrame;
   const resolution = (d.resolution as string) || caps.resolutions[caps.resolutions.length - 1];
   const dur = caps.duration.type === "range" ? Math.max(caps.duration.min, Math.min(caps.duration.max, Number(d.duration) || caps.duration.min)) : (caps.duration.values.includes(Number(d.duration)) ? Number(d.duration) : caps.duration.values[0]);
   const audioOn = d.audioOn !== false;
@@ -409,7 +412,7 @@ function VideoGenNode({ id, data, selected }: NodeProps) {
     </NodeShell>);
   }
   if (result) {
-    return (<NodeShell id={id} type="videoGen" title={(d.title as string) || "Video Generator"} status={status} selected={selected} noPad width={300} runnable>
+    return (<NodeShell id={id} type="videoGen" title={(d.title as string) || "Video Generator"} status={status} selected={selected} noPad width={300}>
       <div className="relative" style={{ background: "#000" }}>
         <video src={result} controls playsInline className="nodrag block w-full" style={{ maxHeight: 360 }} />
         <div className="pointer-events-none absolute left-2 top-2 z-10 flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium text-white" style={{ background: "rgba(0,0,0,.55)" }}><span className="h-1.5 w-1.5 rounded-full" style={{ background: ACCENT.videoGen }} />{(meta.modelName as string) || (d.modelName as string) || "Vídeo"}</div>
@@ -418,10 +421,19 @@ function VideoGenNode({ id, data, selected }: NodeProps) {
       <div className="flex items-center gap-2 border-t p-2" style={{ borderColor: "var(--fx-border)" }}>
         <button type="button" onMouseDown={(e) => e.stopPropagation()} onClick={download} title="Baixar" className="nodrag flex h-7 w-7 items-center justify-center rounded-lg bg-white text-[#0A0A0A]"><Download className="h-3.5 w-3.5" /></button>
         <span className="text-[10px] text-[color:var(--fx-muted)]">{(meta.resolution as string) || resolution}</span>
+        <button type="button" onClick={() => runNode(id)} className="nodrag ml-auto flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-medium text-[color:var(--fx-text)]" style={{ background: "var(--fx-elev)", border: "1px solid var(--fx-border)" }}><Play className="h-3 w-3" fill="currentColor" />Recreate</button>
       </div>{handles}
     </NodeShell>);
   }
 
+  if (hasEdge && srcRunning && !connImg) {
+    return (<NodeShell id={id} type="videoGen" title={(d.title as string) || "Video Generator"} status={status} selected={selected} noPad width={300}>
+      <div className="relative overflow-hidden" style={{ height: 260, background: "#0a0a0b" }}>
+        {lastStartRef.current ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={lastStartRef.current} alt="" className="h-full w-full object-cover opacity-35 blur-sm" />) : null}
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5" style={{ background: "rgba(0,0,0,.4)" }}><Loader2 className="h-4 w-4 animate-spin text-[color:var(--fx-muted)]" /><span className="text-[10px] font-medium text-[color:var(--fx-muted)]">Aguardando nova imagem…</span></div>
+      </div>{handles}
+    </NodeShell>);
+  }
   const startBlock = (<div><span className="mb-1 block text-[9px] uppercase tracking-wide text-[color:var(--fx-subtle)]">Start Frame</span>{(d.startFrame as string) ? <FrameUpload id={id} field="startFrame" url={(d.startFrame as string)} /> : connImg ? (<div className="relative h-14 overflow-hidden rounded-[8px]">{/* eslint-disable-next-line @next/next/no-img-element */}<img src={connImg} alt="" className="h-full w-full object-cover" /><span className="absolute right-1 top-1 rounded px-1 py-0.5 text-[8px] text-white" style={{ background: "rgba(0,0,0,.6)" }}>Conectado</span></div>) : <FrameUpload id={id} field="startFrame" url="" waiting={srcRunning} />}</div>);
   return (<NodeShell id={id} type="videoGen" title={(d.title as string) || "Video Generator"} status={status} selected={selected} runnable width={300}>
     <div className="mb-2"><FModelSelect value={(d.model as string) || ""} options={models} placeholder="— modelo —" onChange={pickModel} /></div>
