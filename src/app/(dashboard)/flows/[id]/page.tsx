@@ -120,7 +120,7 @@ function NodeShell({ id, type, title, status, selected, runnable, width = 288, s
   useEffect(() => { if (!info) return; const h = () => setInfo(false); const k = (e: KeyboardEvent) => { if (e.key === "Escape") setInfo(false); }; window.addEventListener("mousedown", h); window.addEventListener("keydown", k); return () => { window.removeEventListener("mousedown", h); window.removeEventListener("keydown", k); }; }, [info]);
   function openInfo(e: React.MouseEvent) { e.stopPropagation(); const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); const w = 280; let x = r.right + 8; if (x + w > window.innerWidth - 12) x = r.left - w - 8; let y = r.top; if (y + 140 > window.innerHeight - 12) y = window.innerHeight - 152; setIpos({ x, y }); setInfo((v) => !v); }
   return (
-    <div className="fx-card group relative" style={{ width, ...(selected ? { borderColor: accent, boxShadow: `0 0 16px ${accent}22, 0 8px 28px rgba(0,0,0,.45)` } : glow ? { borderColor: `${glow}99`, boxShadow: `0 0 0 1px ${glow}55, 0 0 18px ${glow}44` } : {}) }}>
+    <div className="fx-card group relative" style={{ width, ...(selected ? { borderColor: accent, boxShadow: `0 0 10px ${accent}1f, 0 8px 28px rgba(0,0,0,.45)` } : glow ? { borderColor: `${glow}99`, boxShadow: `0 0 0 1px ${glow}55, 0 0 18px ${glow}44` } : {}) }}>
       <div className="relative flex h-[34px] items-center gap-2 border-b px-2.5" style={{ borderColor: "var(--fx-border)" }}>
         <span className="flex h-4 w-4 items-center justify-center" style={{ color: accent }}><reg.Icon className="h-3.5 w-3.5" /></span>
         <span className="flex-1 truncate text-[11px] font-semibold" style={{ color: accent }}>{title}</span>
@@ -400,9 +400,12 @@ function VideoGenNode({ id, data, selected }: NodeProps) {
 
   if (status === "running") {
     return (<NodeShell id={id} type="videoGen" title={(d.title as string) || "Video Generator"} status={status} selected={selected} glow={ACCENT.videoGen} noPad width={300}>
-      <div className="relative overflow-hidden" style={{ height: vmH, background: "#0a0a0b" }}>
-        {startFrame ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={startFrame} alt="" className="h-full w-full scale-105 object-cover opacity-55 blur-sm" />) : null}
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2" style={{ background: "rgba(0,0,0,.42)" }}><Loader2 className="h-6 w-6 animate-spin" style={{ color: ACCENT.videoGen }} /><span className="text-[11px] font-medium text-white">Gerando vídeo…</span></div>
+      <div className="relative overflow-hidden rounded-b-[11px]" style={{ height: vmH, background: "#0a0a0b" }}>
+        {startFrame ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={startFrame} alt="" className="absolute inset-0 h-full w-full object-cover opacity-60" style={{ filter: "blur(3px)" }} />) : null}
+        <div className="absolute inset-0" style={{ background: "rgba(0,0,0,.42)" }} />
+        <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between p-2"><span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium text-white" style={{ background: "rgba(0,0,0,.5)" }}><span className="h-1.5 w-1.5 rounded-full" style={{ background: ACCENT.videoGen }} />{(d.modelName as string) || (d.model as string) || "Modelo"}</span><span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.5)" }}>{(d.aspectRatio as string) || "9:16"}</span></div>
+        <div className="absolute inset-0 flex items-center justify-center"><DotLoader accent={ACCENT.videoGen} /></div>
+        <div className="absolute inset-x-0 bottom-0 p-2.5"><div className="mb-1 text-[10px] font-medium text-white">Gerando vídeo…</div><div className="fx-bar" style={{ ["--dot" as string]: ACCENT.videoGen } as React.CSSProperties} /></div>
       </div>{handles}
     </NodeShell>);
   }
@@ -429,8 +432,8 @@ function VideoGenNode({ id, data, selected }: NodeProps) {
   if (hasEdge && srcRunning && !connImg) {
     return (<NodeShell id={id} type="videoGen" title={(d.title as string) || "Video Generator"} status={status} selected={selected} noPad width={300}>
       <div className="relative overflow-hidden" style={{ height: vmH, background: "#0a0a0b" }}>
-        {lastStartRef.current ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={lastStartRef.current} alt="" className="h-full w-full object-cover opacity-35 blur-sm" />) : null}
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5" style={{ background: "rgba(0,0,0,.4)" }}><Loader2 className="h-4 w-4 animate-spin text-[color:var(--fx-muted)]" /><span className="text-[10px] font-medium text-[color:var(--fx-muted)]">Aguardando nova imagem…</span></div>
+        {lastStartRef.current ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={lastStartRef.current} alt="" className="h-full w-full object-cover opacity-45" style={{ filter: "blur(2px)" }} />) : null}
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5" style={{ background: "rgba(0,0,0,.32)" }}><Loader2 className="h-4 w-4 animate-spin text-[color:var(--fx-muted)]" /><span className="text-[10px] font-medium text-[color:var(--fx-muted)]">Aguardando nova imagem…</span></div>
       </div>{handles}
     </NodeShell>);
   }
