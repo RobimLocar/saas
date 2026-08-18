@@ -55,6 +55,7 @@ const FLOW_CSS = `
 .fx-edge-active{stroke-dasharray:9 8;stroke-linecap:round;animation:fxdash .8s linear infinite}
 @keyframes fxdash{to{stroke-dashoffset:-24}}
 @media (prefers-reduced-motion: reduce){.fx-edge-active{animation:none;opacity:.5}}
+.flow-root textarea::-webkit-scrollbar{width:8px}.flow-root textarea::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:8px}.flow-root textarea::-webkit-scrollbar-track{background:transparent}
 .fx-checker{background-color:#0f0f10;background-image:linear-gradient(45deg,#1c1c1f 25%,transparent 25%),linear-gradient(-45deg,#1c1c1f 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#1c1c1f 75%),linear-gradient(-45deg,transparent 75%,#1c1c1f 75%);background-size:14px 14px;background-position:0 0,0 7px,7px -7px,-7px 0}
 `;
 
@@ -157,7 +158,7 @@ function EnhanceBtn({ id, modality, value, label }: { id: string; modality: stri
 }
 
 /* ── NÓS ─────────────────────────────────────────────────────────────────── */
-function PromptNode({ id, data, selected }: NodeProps) { const rf = useReactFlow(); const d = data as ND; return (<NodeShell id={id} type="prompt" title={(d.title as string) || "Prompt"} status={d.__status as string} selected={selected} width={276}><FTextarea rows={5} value={(d.text as string) || ""} onChange={(e) => rf.updateNodeData(id, { text: e.target.value })} placeholder="Texto…" /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.prompt }} /></NodeShell>); }
+function PromptNode({ id, data, selected }: NodeProps) { const rf = useReactFlow(); const d = data as ND; const [po, setPo] = useState(false); return (<NodeShell id={id} type="prompt" title={(d.title as string) || "Prompt"} status={d.__status as string} selected={selected} width={276}><div className="relative"><FTextarea rows={5} value={(d.text as string) || ""} onChange={(e) => rf.updateNodeData(id, { text: e.target.value })} placeholder="Texto…" className="pr-7" /><button type="button" onClick={() => setPo(true)} className="nodrag absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded text-[color:var(--fx-subtle)] transition hover:text-[color:var(--fx-muted)]" title="Expandir"><Maximize2 className="h-3 w-3" /></button></div>{po && <PromptModal value={(d.text as string) || ""} onChange={(v) => rf.updateNodeData(id, { text: v })} onClose={() => setPo(false)} />}<Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.prompt }} /></NodeShell>); }
 function RefImageNode({ id, data, selected }: NodeProps) { const rf = useReactFlow(); const d = data as ND; const u = (d.url as string) || ""; return (<NodeShell id={id} type="output" title={(d.title as string) || "Reference Image"} status={d.__status as string} selected={selected} width={256}><FInput value={u} onChange={(e) => rf.updateNodeData(id, { url: e.target.value })} placeholder="Cole a URL…" />{u ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={u} alt="" className="mt-2 h-24 w-full rounded-[8px] object-cover" />) : null}<Handle type="source" position={Position.Right} id="out" style={{ background: "#F97316" }} /></NodeShell>); }
 function FModelSelect({ value, options, onChange, placeholder }: { value: string; options: ModelOpt[]; onChange: (id: string) => void; placeholder?: string }) {
   const [open, setOpen] = useState(false); const ref = useRef<HTMLDivElement>(null);
@@ -401,7 +402,7 @@ function VideoGenNode({ id, data, selected }: NodeProps) {
   if (status === "running") {
     return (<NodeShell id={id} type="videoGen" title={(d.title as string) || "Video Generator"} status={status} selected={selected} glow={ACCENT.videoGen} noPad width={300}>
       <div className="relative overflow-hidden rounded-b-[11px]" style={{ height: vmH, background: "#0a0a0b" }}>
-        {startFrame ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={startFrame} alt="" className="absolute inset-0 h-full w-full object-cover opacity-60" style={{ filter: "blur(3px)" }} />) : null}
+        {startFrame ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={startFrame} alt="" className="absolute inset-0 h-full w-full object-cover opacity-65" style={{ filter: "blur(2px)" }} />) : null}
         <div className="absolute inset-0" style={{ background: "rgba(0,0,0,.42)" }} />
         <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between p-2"><span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium text-white" style={{ background: "rgba(0,0,0,.5)" }}><span className="h-1.5 w-1.5 rounded-full" style={{ background: ACCENT.videoGen }} />{(d.modelName as string) || (d.model as string) || "Modelo"}</span><span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.5)" }}>{(d.aspectRatio as string) || "9:16"}</span></div>
         <div className="absolute inset-0 flex items-center justify-center"><DotLoader accent={ACCENT.videoGen} /></div>
@@ -419,6 +420,7 @@ function VideoGenNode({ id, data, selected }: NodeProps) {
     return (<NodeShell id={id} type="videoGen" title={(d.title as string) || "Video Generator"} status={status} selected={selected} noPad width={300}>
       <div className="relative" style={{ background: "#000" }}>
         <video src={result} controls playsInline className="nodrag block w-full" style={{ maxHeight: vmH }} />
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-[5] h-10" style={{ backgroundImage: "linear-gradient(to bottom, rgba(0,0,0,.5), transparent)" }} />
         <div className="pointer-events-none absolute left-2 top-2 z-10 flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium text-white" style={{ background: "rgba(0,0,0,.55)" }}><span className="h-1.5 w-1.5 rounded-full" style={{ background: ACCENT.videoGen }} />{(meta.modelName as string) || (d.modelName as string) || "Vídeo"}</div>
         <div className="pointer-events-none absolute right-2 top-2 z-10 flex gap-1">{meta.aspectRatio ? <span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.55)" }}>{meta.aspectRatio as string}</span> : null}{(meta.resolution as string) ? <span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.55)" }}>{meta.resolution as string}</span> : null}{meta.duration ? <span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.55)" }}>{meta.duration as number}s</span> : null}</div>
       </div>
@@ -433,7 +435,7 @@ function VideoGenNode({ id, data, selected }: NodeProps) {
     return (<NodeShell id={id} type="videoGen" title={(d.title as string) || "Video Generator"} status={status} selected={selected} noPad width={300}>
       <div className="relative overflow-hidden" style={{ height: vmH, background: "#0a0a0b" }}>
         {lastStartRef.current ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={lastStartRef.current} alt="" className="h-full w-full object-cover opacity-45" style={{ filter: "blur(2px)" }} />) : null}
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5" style={{ background: "rgba(0,0,0,.32)" }}><Loader2 className="h-4 w-4 animate-spin text-[color:var(--fx-muted)]" /><span className="text-[10px] font-medium text-[color:var(--fx-muted)]">Aguardando nova imagem…</span></div>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5" style={{ background: "rgba(0,0,0,.42)" }}><Loader2 className="h-4 w-4 animate-spin text-[color:var(--fx-muted)]" /><span className="text-[10px] font-medium text-[color:var(--fx-muted)]">Aguardando nova imagem…</span></div>
       </div>{handles}
     </NodeShell>);
   }
@@ -689,8 +691,8 @@ function GradientEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, 
   const active = Boolean((data as { active?: boolean } | undefined)?.active);
   return (<>
     <defs><linearGradient id={gid} gradientUnits="userSpaceOnUse" x1={sourceX} y1={sourceY} x2={targetX} y2={targetY}><stop offset="0%" stopColor={c1} /><stop offset="100%" stopColor={c2} /></linearGradient></defs>
-    <path id={id} d={path} fill="none" strokeWidth={active ? 2.8 : 2.4} className="react-flow__edge-path" style={{ stroke: `url(#${gid})`, strokeOpacity: active ? 1 : 0.7, ...(active ? { filter: `drop-shadow(0 0 5px ${c2}99)` } : {}) }} />
-    {active && <path d={path} fill="none" strokeWidth={2.8} className="fx-edge-active" style={{ stroke: `url(#${gid})`, opacity: 0.95 }} />}
+    <path id={id} d={path} fill="none" strokeWidth={active ? 3 : 2.6} className="react-flow__edge-path" style={{ stroke: `url(#${gid})`, strokeOpacity: active ? 1 : 0.78, ...(active ? { filter: `drop-shadow(0 0 5px ${c2}99)` } : {}) }} />
+    {active && <path d={path} fill="none" strokeWidth={3} className="fx-edge-active" style={{ stroke: `url(#${gid})`, opacity: 0.95 }} />}
   </>);
 }
 const edgeTypes: EdgeTypes = { grad: GradientEdge };
