@@ -157,7 +157,7 @@ function EnhanceBtn({ id, modality, value, label }: { id: string; modality: stri
 }
 
 /* ── NÓS ─────────────────────────────────────────────────────────────────── */
-function PromptNode({ id, data, selected }: NodeProps) { const rf = useReactFlow(); const d = data as ND; return (<NodeShell id={id} type="prompt" title={(d.title as string) || "Prompt"} status={d.__status as string} selected={selected} width={256}><FTextarea rows={3} value={(d.text as string) || ""} onChange={(e) => rf.updateNodeData(id, { text: e.target.value })} placeholder="Texto…" /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.prompt }} /></NodeShell>); }
+function PromptNode({ id, data, selected }: NodeProps) { const rf = useReactFlow(); const d = data as ND; return (<NodeShell id={id} type="prompt" title={(d.title as string) || "Prompt"} status={d.__status as string} selected={selected} width={276}><FTextarea rows={5} value={(d.text as string) || ""} onChange={(e) => rf.updateNodeData(id, { text: e.target.value })} placeholder="Texto…" /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.prompt }} /></NodeShell>); }
 function RefImageNode({ id, data, selected }: NodeProps) { const rf = useReactFlow(); const d = data as ND; const u = (d.url as string) || ""; return (<NodeShell id={id} type="output" title={(d.title as string) || "Reference Image"} status={d.__status as string} selected={selected} width={256}><FInput value={u} onChange={(e) => rf.updateNodeData(id, { url: e.target.value })} placeholder="Cole a URL…" />{u ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={u} alt="" className="mt-2 h-24 w-full rounded-[8px] object-cover" />) : null}<Handle type="source" position={Position.Right} id="out" style={{ background: "#F97316" }} /></NodeShell>); }
 function FModelSelect({ value, options, onChange, placeholder }: { value: string; options: ModelOpt[]; onChange: (id: string) => void; placeholder?: string }) {
   const [open, setOpen] = useState(false); const ref = useRef<HTMLDivElement>(null);
@@ -277,7 +277,7 @@ function ImageGenNode({ id, data, selected }: NodeProps) {
   if (vstate === "generating") {
     return (<NodeShell id={id} type="imageGen" title={title} status={status} selected={selected} noPad width={300}>
       <div className="relative overflow-hidden rounded-b-[11px]" style={{ height: genH, background: "#0a0a0b", backgroundImage: "radial-gradient(circle at 72% 14%, " + ACCENT.imageGen + "22, transparent 55%)" }}>
-        {lastResultRef.current ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={lastResultRef.current} alt="" className="absolute inset-0 h-full w-full object-cover opacity-40 blur-sm" />) : null}
+        {lastResultRef.current ? (<>{/* eslint-disable-next-line @next/next/no-img-element */}<img src={lastResultRef.current} alt="" className="absolute inset-0 h-full w-full object-cover opacity-70" style={{ filter: "blur(2px)" }} /><div className="absolute inset-0" style={{ background: "rgba(0,0,0,.4)" }} /></>) : null}
         <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-between p-2"><span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium text-white" style={{ background: "rgba(0,0,0,.5)" }}><span className="h-1.5 w-1.5 rounded-full" style={{ background: ACCENT.imageGen }} />{(d.modelName as string) || (d.model as string) || "Modelo"}</span><span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.5)" }}>{(d.aspectRatio as string) || "1:1"}</span></div>
         <div className="flex h-full items-center justify-center"><DotLoader accent={ACCENT.imageGen} /></div>
         <div className="absolute inset-x-0 bottom-0 p-2.5"><div className="mb-1 text-[10px] font-medium text-white">Generating…</div><div className="fx-bar" style={{ ["--dot" as string]: ACCENT.imageGen } as React.CSSProperties} /></div>
@@ -390,6 +390,7 @@ function VideoGenNode({ id, data, selected }: NodeProps) {
   const resolution = (d.resolution as string) || caps.resolutions[caps.resolutions.length - 1];
   const dur = caps.duration.type === "range" ? Math.max(caps.duration.min, Math.min(caps.duration.max, Number(d.duration) || caps.duration.min)) : (caps.duration.values.includes(Number(d.duration)) ? Number(d.duration) : caps.duration.values[0]);
   const audioOn = d.audioOn !== false;
+  const vAspect = (meta.aspectRatio as string) || (d.aspectRatio as string) || "9:16"; const [vaw, vah] = vAspect.split(":").map(Number); const vmH = Math.max(200, Math.min(470, Math.round(300 * ((vah || 16) / (vaw || 9)))));
   const upd = useUpdateNodeInternals();
   useEffect(() => { const r = requestAnimationFrame(() => upd(id)); return () => cancelAnimationFrame(r); }, [status, result, d.model, id, upd]);
   const handles = (<><Handle type="target" position={Position.Left} id="prompt" style={{ top: 48, background: "#22D3EE" }} /><Handle type="target" position={Position.Left} id="reference" style={{ top: 88, background: "#F97316" }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.videoGen }} /></>);
@@ -399,7 +400,7 @@ function VideoGenNode({ id, data, selected }: NodeProps) {
 
   if (status === "running") {
     return (<NodeShell id={id} type="videoGen" title={(d.title as string) || "Video Generator"} status={status} selected={selected} glow={ACCENT.videoGen} noPad width={300}>
-      <div className="relative overflow-hidden" style={{ height: 260, background: "#0a0a0b" }}>
+      <div className="relative overflow-hidden" style={{ height: vmH, background: "#0a0a0b" }}>
         {startFrame ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={startFrame} alt="" className="h-full w-full scale-105 object-cover opacity-55 blur-sm" />) : null}
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2" style={{ background: "rgba(0,0,0,.42)" }}><Loader2 className="h-6 w-6 animate-spin" style={{ color: ACCENT.videoGen }} /><span className="text-[11px] font-medium text-white">Gerando vídeo…</span></div>
       </div>{handles}
@@ -414,13 +415,12 @@ function VideoGenNode({ id, data, selected }: NodeProps) {
   if (result) {
     return (<NodeShell id={id} type="videoGen" title={(d.title as string) || "Video Generator"} status={status} selected={selected} noPad width={300}>
       <div className="relative" style={{ background: "#000" }}>
-        <video src={result} controls playsInline className="nodrag block w-full" style={{ maxHeight: 360 }} />
+        <video src={result} controls playsInline className="nodrag block w-full" style={{ maxHeight: vmH }} />
         <div className="pointer-events-none absolute left-2 top-2 z-10 flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-medium text-white" style={{ background: "rgba(0,0,0,.55)" }}><span className="h-1.5 w-1.5 rounded-full" style={{ background: ACCENT.videoGen }} />{(meta.modelName as string) || (d.modelName as string) || "Vídeo"}</div>
-        <div className="pointer-events-none absolute right-2 top-2 z-10 flex gap-1">{meta.aspectRatio ? <span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.55)" }}>{meta.aspectRatio as string}</span> : null}{meta.duration ? <span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.55)" }}>{meta.duration as number}s</span> : null}</div>
+        <div className="pointer-events-none absolute right-2 top-2 z-10 flex gap-1">{meta.aspectRatio ? <span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.55)" }}>{meta.aspectRatio as string}</span> : null}{(meta.resolution as string) ? <span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.55)" }}>{meta.resolution as string}</span> : null}{meta.duration ? <span className="rounded-full px-2 py-0.5 text-[9px] text-white" style={{ background: "rgba(0,0,0,.55)" }}>{meta.duration as number}s</span> : null}</div>
       </div>
       <div className="flex items-center gap-2 border-t p-2" style={{ borderColor: "var(--fx-border)" }}>
         <button type="button" onMouseDown={(e) => e.stopPropagation()} onClick={download} title="Baixar" className="nodrag flex h-7 w-7 items-center justify-center rounded-lg bg-white text-[#0A0A0A]"><Download className="h-3.5 w-3.5" /></button>
-        <span className="text-[10px] text-[color:var(--fx-muted)]">{(meta.resolution as string) || resolution}</span>
         <button type="button" onClick={() => runNode(id)} className="nodrag ml-auto flex h-7 items-center gap-1 rounded-lg px-2.5 text-[11px] font-medium text-[color:var(--fx-text)]" style={{ background: "var(--fx-elev)", border: "1px solid var(--fx-border)" }}><Play className="h-3 w-3" fill="currentColor" />Recreate</button>
       </div>{handles}
     </NodeShell>);
@@ -428,7 +428,7 @@ function VideoGenNode({ id, data, selected }: NodeProps) {
 
   if (hasEdge && srcRunning && !connImg) {
     return (<NodeShell id={id} type="videoGen" title={(d.title as string) || "Video Generator"} status={status} selected={selected} noPad width={300}>
-      <div className="relative overflow-hidden" style={{ height: 260, background: "#0a0a0b" }}>
+      <div className="relative overflow-hidden" style={{ height: vmH, background: "#0a0a0b" }}>
         {lastStartRef.current ? (/* eslint-disable-next-line @next/next/no-img-element */<img src={lastStartRef.current} alt="" className="h-full w-full object-cover opacity-35 blur-sm" />) : null}
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5" style={{ background: "rgba(0,0,0,.4)" }}><Loader2 className="h-4 w-4 animate-spin text-[color:var(--fx-muted)]" /><span className="text-[10px] font-medium text-[color:var(--fx-muted)]">Aguardando nova imagem…</span></div>
       </div>{handles}
@@ -686,8 +686,8 @@ function GradientEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, 
   const active = Boolean((data as { active?: boolean } | undefined)?.active);
   return (<>
     <defs><linearGradient id={gid} gradientUnits="userSpaceOnUse" x1={sourceX} y1={sourceY} x2={targetX} y2={targetY}><stop offset="0%" stopColor={c1} /><stop offset="100%" stopColor={c2} /></linearGradient></defs>
-    <path id={id} d={path} fill="none" strokeWidth={active ? 2.5 : 2} className="react-flow__edge-path" style={{ stroke: `url(#${gid})`, strokeOpacity: active ? 1 : 0.7, ...(active ? { filter: `drop-shadow(0 0 5px ${c2}99)` } : {}) }} />
-    {active && <path d={path} fill="none" strokeWidth={2.5} className="fx-edge-active" style={{ stroke: `url(#${gid})`, opacity: 0.95 }} />}
+    <path id={id} d={path} fill="none" strokeWidth={active ? 2.8 : 2.4} className="react-flow__edge-path" style={{ stroke: `url(#${gid})`, strokeOpacity: active ? 1 : 0.7, ...(active ? { filter: `drop-shadow(0 0 5px ${c2}99)` } : {}) }} />
+    {active && <path d={path} fill="none" strokeWidth={2.8} className="fx-edge-active" style={{ stroke: `url(#${gid})`, opacity: 0.95 }} />}
   </>);
 }
 const edgeTypes: EdgeTypes = { grad: GradientEdge };
@@ -857,7 +857,7 @@ function Editor() {
           {/* canvas full-screen */}
           <div ref={wrapRef} className="absolute inset-0" onDrop={onDrop} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}>
             <div className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(circle at 82% -6%, rgba(150,60,20,.22), transparent 46%)" }} />
-            <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} nodeTypes={nodeTypes} edgeTypes={edgeTypes} defaultEdgeOptions={{ type: "grad" }} fitView fitViewOptions={{ padding: 0.22, maxZoom: 1 }} minZoom={0.2} onMove={(_e, vp: Viewport) => setZoom(vp.zoom)} onPaneClick={() => setInfoType(null)} proOptions={{ hideAttribution: true }}>
+            <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} nodeTypes={nodeTypes} edgeTypes={edgeTypes} defaultEdgeOptions={{ type: "grad" }} fitView fitViewOptions={{ padding: 0.26, maxZoom: 1 }} minZoom={0.2} onMove={(_e, vp: Viewport) => setZoom(vp.zoom)} onPaneClick={() => setInfoType(null)} proOptions={{ hideAttribution: true }}>
               <Background color="rgba(255,255,255,.06)" gap={16} size={0.8} />
             </ReactFlow>
           </div>
@@ -890,7 +890,7 @@ function Editor() {
           <div className="absolute bottom-5 flex -translate-x-1/2 items-center gap-1 rounded-2xl fx-panel p-1 shadow-[0_16px_50px_rgba(0,0,0,0.55)]" style={{ left: panelOpen ? "calc(50% - 132px)" : "50%" }}>
             <button type="button" onClick={() => void runFlow()} disabled={running || loading} className="flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-[#0A0A0A] transition hover:bg-white/90 disabled:opacity-50">{running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" fill="currentColor" />}{running ? "Rodando…" : "Run Flow"}</button>
             <button type="button" onClick={clearAll} className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm text-[color:var(--fx-muted)] transition hover:bg-white/5"><Eraser className="h-4 w-4" /> Limpar</button>
-            <button type="button" onClick={() => rf.fitView({ duration: 300 })} className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm text-[color:var(--fx-muted)] transition hover:bg-white/5"><Crosshair className="h-4 w-4" /> Centralizar</button>
+            <button type="button" onClick={() => rf.fitView({ padding: 0.28, duration: 300 })} className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm text-[color:var(--fx-muted)] transition hover:bg-white/5"><Crosshair className="h-4 w-4" /> Centralizar</button>
           </div>
 
           {/* reabrir painel */}
