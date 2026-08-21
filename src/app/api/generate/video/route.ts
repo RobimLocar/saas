@@ -57,6 +57,9 @@ export async function POST(req: NextRequest) {
       // ETAPA 7.2.1.1 — comprimento REAL do vídeo de movimento (segundos), medido
       // no cliente. Fallback quando a medição no servidor falhar (Kling Motion).
       motion_seconds,
+      // ETAPA 7.3.2 — Veo: reference images (veo3.1) e seed (text-to-video).
+      reference_image_urls,
+      seed,
     } = body;
     const qualityLevel: "low" | "medium" | "high" =
       quality === "low" || quality === "medium" ? quality : "high";
@@ -508,6 +511,9 @@ export async function POST(req: NextRequest) {
         // ETAPA 3.4 — áudio de dublagem do Kling Avatar → local_dubbing_url.
         dubbingAudioUrl: dubbingUrl || undefined,
         referenceImages: Array.isArray(reference_images) ? reference_images : undefined,
+        // ETAPA 7.3.2 — Veo 3.1 reference images (slot dedicado) + seed (t2v).
+        veoReferenceImages: Array.isArray(reference_image_urls) ? reference_image_urls : undefined,
+        seed: typeof seed === "number" ? seed : undefined,
         referenceVideos: Array.isArray(reference_videos) ? reference_videos : undefined,
         referenceAudios: Array.isArray(reference_audios) ? reference_audios : undefined,
         shots: Array.isArray(shots) ? shots : undefined,
