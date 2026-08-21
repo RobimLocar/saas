@@ -180,20 +180,51 @@ export async function POST(req: NextRequest) {
         aiModel.params as VideoModelParams,
         Number.isFinite(durNum) && durNum > 0 ? durNum : undefined
       );
-      // ETAPA 4.1 — Kling Avatar: o vídeo dura o COMPRIMENTO DO ÁUDIO (o provider
-      // ignora a duração da UI). Cobrar pelos segundos REAIS do áudio (medidos no
-      // cliente → dubbing_seconds), com piso/teto de segurança contra abuso.
-      // NÃO altera a fórmula (segue cps × segundos × plano) nem outros modelos.
+      // ETAPA 4.1 + 6 — Kling Avatar: o vídeo dura o COMPRIMENTO DO ÁUDIO (o provider
+      // ignora a duração da UI). Cobrar pelos segundos REAIS. ETAPA 6: mede a
+      // duração no SERVIDOR (music-metadata) — anti-abuso; o `dubbing_seconds`
+      // enviado pelo cliente vira apenas FALLBACK se a medição falhar.
+      // Não altera a fórmula (cps × segundos × plano) nem outros modelos.
       if ((aiModel.params as VideoModelParams)?.task_type === "avatar") {
         const AVATAR_MIN_SECONDS = 1;
         const AVATAR_MAX_SECONDS = 120; // teto defensivo (bilhetagem)
-        const secs = Number(dubbing_seconds);
+        let serverSecs = 0;
+        if (dubbingUrl) {
+          try {
+            const audioRes = await fetch(dubbingUrl);
+            if (audioRes.ok) {
+              const buf = Buffer.from(await audioRes.arrayBuffer());
+              const mm = await import("music-metadata");
+              const meta = await mm.parseBuffer(new Uint8Array(buf), {
+                mimeType: audioRes.headers.get("content-type") || undefined,
+              });
+              serverSecs = Number(meta.format?.duration) || 0;
+            }
+          } catch (e) {
+            auditLog("api.generate.video", "avatar_audio_medicao_falhou", requestId, {
+              error: e instanceof Error ? e.message : String(e),
+            });
+          }
+        }
+        // Servidor tem PRIORIDADE; cliente (dubbing_seconds) é só fallback.
+        const secs = serverSecs > 0 ? serverSecs : Number(dubbing_seconds);
         if (Number.isFinite(secs) && secs > 0) {
           dsafe = Math.min(Math.max(Math.ceil(secs), AVATAR_MIN_SECONDS), AVATAR_MAX_SECONDS);
         }
       }
       const resKey = typeof resolution === "string" && resolution ? resolution : "720p";
-      const rate = Number(cpsMap[resKey] ?? cpsMap["720p"] ?? 0);
+      let rate = Number(cpsMap[resKey] ?? cpsMap["720p"] ?? 0);
+      // ETAPA 6 — Veo cobra MENOS sem áudio. Doc (veo3-api/veo31-api): áudio OFF é
+      // metade do preço no tier quality (0.24→0.12) e ~2/3 no tier fast (0.09→0.06).
+      // A cps do catálogo é a tarifa áudio-ON; aplicamos o fator áudio-OFF quando
+      // with_audio === false. Só afeta Veo; demais modelos inalterados.
+      {
+        const vp = aiModel.params as VideoModelParams;
+        if ((vp?.backend === "veo3" || vp?.backend === "veo3.1") && with_audio === false) {
+          const offFactor = String(vp?.task_type || "").includes("fast") ? 2 / 3 : 0.5;
+          rate = rate * offFactor;
+        }
+      }
       if (rate > 0) baseVideoCost = Math.ceil(rate * dsafe);
     }
     const cost = effectiveCost(baseVideoCost, profile?.plan ?? "free");
