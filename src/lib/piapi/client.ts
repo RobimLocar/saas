@@ -873,7 +873,12 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
   // A solução correta é usar model="kling" com version="2.5" e mode="turbo".
   // Confirmado funcionando em 2026-07-25.
   if (backend === "kling-turbo") {
-    const duration = quality === "low" ? 5 : 10;
+    // ETAPA 1 P0 (contract integrity): a duração vem da ESCOLHA do usuário
+    // (args.duration → userDur, já limitado a [dur_min, dur_max] = [5, 10]),
+    // NUNCA de `quality`. Antes, `quality === "low" ? 5 : 10` fazia o Flow
+    // (que sempre envia quality "high") mandar 10s mesmo com 5s selecionado.
+    // A doc oficial (kling-turbo-api) suporta apenas 5s e 10s → snap ao enum.
+    const duration = snap(userDur, [5, 10]);
     const klingVersion = (params.kling_version || "2.5").replace("-turbo", "");
     const input: Record<string, unknown> = {
       prompt,
@@ -909,7 +914,9 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
       duration: clampInt(userDur, 3, 15),
       resolution,
       aspect_ratio: klingAspect,
-      enable_audio: args.withAudio ?? false,
+      // Kling Omni: a doc oficial (kling-3-omni-api) LISTA enable_audio como válido, mas a PiAPI retorna
+      // "This parameter is temporarily not supported" em runtime (áudio nativo gated no pool público, 19/08/2026).
+      // -> não enviamos enable_audio até normalizar. Quando reabrirem, reativar audio na capability do kling-omni.
     };
     // Kling Omni usa images[] com @image_N no prompt.
     // Prioriza referenceImages (aba Omni Reference); senão usa start/end frame.
