@@ -54,6 +54,9 @@ export async function POST(req: NextRequest) {
       // ETAPA 4.1 — comprimento REAL do áudio (segundos), medido no cliente.
       // Usado APENAS para cobrar o Kling Avatar (cujo vídeo dura o tamanho do áudio).
       dubbing_seconds,
+      // ETAPA 7.2.1.1 — comprimento REAL do vídeo de movimento (segundos), medido
+      // no cliente. Fallback quando a medição no servidor falhar (Kling Motion).
+      motion_seconds,
     } = body;
     const qualityLevel: "low" | "medium" | "high" =
       quality === "low" || quality === "medium" ? quality : "high";
@@ -212,7 +215,68 @@ export async function POST(req: NextRequest) {
           dsafe = Math.min(Math.max(Math.ceil(secs), AVATAR_MIN_SECONDS), AVATAR_MAX_SECONDS);
         }
       }
-      const resKey = typeof resolution === "string" && resolution ? resolution : "720p";
+      // ETAPA 7.2.1.1 — Kling Motion: contrato MODE→RESOLUTION→PREÇO→BILLING fechado.
+      // Fonte ÚNICA do modo = catálogo (`params.kling_mode`); default "pro" (o
+      // catálogo anuncia resolution 1080p). Doc kling-motion-control-api / Apiframe:
+      //   std = 720p ($0.065/s)  ·  pro = 1080p ($0.104/s ≈ 1.6× std).
+      // O vídeo é cobrado pela DURAÇÃO DO VÍDEO DE REFERÊNCIA (medida no servidor;
+      // "billed duration is measured from the reference clip"): ≥3s e ≤30s. No
+      // caminho de PRESET (sem vídeo) a dança do PiAPI dura 5s ("5-Second Dance").
+      let motionResKey = "";
+      if ((aiModel.params as VideoModelParams)?.task_type === "motion_control") {
+        const MOTION_MIN_SECONDS = 3; // provider rejeita <3s
+        const MOTION_MAX_SECONDS = 30; // orientation "video" ⇒ até 30s
+        const MOTION_PRESET_SECONDS = 5; // preset de dança PiAPI = 5s (documentado)
+        const kmode = (aiModel.params as VideoModelParams)?.kling_mode;
+        const motionMode = kmode === "std" ? "std" : "pro";
+        motionResKey = motionMode === "pro" ? "1080p" : "720p"; // modo define a resolução cobrada
+        const motionVideoUrl =
+          Array.isArray(reference_videos) &&
+          typeof reference_videos[0] === "string" &&
+          /^https?:\/\//i.test(reference_videos[0])
+            ? reference_videos[0]
+            : "";
+        if (motionVideoUrl) {
+          let motionSecs = 0;
+          try {
+            const vres = await fetch(motionVideoUrl);
+            if (vres.ok) {
+              const vbuf = Buffer.from(await vres.arrayBuffer());
+              const mm = await import("music-metadata");
+              const vmeta = await mm.parseBuffer(new Uint8Array(vbuf), {
+                mimeType: vres.headers.get("content-type") || undefined,
+              });
+              motionSecs = Number(vmeta.format?.duration) || 0;
+            }
+          } catch (e) {
+            auditLog("api.generate.video", "motion_video_medicao_falhou", requestId, {
+              error: e instanceof Error ? e.message : String(e),
+            });
+          }
+          // servidor tem prioridade; cliente (motion_seconds) é só fallback.
+          if (!(motionSecs > 0)) motionSecs = Number(motion_seconds) || 0;
+          if (!(motionSecs > 0)) {
+            // Sem duração confiável NÃO cobramos (billed ≠ executed) — bloqueia pré-débito.
+            auditLog("api.generate.video", "motion_video_sem_duracao_400", requestId, {});
+            return NextResponse.json(
+              { error: "Não foi possível medir a duração do vídeo de referência do Kling Motion." },
+              { status: 400 }
+            );
+          }
+          if (motionSecs < MOTION_MIN_SECONDS) {
+            auditLog("api.generate.video", "motion_video_curto_400", requestId, { motionSecs });
+            return NextResponse.json(
+              { error: "O vídeo de referência do Kling Motion deve ter pelo menos 3 segundos." },
+              { status: 400 }
+            );
+          }
+          dsafe = Math.min(Math.ceil(motionSecs), MOTION_MAX_SECONDS);
+        } else {
+          // Preset (sem vídeo de referência): comprimento fixo documentado.
+          dsafe = MOTION_PRESET_SECONDS;
+        }
+      }
+      const resKey = motionResKey || (typeof resolution === "string" && resolution ? resolution : "720p");
       let rate = Number(cpsMap[resKey] ?? cpsMap["720p"] ?? 0);
       // ETAPA 6 — Veo cobra MENOS sem áudio. Doc (veo3-api/veo31-api): áudio OFF é
       // metade do preço no tier quality (0.24→0.12) e ~2/3 no tier fast (0.09→0.06).
