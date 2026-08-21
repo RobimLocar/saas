@@ -556,6 +556,39 @@ const snap = (v: number, allowed: number[]) =>
   allowed.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a));
 
 /**
+ * ETAPA 2.1 Q3 — FONTE ÚNICA da duração de vídeo (segundos) que a PiAPI vai
+ * executar. Usada TANTO pelo adapter (buildVideoPayload → userDur) QUANTO pela
+ * cobrança (api/generate/video → dsafe), garantindo:
+ *   UI duration = billing duration = adapter duration = provider duration.
+ * Antes, a cobrança usava round(duration) e o adapter usava snap(duration),
+ * divergindo para valores fora do enum (ex.: Kling Turbo 7 → cobrava 7, executava 5).
+ * Regras espelham exatamente cada backend documentado na PiAPI.
+ */
+export function resolveVideoDurationSeconds(
+  params: VideoModelParams,
+  requested?: number
+): number {
+  const durMin = params.dur_min ?? 5;
+  const durMax = params.dur_max ?? 10;
+  const d = clampInt(requested ?? durMin, durMin, durMax);
+  const backend = params.backend || "kling";
+  const taskType = params.task_type || "";
+  const version = params.kling_version || "";
+  if (backend === "kling-turbo") return snap(d, [5, 10]);
+  if (backend === "veo3" || backend === "veo3.1") return snap(d, [4, 6, 8]);
+  if (backend === "Wan") return snap(d, [5, 10, 15]);
+  if (backend === "hailuo") return d <= 8 ? 6 : 10;
+  if (backend === "seedance") return d; // range 4..durMax (clamp já aplicado)
+  if (backend === "kling") {
+    // Kling 3.0 / Omni: range livre 3..15. Classic/avatar/motion: fora de escopo.
+    if (taskType === "omni_video_generation" || version === "3.0" || version === "3.0-turbo")
+      return clampInt(d, 3, 15);
+    return d;
+  }
+  return d;
+}
+
+/**
  * Monta o corpo COMPLETO da requisição PiAPI (POST /task) para um modelo de
  * vídeo, respeitando as regras de cada backend. Sempre inclui
  * config.service_mode = "public".
@@ -620,9 +653,8 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
   const aspect = aspectRatio || "16:9";
   // Kling só aceita 16:9 / 9:16 / 1:1 — fora disso a PiAPI rejeita.
   const klingAspect = ["16:9", "9:16", "1:1"].includes(aspect) ? aspect : "16:9";
-  const durMin = params.dur_min ?? 5;
-  const durMax = params.dur_max ?? 10;
-  const userDur = clampInt(args.duration ?? durMin, durMin, durMax);
+  // ETAPA 2.1 Q3 — duração vem da FONTE ÚNICA (mesma função usada na cobrança).
+  const userDur = resolveVideoDurationSeconds(params, args.duration);
 
   // ── KLING AVATAR ─────────────────────────────────────────────────────────────
   // task_type="avatar" → lip-sync; requer image_url (retrato) + local_dubbing_url (áudio TTS).
@@ -794,7 +826,7 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
     const hasImage = Boolean(imageUrl);
     const input: Record<string, unknown> = {
       prompt,
-      duration: snap(userDur, [5, 10, 15]),
+      duration: userDur,
       resolution,
       watermark: false,
       ...(hasImage ? {} : { aspect_ratio: aspect }), // aspect_ratio não é suportado em img2video
@@ -819,7 +851,7 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
   // ── HAILUO (MiniMax) ─────────────────────────────────────────────────────
   if (backend === "hailuo") {
     // Duração válida: 6 ou 10 — snap conforme o pedido do usuário.
-    const hailuoDur = userDur <= 8 ? 6 : 10;
+    const hailuoDur = userDur;
     // Hailuo usa resolução NUMÉRICA (1080 ou 768) por limitação do provider.
     // Respeita a escolha do usuário quando viável: 1080 só é aceito com
     // duration=6 (1080+10 não existe na PiAPI); caso contrário cai para 768.
@@ -844,7 +876,7 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
     let resolution = args.resolution || (quality === "high" ? "1080p" : "720p");
     if (resolution === "480p") resolution = "720p";
     // duração válida: [4, 6, 8] — snap ao mais próximo do pedido, formatado como "Xs"
-    const veoDur = snap(userDur, [4, 6, 8]);
+    const veoDur = userDur;
     const durStr = `${veoDur}s`; // STRING com sufixo "s"
     const input: Record<string, unknown> = {
       prompt,
@@ -877,8 +909,8 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
     // (args.duration → userDur, já limitado a [dur_min, dur_max] = [5, 10]),
     // NUNCA de `quality`. Antes, `quality === "low" ? 5 : 10` fazia o Flow
     // (que sempre envia quality "high") mandar 10s mesmo com 5s selecionado.
-    // A doc oficial (kling-turbo-api) suporta apenas 5s e 10s → snap ao enum.
-    const duration = snap(userDur, [5, 10]);
+    // A duração já vem resolvida pela FONTE ÚNICA (resolveVideoDurationSeconds).
+    const duration = userDur;
     const klingVersion = (params.kling_version || "2.5").replace("-turbo", "");
     const input: Record<string, unknown> = {
       prompt,
@@ -911,7 +943,7 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
     const input: Record<string, unknown> = {
       prompt,
       version: omniVersion,
-      duration: clampInt(userDur, 3, 15),
+      duration: userDur,
       resolution,
       aspect_ratio: klingAspect,
       // Kling Omni: a doc oficial (kling-3-omni-api) LISTA enable_audio como válido, mas a PiAPI retorna
@@ -949,7 +981,7 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
       prompt,
       version,
       mode,
-      duration: clampInt(userDur, 3, 15),
+      duration: userDur,
       aspect_ratio: klingAspect,
     };
     if (imageUrl) input.image_url = imageUrl;
