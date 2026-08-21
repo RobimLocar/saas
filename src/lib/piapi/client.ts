@@ -661,6 +661,15 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
   // mode: std = 720p/padrão, pro = melhor qualidade (usa quality do caller).
   // batch_size: 2 quando há Multiple Camera Angles (referenceImages.length > 1), senão 1.
   if (backend === "kling" && params.task_type === "avatar") {
+    // ETAPA 3.4 — Kling Avatar exige image_url (retrato) + local_dubbing_url (áudio).
+    // Guarda de defesa: nunca montar um payload inválido (a validação primária é
+    // na rota, antes do débito; aqui é a última barreira). Não altera billing/duração.
+    if (!args.dubbingAudioUrl) {
+      throw new Error("Kling Avatar requer um áudio de dublagem (local_dubbing_url).");
+    }
+    if (!imageUrl) {
+      throw new Error("Kling Avatar requer uma imagem de retrato (image_url).");
+    }
     return {
       model: "kling",
       task_type: "avatar",
