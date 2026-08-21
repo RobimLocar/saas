@@ -304,23 +304,33 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // ── GPT Image 2 (PiAPI, síncrono) — modelos premium (GPT Image 2,
-      // Nano Banana, Nano Banana Pro, Ideogram) e qualquer geração com
-      // quality "high" sem imagem de referência. Texto renderizado perfeito.
+      // ── GPT Image 2 (PiAPI, síncrono) — SOMENTE quando o modelo escolhido é
+      // premium (params.provider === "gpt-image"). ETAPA 1 P0 (contract integrity):
+      // a IDENTIDADE do modelo vem exclusivamente do model_uuid selecionado; nem
+      // `quality` nem o número de referências podem trocar QUAL modelo executa.
+      // Antes, `quality === "high"` sem referência e `refs.length >= 2` sequestravam
+      // gerações Flux para o GPT Image 2 — isso está proibido. Flux/Qwen/Gemini
+      // seguem seus próprios adapters abaixo.
       const isPremium =
         modelParams.provider === "gpt-image" ||
         modelParams.provider === "abacus"; // compat com mapeamento antigo
-      // Premium: usa GPT Image 2 sempre (suporta referência via campo "image").
-      // Não-premium com qualidade alta e sem referência: também usa GPT.
-      // Não-premium com referência: usa Flux img2img.
-      // Com referência(s), qualquer modelo premium (GPT Image/Ideogram) ou
-      // 2+ referências em qualquer modelo → EDIÇÃO multi-imagem do GPT Image 2
-      // (combina/troca pessoa+produto, igual concorrente). Sem referência e
-      // qualidade alta → GPT Image 2 texto->imagem.
-      const useGptEdits = refs.length >= 1 && (isPremium || refs.length >= 2);
-      const useGptSync =
-        useGptEdits || isPremium || (refs.length === 0 && qualityLevel === "high");
+      // GPT Image edits (multi-imagem) só para o próprio GPT Image; GPT sync só
+      // quando o modelo é premium. Nada aqui depende de `quality`.
+      const useGptEdits = refs.length >= 1 && isPremium;
+      const useGptSync = isPremium;
       if (useGptSync) {
+        // DEV log seguro (sem segredos): confirma que só modelo premium roda GPT.
+        console.log(
+          "[generate/image] MODEL_CONTRACT",
+          JSON.stringify({
+            requested_model_uuid: model_uuid,
+            requested_model_id: aiModel.model_id,
+            quality: qualityLevel,
+            refs: refs.length,
+            route: useGptEdits ? "gpt-image-2/edits" : "gpt-image-2/sync",
+            effective_provider_model: "gpt-image-2",
+          })
+        );
         const imageUrl = useGptEdits
           ? await generateImageGptEdits({
               prompt: promptEn,
@@ -362,19 +372,37 @@ export async function POST(req: NextRequest) {
       }
 
       // ── Provider PiAPI (Flux) ────────────────────────────────────────────
-      // Quality: low → flux1-schnell (rápido), medium/high → flux1-dev.
+      // ETAPA 1 P0 (contract integrity): o backend enviado ao provider vem do
+      // modelo selecionado (params.backend, senão o model_id) — NUNCA de `quality`.
+      // Antes, `quality === "high"` forçava qualquer Flux para flux1-dev, então
+      // "Flux Schnell" executava flux1-dev. Agora Flux Schnell → flux1-schnell,
+      // Flux Dev → flux1-dev. Obs.: "Flux 1.1 Pro" tem model_id `Qubico/flux1-pro`
+      // que a PiAPI NÃO oferece (doc /flux-api/text-to-image lista apenas
+      // flux1-dev, flux1-schnell, flux1-dev-advanced); o catálogo já aponta seu
+      // backend para `Qubico/flux1-dev`, então roda um Flux real (ver relatório).
       const configuredBackend = modelParams.backend || aiModel.model_id;
       const isFluxBackend = configuredBackend.startsWith("Qubico/flux");
-      const effectiveBackend = isFluxBackend
-        ? qualityLevel === "low"
-          ? "Qubico/flux1-schnell"
-          : "Qubico/flux1-dev"
-        : configuredBackend;
+      const effectiveBackend = configuredBackend;
 
       // Reforço tipográfico: Flux renderiza texto mal — reforçar quando o
       // prompt pede texto (é o que dá o acabamento "alto nível")
       const effectivePrompt =
         isFluxBackend && promptWantsText(promptEn) ? promptEn + TYPO_BOOST : promptEn;
+
+      // DEV log seguro (sem segredos): REQUESTED (modelo selecionado) vs
+      // EFFECTIVE (modelo enviado ao provider). Ajuda a validar no deploy que
+      // Flux Schnell → flux1-schnell etc. (Etapa 1 P0 — contract integrity.)
+      console.log(
+        "[generate/image] MODEL_CONTRACT",
+        JSON.stringify({
+          requested_model_uuid: model_uuid,
+          requested_model_id: aiModel.model_id,
+          quality: qualityLevel,
+          refs: refs.length,
+          route: "flux",
+          effective_provider_model: effectiveBackend,
+        })
+      );
 
       const task = await generateImage({
         model: effectiveBackend,
