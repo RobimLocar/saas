@@ -693,10 +693,14 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
     const motionVideo = referenceVideos && referenceVideos[0];
     const mcVersion =
       params.kling_version && params.kling_version.startsWith("3") ? "3.0" : "2.6";
+    // ETAPA 7.2.1.1 — modo vem do CATÁLOGO (fonte única `kling_mode`), não da
+    // quality. Assim o modo EXECUTADO = o modo COBRADO (a rota cobra a cps do
+    // tier correspondente). Default "pro" (o catálogo anuncia 1080p).
+    const motionMode = params.kling_mode === "std" ? "std" : "pro";
     const input: Record<string, unknown> = {
       image_url: motionImage,
       version: mcVersion,
-      mode: quality === "high" ? "pro" : "std",
+      mode: motionMode,
       motion_direction: "video",
       keep_original_sound: true,
     };
