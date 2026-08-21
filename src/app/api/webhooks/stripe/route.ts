@@ -27,6 +27,24 @@ export async function POST(req: NextRequest) {
 
   const supabase = getServiceClient();
 
+  // ETAPA 4.1 — IDEMPOTÊNCIA: o Stripe entrega eventos at-least-once (retries).
+  // Registramos o event.id na tabela `stripe_events` (PK). Se já existir, é uma
+  // reentrega → respondemos 200 sem reprocessar (evita crédito/saldo duplicado).
+  {
+    const { error: dupErr } = await supabase
+      .from("stripe_events")
+      .insert({ event_id: event.id });
+    if (dupErr) {
+      if ((dupErr as { code?: string }).code === "23505") {
+        // unique_violation → evento já processado antes.
+        return NextResponse.json({ received: true, duplicate: true });
+      }
+      // Erro inesperado (ex.: tabela ausente) → loga e PROSSEGUE (fail-open, para
+      // não perder um crédito legítimo; a proteção volta assim que a tabela existir).
+      console.warn("[stripe-webhook] stripe_events insert falhou:", dupErr.message);
+    }
+  }
+
   switch (event.type) {
     // ─── Checkout completo (assinatura ou top-up) ────────────
     case "checkout.session.completed": {
