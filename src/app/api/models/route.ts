@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { effectiveCost } from "@/lib/credits";
+import { PLAN_COST_MULTIPLIER } from "@/lib/constants";
 
 // Backends PiAPI realmente integrados e funcionando hoje.
 // Cada modelo do catálogo aponta para um deles via params.backend
@@ -87,6 +88,21 @@ export async function GET(req: NextRequest) {
               )
             : null,
         thumbnail_url: m.thumbnail_url,
+        // ETAPA 2.1 Q2 — dados p/ o card de vídeo exibir o PREÇO REAL (=cobrança).
+        // credit_per_second_raw: cps SEM ajuste de plano (o `credit_per_second`
+        // acima é ajustado por segundo e é consumido pela página UGC — não mexer).
+        // plan_multiplier: o multiplicador do plano do usuário. A UI computa
+        // ceil(ceil(rawCps[res]×round(dur)) × plan_multiplier) — mesma fórmula do
+        // débito em api/generate/video.
+        credit_per_second_raw:
+          p.credit_per_second && typeof p.credit_per_second === "object"
+            ? Object.fromEntries(
+                Object.entries(p.credit_per_second as Record<string, unknown>).map(
+                  ([k, v]) => [k, Number(v) || 0]
+                )
+              )
+            : null,
+        plan_multiplier: PLAN_COST_MULTIPLIER[userPlan] ?? 1,
         // Disponível se é modelo premium (provider gpt-image/abacus) ou
         // se o backend efetivo (params.backend ?? model_id) está integrado
         available:
