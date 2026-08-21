@@ -48,6 +48,9 @@ export async function POST(req: NextRequest) {
       shots,
       with_audio,
       quality,
+      // ETAPA 3.4 — áudio de dublagem do Kling Avatar (URL pública já hospedada
+      // pelo /api/upload). Formato único do contrato: `dubbing_audio_url`.
+      dubbing_audio_url,
     } = body;
     const qualityLevel: "low" | "medium" | "high" =
       quality === "low" || quality === "medium" ? quality : "high";
@@ -246,6 +249,37 @@ export async function POST(req: NextRequest) {
     // Params de roteamento do modelo (backend/task_type/output_key/dur)
     const modelParams = (aiModel.params as VideoModelParams) || {};
 
+    // ETAPA 3.4 — Kling Avatar (task_type "avatar") EXIGE áudio de dublagem +
+    // imagem de retrato. Validar ANTES de reservar/debitar crédito e ANTES de
+    // chamar a PiAPI (senão o usuário é cobrado por uma task que falharia).
+    const dubbingUrl =
+      typeof dubbing_audio_url === "string" && /^https?:\/\//i.test(dubbing_audio_url)
+        ? dubbing_audio_url
+        : "";
+    if (modelParams.task_type === "avatar") {
+      const portrait =
+        typeof start_image_url === "string" && start_image_url
+          ? start_image_url
+          : Array.isArray(reference_images) && reference_images[0]
+          ? reference_images[0]
+          : "";
+      if (!dubbingUrl) {
+        auditLog("api.generate.video", "avatar_sem_audio_400", requestId, {
+          model: aiModel.name,
+        }, Date.now() - t0);
+        return NextResponse.json(
+          { error: "Kling Avatar requer um áudio de dublagem. Envie/conecte um áudio antes de gerar." },
+          { status: 400 }
+        );
+      }
+      if (!portrait) {
+        return NextResponse.json(
+          { error: "Kling Avatar requer uma imagem de retrato (frame inicial)." },
+          { status: 400 }
+        );
+      }
+    }
+
     // BLOCO 3 (§3.2): validações LOCAIS antes do débito — rejeita cedo (400)
     // requisições comprovadamente inválidas, sem debitar nem criar task paga.
     const validation = await validateVideoRequest(
@@ -361,6 +395,8 @@ export async function POST(req: NextRequest) {
         aspectRatio: aspect_ratio,
         imageUrl: start_image_url,
         endImageUrl: end_image_url,
+        // ETAPA 3.4 — áudio de dublagem do Kling Avatar → local_dubbing_url.
+        dubbingAudioUrl: dubbingUrl || undefined,
         referenceImages: Array.isArray(reference_images) ? reference_images : undefined,
         referenceVideos: Array.isArray(reference_videos) ? reference_videos : undefined,
         referenceAudios: Array.isArray(reference_audios) ? reference_audios : undefined,
