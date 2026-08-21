@@ -39,13 +39,22 @@ export async function POST(req: NextRequest) {
 
       if (type === "subscription") {
         const plan = session.metadata?.plan as PlanKey;
-        // Atualizar plano e créditos
+        // ETAPA 2.1 W5 — PRESERVAR créditos existentes. Antes fazia
+        // `credits_balance = credits` (ABSOLUTO), apagando saldo/top-ups/welcome
+        // do usuário ao assinar. Agora SOMA os créditos do plano ao saldo atual.
+        // Ex.: saldo 1000 + plano 500 → 1500 (não 500).
+        const { data: subProfile } = await supabase
+          .from("profiles")
+          .select("credits_balance")
+          .eq("id", userId)
+          .single();
+        const prevBalance = (subProfile?.credits_balance as number) || 0;
         await supabase
           .from("profiles")
           .update({
             plan: plan || "starter",
             plan_credits_monthly: credits,
-            credits_balance: credits,
+            credits_balance: prevBalance + credits,
             stripe_customer_id: session.customer as string,
           })
           .eq("id", userId);
@@ -108,10 +117,15 @@ export async function POST(req: NextRequest) {
         const plan = profile.plan as PlanKey;
         const planData = PLANS[plan];
         if (planData) {
-          // Rollover parcial
-          const rolloverCap = plan === "agency" ? 1000 : plan === "pro" ? 200 : 0;
-          const rollover = Math.min(profile.credits_balance, rolloverCap);
-          const newBalance = planData.credits + rollover;
+          // ETAPA 2.1 W5 — na renovação, PRESERVAR o saldo existente e SOMAR o
+          // grant mensal do plano. Antes: `planData.credits + min(saldo, cap)`,
+          // que apagava top-ups/welcome acima do cap (agency 1000 / pro 200 /
+          // starter 0) — contradizendo "top-ups não expiram". Como o schema tem
+          // só um `credits_balance` (sem bucket separado de top-up), o cap
+          // numérico foi removido para NÃO apagar créditos legítimos. Um cap
+          // preciso por bucket exige coluna `topup_credits` (proposto, fora de
+          // escopo). Ver relatório §2.
+          const newBalance = profile.credits_balance + planData.credits;
 
           await supabase
             .from("profiles")
