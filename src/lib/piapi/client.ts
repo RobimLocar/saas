@@ -539,6 +539,10 @@ export interface BuildVideoArgs {
   referenceImages?: string[];
   referenceVideos?: string[];
   referenceAudios?: string[];
+  /** ETAPA 7.3.2 — Veo 3.1: reference_image_urls (1-3, só 16:9+8s). Slot de UI dedicado. */
+  veoReferenceImages?: string[];
+  /** ETAPA 7.3.2 — Veo seed (integer). Só text-to-video (schema não tem seed no i2v). */
+  seed?: number;
   shots?: Array<{ prompt: string; duration: number }>;
   /** preset de movimento do Kling Motion Control (quando não há vídeo de referência). */
   presetMotion?: string;
@@ -637,6 +641,8 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
     referenceImages,
     referenceVideos,
     referenceAudios,
+    veoReferenceImages,
+    seed,
     negativePrompt,
   } = args;
   const backend = params.backend || "kling";
@@ -895,15 +901,33 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
       prompt,
       duration: durStr,
       resolution,
-      // Veo3 aceita mais que 16:9/9:16 (doc ecoa 1:1). Whitelist conservadora;
-      // confirme a lista completa numa geração real antes de ampliar.
-      aspect_ratio: ["16:9", "9:16", "1:1"].includes(aspect) ? aspect : "16:9",
+      // ETAPA 7.3.1 — schema oficial PiAPI (veo3/veo31): aspect_ratio ∈ {16:9, 9:16}
+      // (o 1:1 NÃO existe no enum). Fora disso → 16:9 (default do provider).
+      aspect_ratio: ["16:9", "9:16"].includes(aspect) ? aspect : "16:9",
       generate_audio: args.withAudio ?? Boolean(params.has_audio),
     };
     if (negativePrompt) input.negative_prompt = negativePrompt;
     if (imageUrl) input.image_url = imageUrl;
-    // Veo 3/3.1 suporta end frame via last_frame (doc PiAPI, 16/08/2026).
-    if (endImageUrl) input.last_frame = endImageUrl;
+    // ETAPA 7.3.2 — reference_image_urls: schema oficial só no veo3.1 image-to-video,
+    // 1-3 imagens, e SOMENTE com aspect_ratio "16:9" + duração 8s. As refs IGNORAM o
+    // tail image (doc) → quando ativas, não enviamos tail_image_url.
+    const veoRefs = (veoReferenceImages || [])
+      .filter((u) => typeof u === "string" && /^https?:\/\//i.test(u))
+      .slice(0, 3);
+    const veoRefsActive =
+      backend === "veo3.1" && !!imageUrl && veoRefs.length >= 1 &&
+      input.aspect_ratio === "16:9" && veoDur === 8;
+    if (veoRefsActive) {
+      input.reference_image_urls = veoRefs;
+    } else if (endImageUrl && backend === "veo3.1") {
+      // ETAPA 7.3.1 — end frame: veo3.1 usa `tail_image_url`. veo3 não possui.
+      input.tail_image_url = endImageUrl;
+    }
+    // ETAPA 7.3.2 — seed: schema oficial só existe em TEXT-to-video (veo3 e veo3.1).
+    // Não há seed no image-to-video → só enviamos quando NÃO há imagem inicial.
+    if (typeof seed === "number" && Number.isFinite(seed) && !imageUrl) {
+      input.seed = Math.trunc(seed);
+    }
     const defaultTask = backend === "veo3" ? "veo3-video" : "veo3.1-video";
     return {
       model: backend,
