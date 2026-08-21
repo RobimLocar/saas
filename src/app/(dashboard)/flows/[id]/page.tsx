@@ -154,6 +154,23 @@ function NodeShell({ id, type, title, status, selected, runnable, width = 288, s
   );
 }
 async function uploadFile(f: File): Promise<string | null> { try { const fd = new FormData(); fd.append("file", f); const r = await fetch("/api/upload", { method: "POST", body: fd }); const d = await r.json().catch(() => null); return r.ok && d?.url ? d.url : null; } catch { return null; } }
+// ETAPA 4.1 — mede a duração (segundos) de um áudio pela URL, para cobrar o Kling
+// Avatar pelo comprimento REAL (o provider define a duração pelo áudio). Best-effort:
+// retorna 0 se não conseguir ler os metadados (a rota tem fallback).
+function getAudioDuration(url: string): Promise<number> {
+  return new Promise((resolve) => {
+    try {
+      const a = new Audio();
+      a.preload = "metadata";
+      let done = false;
+      const finish = (v: number) => { if (done) return; done = true; resolve(Number.isFinite(v) && v > 0 ? v : 0); };
+      a.onloadedmetadata = () => finish(a.duration);
+      a.onerror = () => finish(0);
+      a.src = url;
+      setTimeout(() => finish(0), 8000);
+    } catch { resolve(0); }
+  });
+}
 function MultiUpload({ id, refs }: { id: string; refs: string[] }) {
   const rf = useReactFlow(); const [busy, setBusy] = useState(false);
   async function go(fl: FileList | null) { if (!fl?.length) return; setBusy(true); const got: string[] = []; for (const f of Array.from(fl).slice(0, 8)) { const u = await uploadFile(f); if (u) got.push(u); } rf.updateNodeData(id, { refs: [...refs, ...got].slice(0, 8) }); setBusy(false); }
@@ -863,7 +880,7 @@ function Editor() {
           const up = isImg ? (Array.isArray(d.refs) ? (d.refs as string[]) : []) : [d.startFrame, d.endFrame].filter((x): x is string => typeof x === "string" && x.length > 0);
           const all = [...refs, ...up];
           const body: Record<string, unknown> = { prompt: fp, model_uuid: d.model, aspect_ratio: d.aspectRatio, quality: "high", resolution: d.resolution || "720p" };
-          if (all.length) { body.reference_images = all; body.reference_image_url = all[0]; } if (!isImg) { body.duration = d.duration; const sf = (d.startFrame as string) || refs[0] || ""; if (sf) body.start_image_url = sf; if (d.endFrame) body.end_image_url = d.endFrame as string; body.with_audio = d.audioOn !== false; const dubA = dubbingAudio || (d.dubbingAudio as string) || ""; if (dubA) body.dubbing_audio_url = dubA; }
+          if (all.length) { body.reference_images = all; body.reference_image_url = all[0]; } if (!isImg) { body.duration = d.duration; const sf = (d.startFrame as string) || refs[0] || ""; if (sf) body.start_image_url = sf; if (d.endFrame) body.end_image_url = d.endFrame as string; body.with_audio = d.audioOn !== false; const dubA = dubbingAudio || (d.dubbingAudio as string) || ""; if (dubA) { body.dubbing_audio_url = dubA; const secs = await getAudioDuration(dubA); if (secs > 0) body.dubbing_seconds = Math.ceil(secs); } }
           const r = await fetch(`/api/generate/${isImg ? "image" : "video"}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
           const dt = await r.json().catch(() => null); if (!r.ok) { setNS(id, { __status: "failed" }); throw new Error(dt?.error || "Falha ao iniciar."); }
           if (dt?.generation_id) { setNS(id, { __gen: String(dt.generation_id) }); runGenRef.current[id] = String(dt.generation_id); } let u = dt?.result_url as string | undefined; if (dt?.status !== "completed" || !u) u = await pollGen(String(dt.generation_id)); out.set(id, u); if (applyGuard(id, String(dt?.generation_id || ""))) setNS(id, { __status: "done", __result: u, __resultMeta: { modelName: (d.modelName as string) || (d.model as string), aspectRatio: d.aspectRatio, resolution: d.resolution, duration: (node.type as string) === "videoGen" ? d.duration : undefined } });
