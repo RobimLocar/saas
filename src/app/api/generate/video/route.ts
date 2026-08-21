@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { buildVideoPayload, submitVideoTask } from "@/lib/piapi/client";
+import { buildVideoPayload, submitVideoTask, resolveVideoDurationSeconds } from "@/lib/piapi/client";
 import type { VideoModelParams } from "@/lib/piapi/client";
 import { planAllows } from "@/lib/plans";
 import { debitCredits, effectiveCost, refundCredits } from "@/lib/credits";
@@ -166,8 +166,14 @@ export async function POST(req: NextRequest) {
     const cpsMap = videoCostParams.credit_per_second as Record<string, number> | undefined;
     let baseVideoCost = aiModel.credit_cost;
     if (cpsMap && typeof cpsMap === "object") {
+      // ETAPA 2.1 Q3 — cobra pela MESMA duração que o adapter vai executar
+      // (fonte única resolveVideoDurationSeconds), não por round(duration).
+      // Elimina divergência cobrança×execução (ex.: 7s → executa 5s → cobra 5s).
       const durNum = Number(duration);
-      const dsafe = Number.isFinite(durNum) && durNum > 0 ? Math.round(durNum) : 5;
+      const dsafe = resolveVideoDurationSeconds(
+        aiModel.params as VideoModelParams,
+        Number.isFinite(durNum) && durNum > 0 ? durNum : undefined
+      );
       const resKey = typeof resolution === "string" && resolution ? resolution : "720p";
       const rate = Number(cpsMap[resKey] ?? cpsMap["720p"] ?? 0);
       if (rate > 0) baseVideoCost = Math.ceil(rate * dsafe);
