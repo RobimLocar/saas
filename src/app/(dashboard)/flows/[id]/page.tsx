@@ -60,7 +60,20 @@ const FLOW_CSS = `
 `;
 
 type ND = Record<string, unknown>;
-interface ModelOpt { id: string; name: string; cost: number; modelId?: string; backend?: string; durMin?: number; durMax?: number; resolution?: string; hasAudio?: boolean }
+interface ModelOpt { id: string; name: string; cost: number; modelId?: string; backend?: string; durMin?: number; durMax?: number; resolution?: string; hasAudio?: boolean; cps?: Record<string, number>; planMult?: number }
+// ETAPA 2.1 Q2 — custo REAL de uma geração de vídeo (= o que o backend debita).
+// cps (raw) presente → ceil(ceil(rawCps[res]×round(dur)) × planMult); igual a
+// api/generate/video (effectiveCost(ceil(cps×dsafe))). Sem cps → custo flat (já
+// ajustado por plano em /api/models). Retorna créditos inteiros.
+function videoGenCredits(m: ModelOpt | undefined, resolution: string, duration: number): number {
+  if (!m) return 0;
+  if (m.cps && typeof m.cps === "object") {
+    const rate = m.cps[resolution] ?? m.cps["720p"] ?? 0;
+    const secs = Math.max(1, Math.round(duration || 0));
+    return Math.ceil(Math.ceil(rate * secs) * (m.planMult ?? 1));
+  }
+  return m.cost || 0;
+}
 
 /* ── NODE REGISTRY (metadata única: cor, ícone, descrição, exemplos) ─────── */
 interface RegEntry { type: string; label: string; Icon: typeof TypeIcon; accent: string; group: "gen" | "util" | "hidden"; description: string; examples: string[]; }
@@ -336,7 +349,7 @@ const KV_ASPECTS = ["16:9", "9:16", "1:1"];
 const VCAPS: Record<string, VCaps> = {
   "kling-3.0": { endFrame: true, audio: true, multiShot: true, omni: false, aspects: KV_ASPECTS, resolutions: ["720p", "1080p"], duration: { type: "range", min: 3, max: 15 } },
   "kling-2.5-turbo": { endFrame: true, audio: false, multiShot: false, omni: false, aspects: KV_ASPECTS, resolutions: ["720p", "1080p"], duration: { type: "enum", values: [5, 10] } },
-  "kling-omni": { endFrame: true, audio: true, multiShot: false, omni: true, aspects: KV_ASPECTS, resolutions: ["720p", "1080p"], duration: { type: "range", min: 3, max: 15 } },
+  "kling-omni": { endFrame: true, audio: false, multiShot: false, omni: true, aspects: KV_ASPECTS, resolutions: ["720p", "1080p"], duration: { type: "range", min: 3, max: 15 } },
   "kling-3.0-motion": { endFrame: false, audio: false, multiShot: false, omni: false, aspects: KV_ASPECTS, resolutions: ["1080p"], duration: { type: "range", min: 3, max: 30 } },
   "kling-avatar": { endFrame: false, audio: false, multiShot: false, omni: false, aspects: [], resolutions: ["720p"], duration: { type: "enum", values: [4, 8] } },
   "seedance-2.0": { endFrame: true, audio: false, multiShot: false, omni: true, aspects: SEEDANCE_ASPECTS, resolutions: ["480p", "720p", "1080p"], duration: { type: "range", min: 4, max: 15 } },
@@ -448,6 +461,8 @@ function VideoGenNode({ id, data, selected }: NodeProps) {
     <div className={`mb-2 ${caps.endFrame ? "grid grid-cols-2 gap-2" : ""}`}>{startBlock}{caps.endFrame ? <div><span className="mb-1 block text-[9px] uppercase tracking-wide text-[color:var(--fx-subtle)]">End Frame</span><FrameUpload id={id} field="endFrame" url={(d.endFrame as string) || ""} /></div> : null}</div>
     <div className={`mb-2 ${caps.aspects.length ? "grid grid-cols-2 gap-2" : ""}`}>{caps.aspects.length ? <FDrop value={(d.aspectRatio as string) || caps.aspects[0]} accent={ACCENT.videoGen} options={caps.aspects.map((a) => ({ value: a, label: a }))} onChange={(v) => rf.updateNodeData(id, { aspectRatio: v })} /> : null}<FDrop value={resolution} accent={ACCENT.videoGen} options={caps.resolutions.map((r) => ({ value: r, label: r }))} onChange={setRes} /></div>
     <div className="mb-2">{caps.duration.type === "enum" ? (<div className="flex gap-1.5">{caps.duration.values.map((v) => <button key={v} type="button" onClick={() => rf.updateNodeData(id, { duration: v })} className="nodrag h-[30px] flex-1 rounded-[8px] border text-[11px] font-medium transition" style={dur === v ? { background: ACCENT.videoGen, borderColor: ACCENT.videoGen, color: "#fff" } : { background: "var(--fx-ctrl)", borderColor: "var(--fx-border)", color: "var(--fx-muted)" }}>{v}s</button>)}</div>) : (<div className="flex items-center gap-2"><input type="range" min={caps.duration.min} max={caps.duration.max} value={dur} onChange={(e) => rf.updateNodeData(id, { duration: Number(e.target.value) })} className="nodrag flex-1" /><span className="w-8 text-right text-[10px] text-[color:var(--fx-muted)]">{dur}s</span></div>)}</div>
+    {/* ETAPA 2.1 Q2 — custo REAL (=débito): cps×duração×plano. Antes o usuário não via o preço por config. */}
+    {model ? <div className="mb-2 flex items-center justify-between text-[10px] text-[color:var(--fx-muted)]"><span>Custo estimado</span><span className="flex items-center gap-1 font-medium text-[#FBBF24]"><Zap className="h-3 w-3" fill="currentColor" />{videoGenCredits(model, resolution, dur)}</span></div> : null}
     {caps.audio ? <div className="flex gap-2"><FSwitch label="Audio" on={audioOn} onToggle={() => rf.updateNodeData(id, { audioOn: !audioOn })} /></div> : null}
     {caps.multiShot && MULTISHOT_UI_ENABLED ? <div className="mt-2 flex gap-2"><FSwitch label="Multi-shot" on={Boolean(d.multiShot)} onToggle={() => rf.updateNodeData(id, { multiShot: !d.multiShot })} /></div> : null}
     {promptOpen && <PromptModal value={(d.prompt as string) || ""} onChange={(v) => rf.updateNodeData(id, { prompt: v })} onClose={() => setPromptOpen(false)} />}
@@ -741,7 +756,7 @@ function Editor() {
   const onNodesChange = useCallback((c: Parameters<typeof onNodesChangeRaw>[0]) => { onNodesChangeRaw(c); markDirty(); }, [onNodesChangeRaw, markDirty]);
   const onEdgesChange = useCallback((c: Parameters<typeof onEdgesChangeRaw>[0]) => { onEdgesChangeRaw(c); markDirty(); }, [onEdgesChangeRaw, markDirty]);
 
-  useEffect(() => { (async () => { const load = async (t: string) => { const r = await fetch(`/api/models?type=${t}`, { cache: "no-store" }).then((x) => x.json()).catch(() => null); return Array.isArray(r?.models) ? r.models.map((m: { id: string; name: string; model_id?: string; credit_cost?: number; backend?: string; dur_min?: number; dur_max?: number; resolution?: string; has_audio?: boolean }) => ({ id: m.id, name: m.name, modelId: m.model_id || undefined, cost: typeof m.credit_cost === "number" ? m.credit_cost : 0, backend: m.backend || undefined, durMin: typeof m.dur_min === "number" ? m.dur_min : undefined, durMax: typeof m.dur_max === "number" ? m.dur_max : undefined, resolution: m.resolution || undefined, hasAudio: Boolean(m.has_audio) })) : []; }; const [im, vm, am] = await Promise.all([load("image"), load("video"), load("audio")]); setImageModels(im); setVideoModels(vm); setAudioModels(am); try { const me = await fetch("/api/me", { cache: "no-store" }).then((r) => r.json()).catch(() => null); if (typeof me?.credits === "number") setCredits(me.credits); } catch { /* noop */ } })(); }, []);
+  useEffect(() => { (async () => { const load = async (t: string) => { const r = await fetch(`/api/models?type=${t}`, { cache: "no-store" }).then((x) => x.json()).catch(() => null); return Array.isArray(r?.models) ? r.models.map((m: { id: string; name: string; model_id?: string; credit_cost?: number; backend?: string; dur_min?: number; dur_max?: number; resolution?: string; has_audio?: boolean; credit_per_second_raw?: Record<string, number> | null; plan_multiplier?: number }) => ({ id: m.id, name: m.name, modelId: m.model_id || undefined, cost: typeof m.credit_cost === "number" ? m.credit_cost : 0, backend: m.backend || undefined, durMin: typeof m.dur_min === "number" ? m.dur_min : undefined, durMax: typeof m.dur_max === "number" ? m.dur_max : undefined, resolution: m.resolution || undefined, hasAudio: Boolean(m.has_audio), cps: m.credit_per_second_raw || undefined, planMult: typeof m.plan_multiplier === "number" ? m.plan_multiplier : 1 })) : []; }; const [im, vm, am] = await Promise.all([load("image"), load("video"), load("audio")]); setImageModels(im); setVideoModels(vm); setAudioModels(am); try { const me = await fetch("/api/me", { cache: "no-store" }).then((r) => r.json()).catch(() => null); if (typeof me?.credits === "number") setCredits(me.credits); } catch { /* noop */ } })(); }, []);
 
   useEffect(() => { let alive = true; (async () => { setLoading(true); try { const res = await fetch(`/api/flows/${flowId}`, { cache: "no-store" }); const data = await res.json().catch(() => null); if (!res.ok) throw new Error(data?.error || "Falha ao carregar."); if (!alive) return; setName(data.flow.name || "Novo Flow"); const def = data.flow.definition || {}; setNodes(Array.isArray(def.nodes) ? def.nodes : []); const defNodes = (Array.isArray(def.nodes) ? def.nodes : []) as Node[]; const ntype = new Map(defNodes.map((n) => [n.id, n.type])); const rawEdges = (Array.isArray(def.edges) ? def.edges : []) as Edge[]; const normEdges = rawEdges.map((e) => { const st = ntype.get(e.source) || ""; const tt = ntype.get(e.target) || ""; if (tt === "videoGen" && ["imageGen", "imageAsset", "refImage", "removeBg", "upscale", "storyboard"].includes(st) && e.targetHandle !== "reference") return { ...e, targetHandle: "reference" }; return e; }); setEdges(normEdges); setSaveState("saved"); setTimeout(() => { defNodes.forEach((n) => { const dd = (n.data || {}) as ND; if (dd.__gen && !dd.__result) void resumePoll(n.id, String(dd.__gen)); }); }, 0); } catch (err) { toast.error(err instanceof Error ? err.message : "Erro ao carregar."); } finally { if (alive) setLoading(false); } })(); return () => { alive = false; }; }, [flowId, setNodes, setEdges]);
 
