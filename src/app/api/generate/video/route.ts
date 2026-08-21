@@ -51,6 +51,9 @@ export async function POST(req: NextRequest) {
       // ETAPA 3.4 — áudio de dublagem do Kling Avatar (URL pública já hospedada
       // pelo /api/upload). Formato único do contrato: `dubbing_audio_url`.
       dubbing_audio_url,
+      // ETAPA 4.1 — comprimento REAL do áudio (segundos), medido no cliente.
+      // Usado APENAS para cobrar o Kling Avatar (cujo vídeo dura o tamanho do áudio).
+      dubbing_seconds,
     } = body;
     const qualityLevel: "low" | "medium" | "high" =
       quality === "low" || quality === "medium" ? quality : "high";
@@ -173,10 +176,22 @@ export async function POST(req: NextRequest) {
       // (fonte única resolveVideoDurationSeconds), não por round(duration).
       // Elimina divergência cobrança×execução (ex.: 7s → executa 5s → cobra 5s).
       const durNum = Number(duration);
-      const dsafe = resolveVideoDurationSeconds(
+      let dsafe = resolveVideoDurationSeconds(
         aiModel.params as VideoModelParams,
         Number.isFinite(durNum) && durNum > 0 ? durNum : undefined
       );
+      // ETAPA 4.1 — Kling Avatar: o vídeo dura o COMPRIMENTO DO ÁUDIO (o provider
+      // ignora a duração da UI). Cobrar pelos segundos REAIS do áudio (medidos no
+      // cliente → dubbing_seconds), com piso/teto de segurança contra abuso.
+      // NÃO altera a fórmula (segue cps × segundos × plano) nem outros modelos.
+      if ((aiModel.params as VideoModelParams)?.task_type === "avatar") {
+        const AVATAR_MIN_SECONDS = 1;
+        const AVATAR_MAX_SECONDS = 120; // teto defensivo (bilhetagem)
+        const secs = Number(dubbing_seconds);
+        if (Number.isFinite(secs) && secs > 0) {
+          dsafe = Math.min(Math.max(Math.ceil(secs), AVATAR_MIN_SECONDS), AVATAR_MAX_SECONDS);
+        }
+      }
       const resKey = typeof resolution === "string" && resolution ? resolution : "720p";
       const rate = Number(cpsMap[resKey] ?? cpsMap["720p"] ?? 0);
       if (rate > 0) baseVideoCost = Math.ceil(rate * dsafe);
