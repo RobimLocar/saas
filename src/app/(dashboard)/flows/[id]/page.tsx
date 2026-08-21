@@ -342,7 +342,7 @@ function ImageGenNode({ id, data, selected }: NodeProps) {
 }
 
 type VDur = { type: "range"; min: number; max: number } | { type: "enum"; values: number[] };
-interface VCaps { endFrame: boolean; audio: boolean; multiShot: boolean; omni: boolean; aspects: string[]; resolutions: string[]; duration: VDur; rule1080Dur6?: boolean; }
+interface VCaps { endFrame: boolean; audio: boolean; multiShot: boolean; omni: boolean; aspects: string[]; resolutions: string[]; duration: VDur; rule1080Dur6?: boolean; avatarAudio?: boolean; }
 // Mapa explícito por model_id (doc oficial PiAPI, 16/08/2026). Fonte de verdade da UI+normalização.
 const SEEDANCE_ASPECTS = ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"];
 const KV_ASPECTS = ["16:9", "9:16", "1:1"];
@@ -351,7 +351,7 @@ const VCAPS: Record<string, VCaps> = {
   "kling-2.5-turbo": { endFrame: true, audio: false, multiShot: false, omni: false, aspects: KV_ASPECTS, resolutions: ["720p", "1080p"], duration: { type: "enum", values: [5, 10] } },
   "kling-omni": { endFrame: true, audio: false, multiShot: false, omni: true, aspects: KV_ASPECTS, resolutions: ["720p", "1080p"], duration: { type: "range", min: 3, max: 15 } },
   "kling-3.0-motion": { endFrame: false, audio: false, multiShot: false, omni: false, aspects: KV_ASPECTS, resolutions: ["1080p"], duration: { type: "range", min: 3, max: 30 } },
-  "kling-avatar": { endFrame: false, audio: false, multiShot: false, omni: false, aspects: [], resolutions: ["720p"], duration: { type: "enum", values: [4, 8] } },
+  "kling-avatar": { endFrame: false, audio: false, multiShot: false, omni: false, aspects: [], resolutions: ["720p"], duration: { type: "enum", values: [4, 8] }, avatarAudio: true },
   "seedance-2.0": { endFrame: true, audio: false, multiShot: false, omni: true, aspects: SEEDANCE_ASPECTS, resolutions: ["480p", "720p", "1080p"], duration: { type: "range", min: 4, max: 15 } },
   "seedance-2.0-less-restriction": { endFrame: true, audio: false, multiShot: false, omni: true, aspects: SEEDANCE_ASPECTS, resolutions: ["480p", "720p", "1080p"], duration: { type: "range", min: 4, max: 15 } },
   "seedance-2.0-fast": { endFrame: true, audio: false, multiShot: false, omni: true, aspects: SEEDANCE_ASPECTS, resolutions: ["480p", "720p"], duration: { type: "range", min: 4, max: 15 } },
@@ -399,6 +399,9 @@ function VideoGenNode({ id, data, selected }: NodeProps) {
   const [promptOpen, setPromptOpen] = useState(false);
   const packed = useStore((s) => { const e = s.edges.find((ed) => ed.target === id && (ed.targetHandle === "reference" || !ed.targetHandle)); if (!e) return "0|0|"; const sd = (s.nodeLookup.get(e.source)?.data || {}) as ND; const u = (sd.__result as string) || (sd.url as string) || (sd.heldImage as string) || ""; return "1|" + (sd.__status === "running" ? "1" : "0") + "|" + (/^https?:\/\//i.test(u) ? u : ""); });
   const parts = packed.split("|"); const hasEdge = parts[0] === "1"; const srcRunning = parts[1] === "1"; const connImg = parts.slice(2).join("|");
+  // ETAPA 3.4 — áudio de dublagem (Kling Avatar): conectado (AudioGenerator) ou upload.
+  const connAudio = useStore((s) => { const e = s.edges.find((ed) => ed.target === id && ed.targetHandle === "dubbing"); if (!e) return ""; const sd = (s.nodeLookup.get(e.source)?.data || {}) as ND; const u = (sd.__result as string) || (sd.url as string) || ""; return /^https?:\/\//i.test(u) ? u : ""; });
+  const dubbingAudio = connAudio || (d.dubbingAudio as string) || "";
   const startFrame = (d.startFrame as string) || connImg;
   const lastStartRef = useRef(""); if (startFrame) lastStartRef.current = startFrame;
   const resolution = (d.resolution as string) || caps.resolutions[caps.resolutions.length - 1];
@@ -407,7 +410,7 @@ function VideoGenNode({ id, data, selected }: NodeProps) {
   const vAspect = (meta.aspectRatio as string) || (d.aspectRatio as string) || "9:16"; const [vaw, vah] = vAspect.split(":").map(Number); const vmH = Math.max(200, Math.min(470, Math.round(300 * ((vah || 16) / (vaw || 9)))));
   const upd = useUpdateNodeInternals();
   useEffect(() => { const r = requestAnimationFrame(() => upd(id)); return () => cancelAnimationFrame(r); }, [status, result, d.model, id, upd]);
-  const handles = (<><Handle type="target" position={Position.Left} id="prompt" style={{ top: 48, background: "#22D3EE" }} /><Handle type="target" position={Position.Left} id="reference" style={{ top: 88, background: "#F97316" }} /><Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.videoGen }} /></>);
+  const handles = (<><Handle type="target" position={Position.Left} id="prompt" style={{ top: 48, background: "#22D3EE" }} /><Handle type="target" position={Position.Left} id="reference" style={{ top: 88, background: "#F97316" }} />{caps.avatarAudio ? <Handle type="target" position={Position.Left} id="dubbing" style={{ top: 128, background: ACCENT.audioGen }} /> : null}<Handle type="source" position={Position.Right} id="out" style={{ background: ACCENT.videoGen }} /></>);
   function pickModel(mid: string) { const m = models.find((x) => x.id === mid); rf.updateNodeData(id, { model: mid, modelName: m?.name || "", ...normalizeVideo(d, videoCapsFor(m)) }); }
   function setRes(v: string) { rf.updateNodeData(id, { resolution: v, ...(caps.rule1080Dur6 && v === "1080p" ? { duration: 6 } : {}) }); }
   async function download() { if (!result) return; try { const r = await fetch(result); const b = await r.blob(); const l = URL.createObjectURL(b); const a = document.createElement("a"); a.href = l; a.download = "fluxyra-" + Date.now() + ".mp4"; a.click(); URL.revokeObjectURL(l); } catch { window.open(result, "_blank"); } }
@@ -463,6 +466,8 @@ function VideoGenNode({ id, data, selected }: NodeProps) {
     <div className="mb-2">{caps.duration.type === "enum" ? (<div className="flex gap-1.5">{caps.duration.values.map((v) => <button key={v} type="button" onClick={() => rf.updateNodeData(id, { duration: v })} className="nodrag h-[30px] flex-1 rounded-[8px] border text-[11px] font-medium transition" style={dur === v ? { background: ACCENT.videoGen, borderColor: ACCENT.videoGen, color: "#fff" } : { background: "var(--fx-ctrl)", borderColor: "var(--fx-border)", color: "var(--fx-muted)" }}>{v}s</button>)}</div>) : (<div className="flex items-center gap-2"><input type="range" min={caps.duration.min} max={caps.duration.max} value={dur} onChange={(e) => rf.updateNodeData(id, { duration: Number(e.target.value) })} className="nodrag flex-1" /><span className="w-8 text-right text-[10px] text-[color:var(--fx-muted)]">{dur}s</span></div>)}</div>
     {/* ETAPA 2.1 Q2 — custo REAL (=débito): cps×duração×plano. Antes o usuário não via o preço por config. */}
     {model ? <div className="mb-2 flex items-center justify-between text-[10px] text-[color:var(--fx-muted)]"><span>Custo estimado</span><span className="flex items-center gap-1 font-medium text-[#FBBF24]"><Zap className="h-3 w-3" fill="currentColor" />{videoGenCredits(model, resolution, dur)}</span></div> : null}
+    {/* ETAPA 3.4 — Kling Avatar: áudio de dublagem obrigatório (upload ou conectar Audio Generator no handle roxo). */}
+    {caps.avatarAudio ? (<div className="mb-2"><span className="mb-1 block text-[9px] uppercase tracking-wide text-[color:var(--fx-subtle)]">Áudio de dublagem</span>{dubbingAudio ? (<div className="flex items-center gap-2 rounded-[8px] px-2 py-1.5" style={{ background: "var(--fx-ctrl)", border: "1px solid var(--fx-border)" }}><Music className="h-3.5 w-3.5 shrink-0 text-[color:var(--fx-muted)]" /><audio src={dubbingAudio} controls className="nodrag h-7 min-w-0 flex-1" />{connAudio ? <span className="shrink-0 text-[8px] text-[color:var(--fx-subtle)]">conectado</span> : <button type="button" onClick={() => rf.updateNodeData(id, { dubbingAudio: "" })} className="nodrag flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-black/60 text-white"><XIcon className="h-2 w-2" /></button>}</div>) : (<label className="fx-up nodrag flex cursor-pointer flex-col items-center justify-center gap-0.5 py-3 text-[9px]"><input type="file" accept="audio/*" className="hidden" onChange={async (e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (!f) return; const url = await uploadFile(f); if (url) rf.updateNodeData(id, { dubbingAudio: url }); }} /><Upload className="h-3.5 w-3.5" />Áudio (upload) ou conecte um Audio Generator</label>)}</div>) : null}
     {caps.audio ? <div className="flex gap-2"><FSwitch label="Audio" on={audioOn} onToggle={() => rf.updateNodeData(id, { audioOn: !audioOn })} /></div> : null}
     {caps.multiShot && MULTISHOT_UI_ENABLED ? <div className="mt-2 flex gap-2"><FSwitch label="Multi-shot" on={Boolean(d.multiShot)} onToggle={() => rf.updateNodeData(id, { multiShot: !d.multiShot })} /></div> : null}
     {promptOpen && <PromptModal value={(d.prompt as string) || ""} onChange={(v) => rf.updateNodeData(id, { prompt: v })} onClose={() => setPromptOpen(false)} />}
@@ -766,6 +771,7 @@ function Editor() {
     if (tgtType === "videoGen" || tgtType === "imageGen") {
       if (["imageGen", "imageAsset", "refImage", "removeBg", "upscale", "storyboard"].includes(srcType)) targetHandle = "reference";
       else if (srcType === "prompt") targetHandle = "prompt";
+      else if (srcType === "audioGen" && tgtType === "videoGen") targetHandle = "dubbing"; // ETAPA 3.4 — Kling Avatar
     }
     setEdges((eds) => { const base = targetHandle === "reference" ? eds.filter((e) => !(e.target === c.target && e.targetHandle === "reference")) : eds; return addEdge({ ...c, targetHandle, type: "grad" }, base); });
     markDirty();
@@ -819,8 +825,8 @@ function Editor() {
         try {
         setEdgeActive(id, true);
         const node = byId.get(id)!; const d = node.data as ND;
-        const inc = se.filter((e) => e.target === id); let pText = ""; const refs: string[] = [];
-        for (const e of inc) { const v = out.get(e.source); if (!v) continue; const isUrl = /^https?:\/\//i.test(v); if (e.targetHandle === "reference" || isUrl) refs.push(v); else pText = pText ? `${pText} ${v}` : v; }
+        const inc = se.filter((e) => e.target === id); let pText = ""; const refs: string[] = []; let dubbingAudio = "";
+        for (const e of inc) { const v = out.get(e.source); if (!v) continue; if (e.targetHandle === "dubbing") { if (/^https?:\/\//i.test(v)) dubbingAudio = v; continue; } const isUrl = /^https?:\/\//i.test(v); if (e.targetHandle === "reference" || isUrl) refs.push(v); else pText = pText ? `${pText} ${v}` : v; }
         if (node.type === "prompt") { out.set(id, (d.text as string) || ""); continue; }
         if (node.type === "refImage") { out.set(id, (d.url as string) || ""); continue; }
         if (node.type === "output") { const v = inc.map((e) => out.get(e.source)).find(Boolean) || ""; out.set(id, v); setNS(id, { __status: v ? "done" : "failed", __result: v || undefined }); continue; }
@@ -857,7 +863,7 @@ function Editor() {
           const up = isImg ? (Array.isArray(d.refs) ? (d.refs as string[]) : []) : [d.startFrame, d.endFrame].filter((x): x is string => typeof x === "string" && x.length > 0);
           const all = [...refs, ...up];
           const body: Record<string, unknown> = { prompt: fp, model_uuid: d.model, aspect_ratio: d.aspectRatio, quality: "high", resolution: d.resolution || "720p" };
-          if (all.length) { body.reference_images = all; body.reference_image_url = all[0]; } if (!isImg) { body.duration = d.duration; const sf = (d.startFrame as string) || refs[0] || ""; if (sf) body.start_image_url = sf; if (d.endFrame) body.end_image_url = d.endFrame as string; body.with_audio = d.audioOn !== false; }
+          if (all.length) { body.reference_images = all; body.reference_image_url = all[0]; } if (!isImg) { body.duration = d.duration; const sf = (d.startFrame as string) || refs[0] || ""; if (sf) body.start_image_url = sf; if (d.endFrame) body.end_image_url = d.endFrame as string; body.with_audio = d.audioOn !== false; const dubA = dubbingAudio || (d.dubbingAudio as string) || ""; if (dubA) body.dubbing_audio_url = dubA; }
           const r = await fetch(`/api/generate/${isImg ? "image" : "video"}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
           const dt = await r.json().catch(() => null); if (!r.ok) { setNS(id, { __status: "failed" }); throw new Error(dt?.error || "Falha ao iniciar."); }
           if (dt?.generation_id) { setNS(id, { __gen: String(dt.generation_id) }); runGenRef.current[id] = String(dt.generation_id); } let u = dt?.result_url as string | undefined; if (dt?.status !== "completed" || !u) u = await pollGen(String(dt.generation_id)); out.set(id, u); if (applyGuard(id, String(dt?.generation_id || ""))) setNS(id, { __status: "done", __result: u, __resultMeta: { modelName: (d.modelName as string) || (d.model as string), aspectRatio: d.aspectRatio, resolution: d.resolution, duration: (node.type as string) === "videoGen" ? d.duration : undefined } });
