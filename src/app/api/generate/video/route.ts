@@ -60,6 +60,12 @@ export async function POST(req: NextRequest) {
       // ETAPA 7.3.2 — Veo: reference images (veo3.1) e seed (text-to-video).
       reference_image_urls,
       seed,
+      // ETAPA 7.4.7.2 — Seedance video reference: durações (s) dos vídeos de
+      // entrada, medidas no cliente. Fallback quando a medição no servidor falhar.
+      video_ref_seconds,
+      // ETAPA 7.5.2 — Wan: shot_type (single/multi) e prompt_extend (bool).
+      shot_type,
+      prompt_extend,
     } = body;
     const qualityLevel: "low" | "medium" | "high" =
       quality === "low" || quality === "medium" ? quality : "high";
@@ -280,6 +286,20 @@ export async function POST(req: NextRequest) {
         }
       }
       const resKey = motionResKey || (typeof resolution === "string" && resolution ? resolution : "720p");
+      // ETAPA 7.4.4 — NUNCA rebaixar silenciosamente uma resolução ALTA para a
+      // tarifa 720p (sub-cobrança). Se o modelo expõe 1080p/2160p/4k mas não tem
+      // cps para ela, bloqueia PRÉ-DÉBITO em vez de cobrar a tarifa 720p.
+      // (Resoluções ≤720 mantêm o fallback histórico p/ não afetar outros modelos.)
+      if (
+        (resKey === "1080p" || resKey === "2160p" || resKey === "4k") &&
+        cpsMap[resKey] == null
+      ) {
+        auditLog("api.generate.video", "resolucao_sem_tarifa_400", requestId, { resKey });
+        return NextResponse.json(
+          { error: `Resolução ${resKey} sem tarifa configurada para este modelo.` },
+          { status: 400 }
+        );
+      }
       let rate = Number(cpsMap[resKey] ?? cpsMap["720p"] ?? 0);
       // ETAPA 6 — Veo cobra MENOS sem áudio. Doc (veo3-api/veo31-api): áudio OFF é
       // metade do preço no tier quality (0.24→0.12) e ~2/3 no tier fast (0.09→0.06).
@@ -292,7 +312,82 @@ export async function POST(req: NextRequest) {
           rate = rate * offFactor;
         }
       }
-      if (rate > 0) baseVideoCost = Math.ceil(rate * dsafe);
+      // ETAPA 7.4.7.2 — Seedance Video Reference: FÓRMULA A (doc Pricing 2.0/2.5):
+      //   base = cps × output + (cps/2) × input_video_total.
+      // Mede a duração de CADA vídeo de entrada no servidor (music-metadata);
+      // fallback para a duração medida no cliente (video_ref_seconds). Sem duração
+      // confiável NÃO cobramos (bloqueia pré-débito). Clamp ao máximo do modelo
+      // (2.5 → 30s; 2.0 → 15,4s). Só afeta Seedance com reference_videos.
+      let seedanceInputVideoSecs = 0;
+      {
+        const vp2 = aiModel.params as VideoModelParams;
+        if (vp2?.backend === "seedance" && Array.isArray(reference_videos) && reference_videos.length > 0) {
+          const MAX_IN = String(vp2?.task_type || "").includes("2.5") ? 30 : 15.4;
+          const vids = reference_videos
+            .filter((u): u is string => typeof u === "string" && /^https?:\/\//i.test(u))
+            .slice(0, 3);
+          const clientSecs = Array.isArray(video_ref_seconds) ? (video_ref_seconds as unknown[]) : [];
+          for (let i = 0; i < vids.length; i++) {
+            let s = 0;
+            try {
+              const vres = await fetch(vids[i]);
+              if (vres.ok) {
+                const vbuf = Buffer.from(await vres.arrayBuffer());
+                const mm = await import("music-metadata");
+                const vmeta = await mm.parseBuffer(new Uint8Array(vbuf), {
+                  mimeType: vres.headers.get("content-type") || undefined,
+                });
+                s = Number(vmeta.format?.duration) || 0;
+              }
+            } catch (e) {
+              auditLog("api.generate.video", "seedance_video_medicao_falhou", requestId, {
+                error: e instanceof Error ? e.message : String(e),
+              });
+            }
+            if (!(s > 0)) s = Number(clientSecs[i]) || 0; // fallback cliente
+            if (!(s > 0)) {
+              auditLog("api.generate.video", "seedance_video_sem_duracao_400", requestId, {});
+              return NextResponse.json(
+                { error: "Não foi possível medir a duração do vídeo de referência." },
+                { status: 400 }
+              );
+            }
+            seedanceInputVideoSecs += s;
+          }
+          if (seedanceInputVideoSecs > MAX_IN + 0.5) {
+            auditLog("api.generate.video", "seedance_video_duracao_400", requestId, {
+              seedanceInputVideoSecs,
+              MAX_IN,
+            });
+            return NextResponse.json(
+              { error: `Os vídeos de referência somam mais de ${MAX_IN}s.` },
+              { status: 400 }
+            );
+          }
+        }
+      }
+      if (rate > 0) {
+        // Fórmula A: output cheio + input pela metade (Seedance video reference).
+        baseVideoCost = Math.ceil(rate * dsafe + (rate / 2) * seedanceInputVideoSecs);
+      }
+    } else if (
+      (aiModel.params as VideoModelParams)?.backend === "hailuo" &&
+      videoCostParams.credit_cost_map &&
+      typeof videoCostParams.credit_cost_map === "object"
+    ) {
+      // ETAPA 7.5.1 — Hailuo cobra por (RESOLUÇÃO, DURAÇÃO, tier). O provider precifica
+      // v2.3/v2.3-fast por combinação (6/10s × 768/1080). Replicamos AQUI o MESMO
+      // mapeamento que o adapter executa (768/1080 e 6/10; 1080 só com duração 6),
+      // cobrando o que de fato roda — nunca o credit_cost flat.
+      const hDur = Number(duration) <= 8 ? 6 : 10;
+      const wants1080 = typeof resolution === "string" && resolution.includes("1080");
+      const hRes = wants1080 && hDur === 6 ? "1080" : "768";
+      const ccMap = videoCostParams.credit_cost_map as Record<string, Record<string, number>>;
+      const mapped = ccMap?.[hRes]?.[String(hDur)];
+      if (typeof mapped === "number" && mapped > 0) {
+        baseVideoCost = mapped;
+      }
+      // senão mantém aiModel.credit_cost (fallback defensivo).
     }
     const cost = effectiveCost(baseVideoCost, profile?.plan ?? "free");
 
@@ -388,6 +483,96 @@ export async function POST(req: NextRequest) {
       if (!portrait) {
         return NextResponse.json(
           { error: "Kling Avatar requer uma imagem de retrato (frame inicial)." },
+          { status: 400 }
+        );
+      }
+    }
+
+    // ETAPA 7.4.6 — Seedance Reference Audio: validar ANTES do débito (schema oficial:
+    // audio_urls ≤3, ≤15s total, mp3/wav[/ogg/m4a/aac no 2.5], EXIGE ao menos 1 imagem
+    // ou vídeo). Áudio de referência NÃO altera billing (cps × duração de output).
+    if (modelParams.backend === "seedance" && Array.isArray(reference_audios) && reference_audios.length > 0) {
+      const seedAudios = reference_audios.filter(
+        (u): u is string => typeof u === "string" && /^https?:\/\//i.test(u)
+      );
+      // Quantidade ≤3.
+      if (seedAudios.length > 3) {
+        auditLog("api.generate.video", "seedance_audio_qtd_400", requestId, { n: seedAudios.length });
+        return NextResponse.json(
+          { error: "Máximo de 3 áudios de referência (Seedance)." },
+          { status: 400 }
+        );
+      }
+      // Formato permitido (union; o provider aplica o estrito por modelo).
+      const okFmt = seedAudios.every((u) => /\.(mp3|wav|ogg|m4a|aac)(\?|#|$)/i.test(u));
+      if (!okFmt) {
+        return NextResponse.json(
+          { error: "Áudio de referência deve ser mp3, wav, ogg, m4a ou aac." },
+          { status: 400 }
+        );
+      }
+      // Requisito: exige ao menos 1 imagem OU vídeo de referência.
+      const hasImgOrVid =
+        (Array.isArray(reference_images) && reference_images.length > 0) ||
+        (typeof start_image_url === "string" && !!start_image_url) ||
+        (typeof end_image_url === "string" && !!end_image_url) ||
+        (Array.isArray(reference_videos) && reference_videos.length > 0);
+      if (!hasImgOrVid) {
+        auditLog("api.generate.video", "seedance_audio_sem_imagem_400", requestId, {});
+        return NextResponse.json(
+          { error: "Áudio de referência exige ao menos uma imagem (ou vídeo) de referência." },
+          { status: 400 }
+        );
+      }
+      // Duração total ≤15s (medida no servidor; anti-abuso). Se a medição falhar
+      // por completo, não bloqueia por duração (o provider rejeita se >15s).
+      let audioTotalSecs = 0;
+      let measuredAny = false;
+      for (const a of seedAudios) {
+        try {
+          const ares = await fetch(a);
+          if (ares.ok) {
+            const abuf = Buffer.from(await ares.arrayBuffer());
+            const mm = await import("music-metadata");
+            const ameta = await mm.parseBuffer(new Uint8Array(abuf), {
+              mimeType: ares.headers.get("content-type") || undefined,
+            });
+            const s = Number(ameta.format?.duration) || 0;
+            if (s > 0) { audioTotalSecs += s; measuredAny = true; }
+          }
+        } catch (e) {
+          auditLog("api.generate.video", "seedance_audio_medicao_falhou", requestId, {
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
+      if (measuredAny && audioTotalSecs > 15.5) {
+        auditLog("api.generate.video", "seedance_audio_duracao_400", requestId, { audioTotalSecs });
+        return NextResponse.json(
+          { error: "Os áudios de referência somam mais de 15 segundos." },
+          { status: 400 }
+        );
+      }
+    }
+
+    // ETAPA 7.4.7.2 — Seedance Video Reference: validação de quantidade/formato
+    // ANTES do débito (a duração/custo é medida no bloco de billing abaixo).
+    // Schema: video_urls ≤3, mp4/mov. O provider cobra a duração do vídeo de
+    // entrada (Fórmula A: cps×output + (cps/2)×input) — calculada no billing.
+    if (modelParams.backend === "seedance" && Array.isArray(reference_videos) && reference_videos.length > 0) {
+      const vids = reference_videos.filter(
+        (u): u is string => typeof u === "string" && /^https?:\/\//i.test(u)
+      );
+      if (vids.length > 3) {
+        auditLog("api.generate.video", "seedance_video_qtd_400", requestId, { n: vids.length });
+        return NextResponse.json(
+          { error: "Máximo de 3 vídeos de referência (Seedance)." },
+          { status: 400 }
+        );
+      }
+      if (!vids.every((u) => /\.(mp4|mov)(\?|#|$)/i.test(u))) {
+        return NextResponse.json(
+          { error: "Vídeo de referência deve ser mp4 ou mov." },
           { status: 400 }
         );
       }
@@ -514,6 +699,9 @@ export async function POST(req: NextRequest) {
         // ETAPA 7.3.2 — Veo 3.1 reference images (slot dedicado) + seed (t2v).
         veoReferenceImages: Array.isArray(reference_image_urls) ? reference_image_urls : undefined,
         seed: typeof seed === "number" ? seed : undefined,
+        // ETAPA 7.5.2 — Wan capabilities (o adapter só usa no ramo Wan).
+        wanShotType: shot_type === "single" || shot_type === "multi" ? shot_type : undefined,
+        wanPromptExtend: typeof prompt_extend === "boolean" ? prompt_extend : undefined,
         referenceVideos: Array.isArray(reference_videos) ? reference_videos : undefined,
         referenceAudios: Array.isArray(reference_audios) ? reference_audios : undefined,
         shots: Array.isArray(shots) ? shots : undefined,
