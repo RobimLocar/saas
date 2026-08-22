@@ -607,11 +607,15 @@ function StoryboardNode({ id, data, selected }: NodeProps) {
   }
   async function genAll() { setAllBusy(true); const n = ((rf.getNode(id)?.data as ND)?.prompts as string[] | undefined)?.length || 0; for (let i = 0; i < n; i++) await genScene(i); setAllBusy(false); }
   const anyBusy = allBusy || scene !== null;
+  // ETAPA 7.10.1 — resoluções REAIS por modelo (mesma fonte do ImageGen: imgResolutions).
+  const stModel = models.find((m) => m.id === (d.model as string));
+  const stResOpts = imgResolutions(stModel);
+  const stRes = stResOpts.includes((d.resolution as string)) ? (d.resolution as string) : stResOpts[0];
   return (<NodeShell id={id} type="storyboard" title={(d.title as string) || "Storyboard"} status={d.__status as string} selected={selected} width={300} subtitle={<span className="text-[9px] text-[color:var(--fx-subtle)]">{prompts.length} prompts</span>}>
     <p className="mb-2 text-[10px] text-[color:var(--fx-muted)]">O LLM analisa a imagem e gera prompts. Cada cena vira uma imagem só quando voc\u00ea clicar.</p>
     <div className="mb-2"><FrameUpload id={id} field="image" url={(d.image as string) || ""} /></div>
-    <div className="mb-2"><FSelect value={(d.model as string) || ""} onChange={(e) => rf.updateNodeData(id, { model: e.target.value, modelName: models.find((m) => m.id === e.target.value)?.name || "" })}><option value="">— modelo de imagem —</option>{models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</FSelect></div>
-    <div className="mb-2 grid grid-cols-2 gap-2"><FSelect value={(d.aspectRatio as string) || "1:1"} onChange={(e) => rf.updateNodeData(id, { aspectRatio: e.target.value })}>{["1:1", "16:9", "9:16"].map((a) => <option key={a} value={a}>{a}</option>)}</FSelect><FSelect value={(d.resolution as string) || "1K"} onChange={(e) => rf.updateNodeData(id, { resolution: e.target.value })}>{["1K", "2K"].map((r) => <option key={r} value={r}>{r}</option>)}</FSelect></div>
+    <div className="mb-2"><FSelect value={(d.model as string) || ""} onChange={(e) => { const nm = models.find((m) => m.id === e.target.value); const opts = imgResolutions(nm); rf.updateNodeData(id, { model: e.target.value, modelName: nm?.name || "", resolution: opts.includes((d.resolution as string)) ? (d.resolution as string) : opts[0] }); }}><option value="">— modelo de imagem —</option>{models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</FSelect></div>
+    <div className="mb-2 grid grid-cols-2 gap-2"><FSelect value={(d.aspectRatio as string) || "1:1"} onChange={(e) => rf.updateNodeData(id, { aspectRatio: e.target.value })}>{["1:1", "16:9", "9:16"].map((a) => <option key={a} value={a}>{a}</option>)}</FSelect><FSelect value={stRes} onChange={(e) => rf.updateNodeData(id, { resolution: e.target.value })}>{stResOpts.map((r) => <option key={r} value={r}>{r}</option>)}</FSelect></div>
     <FButton onClick={genPrompts} disabled={genBusy}>{genBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 text-[#D8ED19]" />}Generate Prompts</FButton>
     {prompts.length > 0 && <>
       <div className="mt-2"><FButton onClick={genAll} disabled={anyBusy || !d.model}>{allBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3 w-3" fill="currentColor" />}Gerar todas as cenas</FButton></div>
