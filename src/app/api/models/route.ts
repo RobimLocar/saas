@@ -103,6 +103,12 @@ export async function GET(req: NextRequest) {
               )
             : null,
         plan_multiplier: PLAN_COST_MULTIPLIER[userPlan] ?? 1,
+        // ETAPA 7.5.1 — Hailuo cobra por (resolução, duração): mapa cru {res:{dur:cr}}.
+        // A UI aplica o plan_multiplier (mesma lógica do cps) para exibir o custo real.
+        credit_cost_map:
+          p.credit_cost_map && typeof p.credit_cost_map === "object"
+            ? (p.credit_cost_map as Record<string, Record<string, number>>)
+            : null,
         // Disponível se é modelo premium (provider gpt-image/abacus) ou
         // se o backend efetivo (params.backend ?? model_id) está integrado
         available:
