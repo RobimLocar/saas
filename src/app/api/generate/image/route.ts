@@ -8,9 +8,10 @@ import { generateImage, generateImageGptSync, generateImageGptEdits, submitGemin
 // para "trocar avatar" / combinar pessoa + produto numa imagem nova.
 export const maxDuration = 300;
 
-const GEMINI_TASK: Record<string, { taskType: string; resolution?: boolean }> = {
-  "nano-banana-pro": { taskType: "nano-banana-pro", resolution: true },
-  "nano-banana": { taskType: "gemini-2.5-flash-image" },
+const GEMINI_TASK: Record<string, { taskType: string; resolution?: boolean; maxRefs?: number }> = {
+  // ETAPA 7.6.3 — Nano Banana Pro aceita até 14 image_urls (schema oficial).
+  "nano-banana-pro": { taskType: "nano-banana-pro", resolution: true, maxRefs: 14 },
+  "nano-banana": { taskType: "gemini-2.5-flash-image", maxRefs: 6 },
 };
 
 // Qwen: largura/altura no máx. 1024 (doc oficial). Mapa por proporção.
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { prompt, model_uuid, negative_prompt, aspect_ratio, width, height, reference_image_url, reference_images, resolution, quality } = body;
+    const { prompt, model_uuid, negative_prompt, aspect_ratio, width, height, reference_image_url, reference_images, resolution, quality, seed, steps, flow_shift, guidance_scale } = body;
     // Todas as referências anexadas (o dock pode mandar várias). Compat com o
     // campo singular antigo.
     const refs: string[] = Array.isArray(reference_images)
@@ -147,7 +148,22 @@ export async function POST(req: NextRequest) {
       .eq("id", user.id)
       .single();
 
-    const cost = effectiveCost(aiModel.credit_cost, profile?.plan ?? "free");
+    // ETAPA 7.6.1 — Nano Banana Pro cobra por RESOLUÇÃO (provider: $0.105 em 1K/2K,
+    // $0.18 em 4K). Se o modelo tem `credit_cost_map`, usa o valor da resolução
+    // escolhida; senão mantém o credit_cost flat. NUNCA cai em flat para 4K.
+    // Só afeta modelos com o mapa (hoje: nano-banana-pro). Demais imagens: inalterados.
+    let imageBaseCost = aiModel.credit_cost;
+    {
+      const imgParams = (aiModel.params as Record<string, unknown> | null) || {};
+      const ccMap = imgParams.credit_cost_map as Record<string, number> | undefined;
+      if (ccMap && typeof ccMap === "object") {
+        const resKey = resolution === "2K" || resolution === "4K" ? resolution : "1K";
+        const mapped = ccMap[resKey];
+        if (typeof mapped === "number" && mapped > 0) imageBaseCost = mapped;
+        // resolução fora de {1K,2K,4K} → cai em "1K" (acima), nunca no flat p/ 4K.
+      }
+    }
+    const cost = effectiveCost(imageBaseCost, profile?.plan ?? "free");
 
     if (!profile || profile.credits_balance < cost) {
       return NextResponse.json(
@@ -269,6 +285,7 @@ export async function POST(req: NextRequest) {
               ? resolution
               : "1K"
             : undefined,
+          maxRefs: geminiCfg.maxRefs,
         });
         await supabase
           .from("generations")
@@ -291,6 +308,10 @@ export async function POST(req: NextRequest) {
           negativePrompt: negative_prompt,
           width: qd.w,
           height: qd.h,
+          // ETAPA 7.6.3 — schema oficial qwen-image (opcionais).
+          steps: typeof steps === "number" ? steps : undefined,
+          seed: typeof seed === "number" ? seed : undefined,
+          flowShift: typeof flow_shift === "number" ? flow_shift : undefined,
         });
         await supabase
           .from("generations")
@@ -412,6 +433,9 @@ export async function POST(req: NextRequest) {
         width: width || dims?.w,
         height: height || dims?.h,
         reference_image_url: refs[0] || undefined,
+        // ETAPA 7.6.3 — Flux guidance_scale (schema: 1.5–5). Opcional; sem seed/steps
+        // (não existem no schema oficial do Flux txt2img/img2img).
+        guidanceScale: typeof guidance_scale === "number" ? guidance_scale : undefined,
       });
 
       // Atualizar geração com task_id
