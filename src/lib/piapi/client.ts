@@ -770,12 +770,15 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
       };
     }
 
-    // Política: qualquer geração COM imagem de referência vai para a variante
-    // "-less-restriction". A variante estrita bloqueia rostos reais e não há
-    // como saber de antemão se a imagem enviada contém uma pessoa real — então
-    // preferimos a variante menos restritiva sempre que há imagem. Também pode
-    // ser forçada explicitamente (args.lessRestriction, vindo do catálogo).
-    const useLR = args.lessRestriction === true || hasImages;
+    // ETAPA 7.4.1 — CONTRATO DE BILLING: modelo EXECUTADO = modelo COBRADO.
+    // Antes, qualquer geração COM imagem era promovida silenciosamente para
+    // "-less-restriction" (custo +10% no provider), mas a rota continuava
+    // cobrando a cps STRICT → sub-cobrança (perda em planos de multiplicador
+    // baixo). A LR agora é usada SOMENTE quando o modelo escolhido é de fato LR
+    // (catálogo `less_restriction: true` → args.lessRestriction). Quem precisa
+    // de rosto real escolhe o modelo "Rosto Real" (que cobra a cps LR correta).
+    // Sem upgrade silencioso; strict permanece strict e cobra strict.
+    const useLR = args.lessRestriction === true;
 
     // Tier: catálogo (seedanceTier) tem prioridade; senão infere do task_type.
     const base =
