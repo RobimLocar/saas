@@ -184,6 +184,8 @@ export interface ImageGenParams {
   aspect_ratio?: string;
   seed?: number;
   reference_image_url?: string;
+  /** ETAPA 7.6.3 — Flux guidance_scale (schema: 1.5–5). Opcional. */
+  guidanceScale?: number;
 }
 
 export async function generateImage(
@@ -216,6 +218,10 @@ export async function generateImage(
           ? { image: params.reference_image_url, denoise: 0.7 }
           : {}),
         ...(params.seed !== undefined ? { seed: params.seed } : {}),
+        // ETAPA 7.6.3 — guidance_scale (schema oficial Flux: 1.5–5). Só quando fornecido.
+        ...(typeof params.guidanceScale === "number" && Number.isFinite(params.guidanceScale)
+          ? { guidance_scale: Math.min(Math.max(params.guidanceScale, 1.5), 5) }
+          : {}),
       },
     }),
   });
@@ -232,15 +238,30 @@ export async function submitQwenImageTask(args: {
   negativePrompt?: string;
   width?: number;
   height?: number;
+  // ETAPA 7.6.3 — schema oficial qwen-image: steps (1-16, def 8), seed (-1=random,
+  // >0=fixo), flow_shift (1-7, def 3). Opcionais; sem eles usa os defaults.
+  steps?: number;
+  seed?: number;
+  flowShift?: number;
 }): Promise<PiAPITaskResponse> {
+  const qSteps =
+    typeof args.steps === "number" && Number.isFinite(args.steps)
+      ? Math.min(Math.max(Math.trunc(args.steps), 1), 16)
+      : 16;
+  const qSeed =
+    typeof args.seed === "number" && Number.isFinite(args.seed) ? Math.trunc(args.seed) : -1;
+  const qFlow =
+    typeof args.flowShift === "number" && Number.isFinite(args.flowShift)
+      ? Math.min(Math.max(args.flowShift, 1), 7)
+      : 3;
   const refs = (args.imageUrls || []).filter(Boolean).slice(0, 3);
   if (refs.length > 0) {
     const input: Record<string, unknown> = {
       image1: refs[0],
       prompt: args.prompt,
-      steps: 16,
-      seed: -1,
-      flow_shift: 3,
+      steps: qSteps,
+      seed: qSeed,
+      flow_shift: qFlow,
     };
     if (refs[1]) input.image2 = refs[1];
     if (refs[2]) input.image3 = refs[2];
@@ -258,9 +279,9 @@ export async function submitQwenImageTask(args: {
     prompt: args.prompt,
     width: Math.min(args.width || 1024, 1024),
     height: Math.min(args.height || 1024, 1024),
-    steps: 16,
-    seed: -1,
-    flow_shift: 3,
+    steps: qSteps,
+    seed: qSeed,
+    flow_shift: qFlow,
   };
   if (args.negativePrompt) input.negative_prompt = args.negativePrompt;
   return piapiFetch<PiAPITaskResponse>("/task", {
@@ -285,6 +306,7 @@ export interface GeminiImageArgs {
   aspectRatio?: string; // "1:1" | "9:16" | "16:9" ...
   resolution?: string; // "1K" | "2K" | "4K" (só nano-banana-pro)
   outputFormat?: string; // "png" (default)
+  maxRefs?: number; // ETAPA 7.6.3 — limite de image_urls (nano-banana-pro: 14; flash: 6)
 }
 
 export async function submitGeminiImageTask(
@@ -298,7 +320,8 @@ export async function submitGeminiImageTask(
   if (args.aspectRatio) input.aspect_ratio = args.aspectRatio;
   if (args.resolution) input.resolution = args.resolution;
   if (args.imageUrls && args.imageUrls.length > 0) {
-    input.image_urls = args.imageUrls.slice(0, 6);
+    // ETAPA 7.6.3 — limite de refs vem do modelo (Nano Banana Pro: 14; flash: 6).
+    input.image_urls = args.imageUrls.slice(0, args.maxRefs && args.maxRefs > 0 ? args.maxRefs : 6);
   }
   return piapiFetch<PiAPITaskResponse>("/task", {
     method: "POST",
@@ -543,6 +566,10 @@ export interface BuildVideoArgs {
   veoReferenceImages?: string[];
   /** ETAPA 7.3.2 — Veo seed (integer). Só text-to-video (schema não tem seed no i2v). */
   seed?: number;
+  /** ETAPA 7.5.2 — Wan: shot_type (single/multi; só com prompt_extend true). */
+  wanShotType?: "single" | "multi";
+  /** ETAPA 7.5.2 — Wan: prompt_extend (bool; default do provider é true). */
+  wanPromptExtend?: boolean;
   shots?: Array<{ prompt: string; duration: number }>;
   /** preset de movimento do Kling Motion Control (quando não há vídeo de referência). */
   presetMotion?: string;
@@ -739,27 +766,29 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
       // task_type vem do catalogo: "seedance-2.5" (strict) ou
       // "seedance-2.5-less-restriction". Fallback para a variante padrao.
       const task25 = params.task_type || "seedance-2.5";
+      // ETAPA 7.4.4 — Seedance 2.5 suporta 480p/720p/1080p (schema oficial).
+      // Antes, qualquer coisa ≠480/720 caía em 720p (bloqueava 1080p). Agora
+      // 1080p passa; só valores realmente inválidos caem no default 720p.
       let res25 = args.resolution || (quality === "low" ? "480p" : "720p");
-      if (res25 !== "480p" && res25 !== "720p") res25 = "720p";
+      if (!["480p", "720p", "1080p"].includes(res25)) res25 = "720p";
       const input25: Record<string, unknown> = {
         prompt,
         duration: userDur,
         resolution: res25,
         aspect_ratio: aspect,
       };
-      // Playground: Omni Reference ate 12 imagens; First/Last usa 1-2 e a 1a imagem define o aspect.
-      if (imgUrls.length > 0) input25.image_urls = imgUrls.slice(0, 12);
-      // Playground: max 1 video.
+      // ETAPA 7.4.3 — limites conforme schema oficial seedance-2.5: image_urls ≤9,
+      // video_urls ≤3, audio_urls ≤3 (áudio exige ao menos 1 imagem/vídeo).
+      if (imgUrls.length > 0) input25.image_urls = imgUrls.slice(0, 9);
       if (referenceVideos && referenceVideos.length > 0) {
-        input25.video_urls = referenceVideos.slice(0, 1);
+        input25.video_urls = referenceVideos.slice(0, 3);
       }
-      // Playground: max 1 audio e exige ao menos 1 imagem/video.
       if (
         referenceAudios &&
         referenceAudios.length > 0 &&
         (imgUrls.length > 0 || (referenceVideos && referenceVideos.length > 0))
       ) {
-        input25.audio_urls = referenceAudios.slice(0, 1);
+        input25.audio_urls = referenceAudios.slice(0, 3);
       }
       if (negativePrompt) input25.negative_prompt = negativePrompt;
       return {
@@ -808,19 +837,32 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
       resolution,
       aspect_ratio: aspect,
     };
-    // image_urls: 1 imagem = first frame; 2 imagens = first+last frame;
-    // com video_urls/audio_urls = omni_reference. O modo é inferido pela PiAPI.
+    // ETAPA 7.4.3 — `mode` EXPLÍCITO (schema seedance-2 marca required; antes
+    // dependíamos da auto-inferência). Regra do schema:
+    //   sem refs → text_to_video · 1-2 imagens só → first_last_frames ·
+    //   qualquer outra combinação (3+ imagens, ou vídeo/áudio) → omni_reference.
+    // NÃO altera task_type.
+    const _hasVid = Array.isArray(referenceVideos) && referenceVideos.length > 0;
+    const _hasAud =
+      Array.isArray(referenceAudios) && referenceAudios.length > 0 && (imgUrls.length > 0 || _hasVid);
+    input.mode =
+      imgUrls.length === 0 && !_hasVid && !_hasAud
+        ? "text_to_video"
+        : imgUrls.length >= 1 && imgUrls.length <= 2 && !_hasVid && !_hasAud
+        ? "first_last_frames"
+        : "omni_reference";
+    // ETAPA 7.4.3 — limites conforme schema oficial seedance-2: image_urls ≤9,
+    // video_urls ≤3, audio_urls ≤3 (áudio exige ao menos 1 imagem/vídeo).
     if (imgUrls.length > 0) input.image_urls = imgUrls.slice(0, 9);
     if (referenceVideos && referenceVideos.length > 0) {
-      input.video_urls = referenceVideos;
+      input.video_urls = referenceVideos.slice(0, 3);
     }
-    // audio_urls só é aceito quando há image_urls ou video_urls.
     if (
       referenceAudios &&
       referenceAudios.length > 0 &&
       (imgUrls.length > 0 || (referenceVideos && referenceVideos.length > 0))
     ) {
-      input.audio_urls = referenceAudios;
+      input.audio_urls = referenceAudios.slice(0, 3);
     }
     if (negativePrompt) input.negative_prompt = negativePrompt;
     // auto_upload_assets: só na variante less-restriction COM imagens. Esse flag
@@ -861,6 +903,19 @@ function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
       input.audio = true;
     } else {
       input.audio = args.withAudio ?? true;
+    }
+    // ETAPA 7.5.2 — capabilities do schema oficial wan26 (não afetam billing):
+    //   prompt_extend (bool), shot_type (single/multi; SÓ com prompt_extend true),
+    //   seed (int 0..2147483647).
+    const wanExtend =
+      typeof args.wanPromptExtend === "boolean" ? args.wanPromptExtend : undefined;
+    if (wanExtend !== undefined) input.prompt_extend = wanExtend;
+    // shot_type só é válido quando prompt_extend está ligado (default do provider = true).
+    if (wanExtend !== false && (args.wanShotType === "single" || args.wanShotType === "multi")) {
+      input.shot_type = args.wanShotType;
+    }
+    if (typeof seed === "number" && Number.isFinite(seed)) {
+      input.seed = Math.min(Math.max(Math.trunc(seed), 0), 2147483647);
     }
     return {
       model: "Wan",
