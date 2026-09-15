@@ -1,14 +1,1494 @@
-const PIAPI_BASE_URL = "https://api.piapi.ai";
+/**
+ * PiAPI Client — Fluxyra
+ * Testado e validado contra a API real em 2026-07-24
+ * Docs: https://piapi.ai/docs
+ *
+ * MODELOS CONFIRMADOS FUNCIONANDO (retestado em 2026-07-24 com saldo):
+ *   Imagem : gpt-image-2 (síncrono, /v1/images/generations — texto perfeito),
+ *            Qubico/flux1-schnell (txt2img), Qubico/flux1-dev (txt2img/img2img)
+ *   Vídeo  : kling (video_generation, version+mode), hailuo (video_generation),
+ *            luma (video_generation), Qubico/hunyuan (txt2video)
+ *   Áudio  : music-u (generate_music — Udio real), Qubico/diffrhythm,
+ *            Qubico/ace-step (txt2audio)
+ *   INDISPONÍVEIS: midjourney ("no longer support MidJourney service"),
+ *            kling 2.1 txt2video (só img2video), skyreels/wanx (task types inválidos)
+ */
 
-// TODO: implementar chamadas de geração multimodal via PiAPI
-export async function piapiRequest(path: string, init?: RequestInit) {
-  const res = await fetch(`${PIAPI_BASE_URL}${path}`, {
-    ...init,
+import { auditLog, maskSecret, truncate } from "@/lib/audit-log";
+import { normalizeResultUrls } from "@/lib/media/result-urls";
+import { gptImage2ProviderSize } from "@/lib/models/gpt-image-pricing";
+
+const PIAPI_BASE_URL = "https://api.piapi.ai/api/v1";
+const PIAPI_OPENAI_BASE = "https://api.piapi.ai/v1";
+
+export interface PiAPITaskResponse {
+  code: number;
+  data: {
+    task_id: string;
+    status: "pending" | "processing" | "completed" | "failed";
+    output?: {
+      image_url?: string;
+      video_url?: string;
+      audio_url?: string;
+      url?: string;
+      image_base64?: string;
+    };
+    error?: { code: number; message: string };
+  };
+  message?: string;
+}
+
+export interface PiAPIStatusResponse {
+  code: number;
+  data: {
+    task_id: string;
+    status: "pending" | "processing" | "completed" | "failed";
+    output?: {
+      image_url?: string;
+      video_url?: string;
+      audio_url?: string;
+      url?: string;
+      image?: string;
+      video?: string;
+      audio?: string;
+      images?: Array<{ url: string }>;
+      videos?: Array<{ url: string }>;
+      image_base64?: string;
+    };
+    meta?: Record<string, unknown>;
+    // PiAPI inclui um array de logs detalhando o processamento e a causa real
+    // de falhas (ex.: "real person", "content restriction", "plan limit").
+    logs?: string[];
+    error?: { code: number; message: string };
+  };
+}
+
+class PiAPIError extends Error {
+  constructor(
+    message: string,
+    public statusCode?: number,
+    public details?: unknown
+  ) {
+    super(message);
+    this.name = "PiAPIError";
+  }
+}
+
+// Envelope mínimo de erro da PiAPI — o corpo de sucesso varia por endpoint (por
+// isso piapiFetch é genérico em T), mas o formato de erro é estável o bastante
+// para tipar sem usar `any`.
+type PiAPIErrorEnvelope = {
+  code?: number;
+  message?: string;
+  data?: { error?: { message?: string } };
+};
+
+async function piapiFetch<T = unknown>(
+  path: string,
+  init?: RequestInit,
+  requestId = "-"
+): Promise<T> {
+  const apiKey = process.env.PIAPI_API_KEY;
+  if (!apiKey) throw new PiAPIError("PIAPI_API_KEY não configurada");
+
+  const t0 = Date.now();
+  // AUDIT: request completo à PiAPI (API key MASCARADA — nunca logar o valor real)
+  auditLog("piapi.fetch", "request", requestId, {
+    method: init?.method || "GET",
+    url: `${PIAPI_BASE_URL}${path}`,
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": process.env.PIAPI_API_KEY || "",
-      ...(init?.headers || {}),
+      "x-api-key": maskSecret(apiKey),
     },
+    body: truncate(typeof init?.body === "string" ? init.body : undefined, 4000),
   });
-  return res.json();
+
+  let res: Response;
+  try {
+    res = await fetch(`${PIAPI_BASE_URL}${path}`, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        ...(init?.headers || {}),
+      },
+    });
+  } catch (netErr) {
+    auditLog("piapi.fetch", "network_error", requestId, {
+      url: `${PIAPI_BASE_URL}${path}`,
+      error: netErr instanceof Error ? netErr.message : String(netErr),
+    }, Date.now() - t0);
+    throw netErr;
+  }
+
+  // A PiAPI passa por Cloudflare. Quando sobrecarregada / sob challenge, ela
+  // pode responder com HTML (challenge page) em vez de JSON. Chamar res.json()
+  // direto explode com SyntaxError ("Unexpected token '<'"). Verificamos o
+  // Content-Type e lemos como texto primeiro para tratar esses casos.
+  const contentType = res.headers.get("content-type") || "";
+  const rawText = await res.text();
+  let data: unknown;
+  if (contentType.includes("application/json")) {
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      // Header diz JSON, mas o corpo é inválido.
+      auditLog("piapi.fetch", "parse_error", requestId, {
+        url: `${PIAPI_BASE_URL}${path}`,
+        http_status: res.status,
+        content_type: contentType,
+        raw_preview: rawText.slice(0, 300),
+      }, Date.now() - t0);
+      throw new PiAPIError(
+        `Provider retornou JSON inválido (HTTP ${res.status}). Tente novamente em alguns instantes.`,
+        502,
+        { raw: rawText.slice(0, 500) }
+      );
+    }
+  } else {
+    // Conteúdo não-JSON (HTML de challenge Cloudflare, XML, texto puro, etc.).
+    auditLog("piapi.fetch", "non_json_response", requestId, {
+      url: `${PIAPI_BASE_URL}${path}`,
+      http_status: res.status,
+      content_type: contentType,
+      raw_preview: rawText.slice(0, 300),
+    }, Date.now() - t0);
+    throw new PiAPIError(
+      `Provider temporariamente indisponível (HTTP ${res.status}, recebeu ${contentType || "HTML"} em vez de JSON). Tente novamente em alguns instantes.`,
+      503,
+      { raw: rawText.slice(0, 500) }
+    );
+  }
+
+  // AUDIT: response completa da PiAPI (inclui logs[] quando presentes)
+  auditLog("piapi.fetch", "response", requestId, {
+    url: `${PIAPI_BASE_URL}${path}`,
+    http_status: res.status,
+    ok: res.ok,
+    body: truncate(JSON.stringify(data), 8000),
+  }, Date.now() - t0);
+
+  const errEnvelope = data as PiAPIErrorEnvelope | undefined;
+  if (!res.ok || (errEnvelope?.code && errEnvelope.code !== 200)) {
+    const msg =
+      errEnvelope?.message ||
+      errEnvelope?.data?.error?.message ||
+      `PiAPI error ${res.status}`;
+    auditLog("piapi.fetch", "error", requestId, {
+      http_status: res.status,
+      message: msg,
+    }, Date.now() - t0);
+    throw new PiAPIError(msg, res.status, data);
+  }
+
+  return data as T;
+}
+
+// ─── Imagem ─────────────────────────────────────────────────────────────────
+// Modelos: Qubico/flux1-schnell | Qubico/flux1-dev
+// task_type sempre: txt2img
+export interface ImageGenParams {
+  model: string;
+  prompt: string;
+  negative_prompt?: string;
+  width?: number;
+  height?: number;
+  aspect_ratio?: string;
+  seed?: number;
+  reference_image_url?: string;
+  /** ETAPA 7.6.3 — Flux guidance_scale (schema: 1.5–5). Opcional. */
+  guidanceScale?: number;
+}
+
+export async function generateImage(
+  params: ImageGenParams
+): Promise<PiAPITaskResponse> {
+  const AR_DIMS: Record<string, { w: number; h: number }> = {
+    "1:1":  { w: 1024, h: 1024 },
+    "3:4":  { w: 896,  h: 1152 },
+    "9:16": { w: 768,  h: 1344 },
+    "4:3":  { w: 1152, h: 896  },
+    "3:2":  { w: 1216, h: 832  },
+    "16:9": { w: 1344, h: 768  },
+  };
+  const dims = params.aspect_ratio ? AR_DIMS[params.aspect_ratio] : undefined;
+  const hasReference = Boolean(params.reference_image_url);
+
+  // Com referência: task_type "img2img" + input.image (URL pública) + denoise.
+  // Validado na PiAPI: txt2img ignora image_url silenciosamente; img2img respeita.
+  return piapiFetch<PiAPITaskResponse>("/task", {
+    method: "POST",
+    body: JSON.stringify({
+      model: params.model,
+      task_type: hasReference ? "img2img" : "txt2img",
+      input: {
+        prompt: params.prompt,
+        negative_prompt: params.negative_prompt || "",
+        width: params.width || dims?.w || 1024,
+        height: params.height || dims?.h || 1024,
+        ...(hasReference
+          ? { image: params.reference_image_url, denoise: 0.7 }
+          : {}),
+        ...(params.seed !== undefined ? { seed: params.seed } : {}),
+        // ETAPA 7.6.3 — guidance_scale (schema oficial Flux: 1.5–5). Só quando fornecido.
+        ...(typeof params.guidanceScale === "number" && Number.isFinite(params.guidanceScale)
+          ? { guidance_scale: Math.min(Math.max(params.guidanceScale, 1.5), 5) }
+          : {}),
+      },
+    }),
+  });
+}
+
+// ─── Qwen Image (assíncrono via /task) ──────────────────────────────────────
+// Doc oficial PiAPI: model="Qubico/qwen-image".
+//   txt2img  → input{ prompt, negative_prompt, width<=1024, height<=1024, steps<=16, seed, flow_shift }
+//   image-edit → input{ image1(base), image2, image3, prompt, ... } (até 3 imagens)
+// Saída em output.image_url (lida pelo extractResultUrl).
+export async function submitQwenImageTask(args: {
+  prompt: string;
+  imageUrls?: string[];
+  negativePrompt?: string;
+  width?: number;
+  height?: number;
+  // ETAPA 7.6.3 — schema oficial qwen-image: steps (1-16, def 8), seed (-1=random,
+  // >0=fixo), flow_shift (1-7, def 3). Opcionais; sem eles usa os defaults.
+  steps?: number;
+  seed?: number;
+  flowShift?: number;
+}): Promise<PiAPITaskResponse> {
+  const qSteps =
+    typeof args.steps === "number" && Number.isFinite(args.steps)
+      ? Math.min(Math.max(Math.trunc(args.steps), 1), 16)
+      : 16;
+  const qSeed =
+    typeof args.seed === "number" && Number.isFinite(args.seed) ? Math.trunc(args.seed) : -1;
+  const qFlow =
+    typeof args.flowShift === "number" && Number.isFinite(args.flowShift)
+      ? Math.min(Math.max(args.flowShift, 1), 7)
+      : 3;
+  const refs = (args.imageUrls || []).filter(Boolean).slice(0, 3);
+  if (refs.length > 0) {
+    const input: Record<string, unknown> = {
+      image1: refs[0],
+      prompt: args.prompt,
+      steps: qSteps,
+      seed: qSeed,
+      flow_shift: qFlow,
+    };
+    if (refs[1]) input.image2 = refs[1];
+    if (refs[2]) input.image3 = refs[2];
+    if (args.negativePrompt) input.negative_prompt = args.negativePrompt;
+    return piapiFetch<PiAPITaskResponse>("/task", {
+      method: "POST",
+      body: JSON.stringify({
+        model: "Qubico/qwen-image",
+        task_type: "image-edit",
+        input,
+      }),
+    });
+  }
+  const input: Record<string, unknown> = {
+    prompt: args.prompt,
+    width: Math.min(args.width || 1024, 1024),
+    height: Math.min(args.height || 1024, 1024),
+    steps: qSteps,
+    seed: qSeed,
+    flow_shift: qFlow,
+  };
+  if (args.negativePrompt) input.negative_prompt = args.negativePrompt;
+  return piapiFetch<PiAPITaskResponse>("/task", {
+    method: "POST",
+    body: JSON.stringify({
+      model: "Qubico/qwen-image",
+      task_type: "txt2img",
+      input,
+    }),
+  });
+}
+
+// ─── Imagem Gemini / Nano Banana (assíncrono via /task) ─────────────────────
+// Docs oficiais PiAPI: POST /task { model:"gemini", task_type, input:{ prompt,
+// image_urls[], aspect_ratio, resolution, output_format } }. Suporta EDIÇÃO e
+// FUSÃO multi-imagem (troca de avatar, pessoa + produto) via input.image_urls.
+// A saída sai em output.image_urls[] (lida pelo extractResultUrl no polling).
+export interface GeminiImageArgs {
+  taskType: string; // "nano-banana-pro" | "gemini-2.5-flash-image" | "nano-banana-2"
+  prompt: string;
+  imageUrls?: string[]; // 1+ referências → fusão/edição
+  aspectRatio?: string; // "1:1" | "9:16" | "16:9" ...
+  resolution?: string; // "1K" | "2K" | "4K" (só nano-banana-pro)
+  outputFormat?: string; // "png" (default)
+  maxRefs?: number; // ETAPA 7.6.3 — limite de image_urls (nano-banana-pro: 14; flash: 6)
+}
+
+export async function submitGeminiImageTask(
+  args: GeminiImageArgs
+): Promise<PiAPITaskResponse> {
+  const input: Record<string, unknown> = {
+    prompt: args.prompt,
+    output_format: args.outputFormat || "png",
+    safety_level: "high",
+  };
+  if (args.aspectRatio) input.aspect_ratio = args.aspectRatio;
+  if (args.resolution) input.resolution = args.resolution;
+  if (args.imageUrls && args.imageUrls.length > 0) {
+    // ETAPA 7.6.3 — limite de refs vem do modelo (Nano Banana Pro: 14; flash: 6).
+    input.image_urls = args.imageUrls.slice(0, args.maxRefs && args.maxRefs > 0 ? args.maxRefs : 6);
+  }
+  return piapiFetch<PiAPITaskResponse>("/task", {
+    method: "POST",
+    body: JSON.stringify({
+      model: "gemini",
+      task_type: args.taskType,
+      input,
+    }),
+  });
+}
+
+// ─── Imagem premium (GPT Image 2 — síncrono) ────────────────────────────────
+// Endpoint OpenAI-like da PiAPI: POST /v1/images/generations (Bearer).
+// Validado em 2026-07-24: retorna data[0].b64_json (ou url). Texto perfeito.
+export interface GptImageParams {
+  prompt: string;
+  aspect_ratio?: string;
+  quality?: "low" | "medium" | "high";
+  reference_image_url?: string; // URL pública da imagem de referência (aceita por gpt-image-2)
+}
+
+/**
+ * Gera imagem com o GPT Image 2 real da PiAPI (síncrono).
+ * Retorna uma data-URL (base64) ou URL http, pronta para persistir no Storage.
+ */
+// ─── Qubico Image Toolkit (Remove BG / Upscale) — assíncrono via /task ────────
+// Docs PiAPI: POST /task { model:"Qubico/image-toolkit", task_type, input }.
+// background-remove → input { rmbg_model, image }; upscale → input { image, scale, face_enhance }.
+// A saída sai em output.image (lida pelo extractResultUrl no polling do status).
+export async function submitImageToolkitTask(
+  args: { taskType: "background-remove" | "upscale"; input: Record<string, unknown> },
+  requestId = "-"
+): Promise<PiAPITaskResponse> {
+  return piapiFetch<PiAPITaskResponse>(
+    "/task",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        model: "Qubico/image-toolkit",
+        task_type: args.taskType,
+        input: args.input,
+      }),
+    },
+    requestId
+  );
+}
+
+export async function generateImageGptSync(
+  params: GptImageParams
+): Promise<string> {
+  const apiKey = process.env.PIAPI_API_KEY;
+  if (!apiKey) throw new PiAPIError("PIAPI_API_KEY não configurada");
+
+  // GPT Image aceita apenas 1024x1024, 1536x1024 (paisagem), 1024x1536 (retrato).
+  // P9b — mapeamento vem da FONTE ÚNICA (mesma usada pela cobrança).
+  const size = gptImage2ProviderSize(params.aspect_ratio);
+
+  const reqBody: Record<string, unknown> = {
+    model: "gpt-image-2",
+    prompt: params.prompt,
+    n: 1,
+    size,
+    // Doc oficial PiAPI: gpt-image-2 suporta APENAS quality "medium".
+    quality: "medium",
+  };
+  // Imagem de referência — aceita como "image" no body JSON (validado PiAPI 2026-07)
+  if (params.reference_image_url) {
+    reqBody.image = params.reference_image_url;
+  }
+
+  const res = await fetch(`${PIAPI_OPENAI_BASE}/images/generations`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(reqBody),
+  });
+
+  const data = (await res.json().catch(() => null)) as {
+    data?: Array<{ b64_json?: string; url?: string }>;
+    error?: { message?: string; type?: string };
+  } | null;
+
+  if (!res.ok || data?.error || !data?.data?.length) {
+    let msg =
+      data?.error?.message || `PiAPI gpt-image error ${res.status}`;
+    // Erros de content safety vêm embrulhados como "upstream returned 400: {...}"
+    const m = msg.match(/upstream returned \d+: (\{.*\})/);
+    if (m) {
+      try {
+        const inner = JSON.parse(m[1]) as { error?: { message?: string } };
+        if (inner.error?.message) msg = inner.error.message;
+      } catch {
+        // mantém msg original
+      }
+    }
+    throw new PiAPIError(msg, res.status, data);
+  }
+
+  const first = data.data[0];
+  if (first.url) return first.url;
+  if (first.b64_json) return `data:image/png;base64,${first.b64_json}`;
+  throw new PiAPIError("Resposta do gpt-image sem imagem", res.status, data);
+}
+
+// GPT Image 2 — EDIÇÃO com 1+ imagens de referência (multi-imagem / fusão).
+// Doc oficial PiAPI: POST /v1/images/edits, multipart/form-data, campo image[]
+// repetido (até 16 imagens; a 1ª é o sujeito/base, as demais são referências).
+// gpt-image-2 aceita SOMENTE quality "medium". response_format=url → URL hospedada.
+export async function generateImageGptEdits(args: {
+  prompt: string;
+  imageUrls: string[];
+  aspect_ratio?: string;
+  outputFormat?: string;
+}): Promise<string> {
+  const apiKey = process.env.PIAPI_API_KEY;
+  if (!apiKey) throw new PiAPIError("PIAPI_API_KEY não configurada");
+
+  // P9b — mapeamento de tamanho da FONTE ÚNICA (mesma usada pela cobrança).
+  const size = gptImage2ProviderSize(args.aspect_ratio);
+
+  const form = new FormData();
+  form.append("model", "gpt-image-2");
+  form.append("prompt", args.prompt);
+  form.append("quality", "medium"); // gpt-image-2: só medium
+  form.append("n", "1");
+  form.append("size", size);
+  form.append("response_format", "url");
+  if (args.outputFormat) form.append("output_format", args.outputFormat);
+
+  let idx = 0;
+  for (const url of args.imageUrls.slice(0, 16)) {
+    const r = await fetch(url);
+    if (!r.ok) continue;
+    const blob = await r.blob();
+    const ext = (blob.type.split("/")[1] || "png").replace("jpeg", "jpg");
+    form.append("image[]", blob, `ref_${idx++}.${ext}`);
+  }
+  if (idx === 0) throw new PiAPIError("Nenhuma referência acessível para edição");
+
+  const res = await fetch(`${PIAPI_OPENAI_BASE}/images/edits`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}` }, // sem Content-Type: fetch define o boundary
+    body: form,
+  });
+
+  const text = await res.text();
+  let data: {
+    data?: Array<{ url?: string; b64_json?: string }>;
+    error?: { message?: string };
+  } | null;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new PiAPIError(
+      `Resposta inválida do gpt-image edits (${res.status})`,
+      res.status
+    );
+  }
+  if (!res.ok || data?.error || !data?.data?.length) {
+    let msg = data?.error?.message || `PiAPI gpt-image edits ${res.status}`;
+    const m = msg.match(/upstream returned \d+: (\{.*\})/);
+    if (m) {
+      try {
+        const inner = JSON.parse(m[1]) as { error?: { message?: string } };
+        if (inner.error?.message) msg = inner.error.message;
+      } catch {}
+    }
+    throw new PiAPIError(msg, res.status, data);
+  }
+  const first = data.data[0];
+  if (first.url) return first.url;
+  if (first.b64_json) return `data:image/png;base64,${first.b64_json}`;
+  throw new PiAPIError("gpt-image edits sem imagem", res.status, data);
+}
+
+// ─── Vídeo ───────────────────────────────────────────────────────────────────
+// Roteamento completo por backend conforme docs oficiais da PiAPI (2026-07).
+// Cada modelo do catálogo (ai_models.params) traz: backend, task_type,
+// kling_version/kling_mode, hailuo_model, output_key e dur_min/dur_max.
+//
+//   kling classic  → model=kling,       task_type=video_generation      → output.video_url
+//   kling 3.0      → model=kling,       task_type=video_generation      → output.video
+//   kling omni     → model=kling,       task_type=omni_video_generation → output.video
+//   kling turbo    → model=kling-turbo, task_type=video_generation      → output.video_url
+//   seedance       → model=seedance,    task_type=seedance-2[-fast|-mini]→ output.video_url
+//   wan 2.6        → model=Wan,         task_type=wan26-txt2video/img2video → output.video_url
+//                    (img2video usa campo "image"; txt2video usa aspect_ratio)
+//   hailuo         → model=hailuo,      task_type=video_generation       → output.video
+//   veo3 / veo3.1  → model=veo3[.1],    task_type=veo3[.1]-video[-fast]  → output.video
+
+export type Quality = "low" | "medium" | "high";
+
+// Subconjunto de ai_models.params relevante para montar o payload de vídeo.
+export interface VideoModelParams {
+  backend?: string;
+  task_type?: string;
+  kling_version?: string;
+  kling_mode?: string;
+  hailuo_model?: string;
+  output_key?: string;
+  resolution?: string;
+  dur_min?: number;
+  dur_max?: number;
+  /** quando true, o backend usa a variante "-less-restriction" do Seedance. */
+  less_restriction?: boolean;
+  /** tier do Seedance definido no catálogo ("pro" | "fast" | "mini"). */
+  seedance_tier?: "pro" | "fast" | "mini";
+  [k: string]: unknown;
+}
+
+export interface BuildVideoArgs {
+  params: VideoModelParams;
+  prompt: string;
+  quality: Quality;
+  duration?: number;
+  /** resolução escolhida pelo usuário (ex.: "480p" | "720p" | "1080p"); tem
+   *  prioridade sobre a derivada de `quality`. */
+  resolution?: string;
+  aspectRatio?: string;
+  imageUrl?: string;
+  endImageUrl?: string;
+  dubbingAudioUrl?: string;
+  /** força o task type "-less-restriction" independentemente de haver imagem
+   *  (ex.: quando o modelo do catálogo tem params.less_restriction === true). */
+  lessRestriction?: boolean;
+  /** tier explícito do Seedance ("pro" = padrão/seedance-2). */
+  seedanceTier?: "pro" | "fast" | "mini";
+  referenceImages?: string[];
+  referenceVideos?: string[];
+  referenceAudios?: string[];
+  /** ETAPA 7.3.2 — Veo 3.1: reference_image_urls (1-3, só 16:9+8s). Slot de UI dedicado. */
+  veoReferenceImages?: string[];
+  /** ETAPA 7.3.2 — Veo seed (integer). Só text-to-video (schema não tem seed no i2v). */
+  seed?: number;
+  /** ETAPA 7.5.2 — Wan: shot_type (single/multi; só com prompt_extend true). */
+  wanShotType?: "single" | "multi";
+  /** ETAPA 7.5.2 — Wan: prompt_extend (bool; default do provider é true). */
+  wanPromptExtend?: boolean;
+  shots?: Array<{ prompt: string; duration: number }>;
+  /** preset de movimento do Kling Motion Control (quando não há vídeo de referência). */
+  presetMotion?: string;
+  withAudio?: boolean;
+  negativePrompt?: string;
+  /** id de correlação para logging estruturado da auditoria */
+  requestId?: string;
+}
+
+const clampInt = (v: number, lo: number, hi: number) =>
+  Math.max(lo, Math.min(hi, Math.round(v)));
+
+// Snap para o valor permitido mais próximo (ex.: Wan aceita apenas 5/10/15).
+const snap = (v: number, allowed: number[]) =>
+  allowed.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a));
+
+/**
+ * ETAPA 2.1 Q3 — FONTE ÚNICA da duração de vídeo (segundos) que a PiAPI vai
+ * executar. Usada TANTO pelo adapter (buildVideoPayload → userDur) QUANTO pela
+ * cobrança (api/generate/video → dsafe), garantindo:
+ *   UI duration = billing duration = adapter duration = provider duration.
+ * Antes, a cobrança usava round(duration) e o adapter usava snap(duration),
+ * divergindo para valores fora do enum (ex.: Kling Turbo 7 → cobrava 7, executava 5).
+ * Regras espelham exatamente cada backend documentado na PiAPI.
+ */
+export function resolveVideoDurationSeconds(
+  params: VideoModelParams,
+  requested?: number
+): number {
+  const durMin = params.dur_min ?? 5;
+  const durMax = params.dur_max ?? 10;
+  const d = clampInt(requested ?? durMin, durMin, durMax);
+  const backend = params.backend || "kling";
+  const taskType = params.task_type || "";
+  const version = params.kling_version || "";
+  if (backend === "kling-turbo") return snap(d, [5, 10]);
+  if (backend === "veo3" || backend === "veo3.1") return snap(d, [4, 6, 8]);
+  if (backend === "Wan") return snap(d, [5, 10, 15]);
+  if (backend === "hailuo") return d <= 8 ? 6 : 10;
+  if (backend === "seedance") return d; // range 4..durMax (clamp já aplicado)
+  if (backend === "kling") {
+    // Kling 3.0 / Omni: range livre 3..15. Classic/avatar/motion: fora de escopo.
+    if (taskType === "omni_video_generation" || version === "3.0" || version === "3.0-turbo")
+      return clampInt(d, 3, 15);
+    return d;
+  }
+  return d;
+}
+
+/**
+ * Monta o corpo COMPLETO da requisição PiAPI (POST /task) para um modelo de
+ * vídeo, respeitando as regras de cada backend. Sempre inclui
+ * config.service_mode = "public".
+ */
+export function buildVideoPayload(args: BuildVideoArgs): Record<string, unknown> {
+  const rid = args.requestId || "-";
+  // AUDIT: entrada do adapter (parâmetros normalizados do modelo + do usuário)
+  auditLog("piapi.buildVideoPayload", "entrada", rid, {
+    backend: args.params.backend,
+    task_type: args.params.task_type,
+    prompt_preview: typeof args.prompt === "string" ? args.prompt.slice(0, 80) : args.prompt,
+    quality: args.quality,
+    duration: args.duration,
+    aspectRatio: args.aspectRatio,
+    has_imageUrl: Boolean(args.imageUrl),
+    has_endImageUrl: Boolean(args.endImageUrl),
+    referenceImages: args.referenceImages?.length || 0,
+    referenceVideos: args.referenceVideos?.length || 0,
+    referenceAudios: args.referenceAudios?.length || 0,
+    shots: args.shots?.length || 0,
+    withAudio: args.withAudio,
+    has_negativePrompt: Boolean(args.negativePrompt),
+  });
+  const payload = buildVideoPayloadInner(args);
+  // AUDIT: saída do adapter (payload final que será enviado à PiAPI)
+  auditLog("piapi.buildVideoPayload", "saida", rid, {
+    task_type: payload.task_type,
+    less_restriction:
+      typeof payload.task_type === "string" && payload.task_type.includes("less-restriction"),
+    auto_upload_assets: Boolean(
+      (payload as { input?: { auto_upload_assets?: unknown } }).input?.auto_upload_assets
+    ),
+    payload: JSON.parse(JSON.stringify(payload, (k, v) => truncate(v, 500))),
+  });
+  return payload;
+}
+
+function buildVideoPayloadInner(args: BuildVideoArgs): Record<string, unknown> {
+  const {
+    params,
+    prompt,
+    quality,
+    aspectRatio,
+    imageUrl,
+    endImageUrl,
+    referenceImages,
+    referenceVideos,
+    referenceAudios,
+    veoReferenceImages,
+    seed,
+    negativePrompt,
+  } = args;
+  const backend = params.backend || "kling";
+  // config.service_mode = "public" (obrigatório). Quando PUBLIC_BASE_URL e
+  // PIAPI_WEBHOOK_SECRET estão definidos, registramos o webhook para que a PiAPI
+  // notifique nosso endpoint ao concluir/falhar a task (evita depender só de polling).
+  const config: Record<string, unknown> = { service_mode: "public" };
+  if (process.env.PUBLIC_BASE_URL && process.env.PIAPI_WEBHOOK_SECRET) {
+    config.webhook_config = {
+      endpoint: `${process.env.PUBLIC_BASE_URL}/api/webhooks/piapi`,
+      secret: process.env.PIAPI_WEBHOOK_SECRET,
+    };
+  }
+  const aspect = aspectRatio || "16:9";
+  // Kling só aceita 16:9 / 9:16 / 1:1 — fora disso a PiAPI rejeita.
+  const klingAspect = ["16:9", "9:16", "1:1"].includes(aspect) ? aspect : "16:9";
+  // ETAPA 2.1 Q3 — duração vem da FONTE ÚNICA (mesma função usada na cobrança).
+  const userDur = resolveVideoDurationSeconds(params, args.duration);
+
+  // ── KLING AVATAR ─────────────────────────────────────────────────────────────
+  // task_type="avatar" → lip-sync; requer image_url (retrato) + local_dubbing_url (áudio TTS).
+  // mode: std = 720p/padrão, pro = melhor qualidade (usa quality do caller).
+  // batch_size: 2 quando há Multiple Camera Angles (referenceImages.length > 1), senão 1.
+  if (backend === "kling" && params.task_type === "avatar") {
+    // ETAPA 3.4 — Kling Avatar exige image_url (retrato) + local_dubbing_url (áudio).
+    // Guarda de defesa: nunca montar um payload inválido (a validação primária é
+    // na rota, antes do débito; aqui é a última barreira). Não altera billing/duração.
+    if (!args.dubbingAudioUrl) {
+      throw new Error("Kling Avatar requer um áudio de dublagem (local_dubbing_url).");
+    }
+    if (!imageUrl) {
+      throw new Error("Kling Avatar requer uma imagem de retrato (image_url).");
+    }
+    return {
+      model: "kling",
+      task_type: "avatar",
+      input: {
+        image_url: imageUrl,
+        local_dubbing_url: args.dubbingAudioUrl,
+        prompt: prompt || "A person speaking naturally and warmly to camera, UGC style.",
+        mode: quality === "high" ? "pro" : "std",
+        batch_size: args.referenceImages && args.referenceImages.length > 1 ? 2 : 1,
+      },
+      config,
+    };
+  }
+
+  // ── KLING MOTION CONTROL ───────────────────────────────────────────────────
+  // task_type="motion_control": transfere movimento (vídeo de referência ou
+  // preset) para o personagem da imagem. Doc oficial: image_url (obrig.) +
+  // (video_url OU preset_motion). Saída em output.works[] (lida no polling).
+  if (backend === "kling" && params.task_type === "motion_control") {
+    const motionImage = imageUrl || (referenceImages && referenceImages[0]);
+    const motionVideo = referenceVideos && referenceVideos[0];
+    const mcVersion =
+      params.kling_version && params.kling_version.startsWith("3") ? "3.0" : "2.6";
+    // ETAPA 7.2.1.1 — modo vem do CATÁLOGO (fonte única `kling_mode`), não da
+    // quality. Assim o modo EXECUTADO = o modo COBRADO (a rota cobra a cps do
+    // tier correspondente). Default "pro" (o catálogo anuncia 1080p).
+    const motionMode = params.kling_mode === "std" ? "std" : "pro";
+    const input: Record<string, unknown> = {
+      image_url: motionImage,
+      version: mcVersion,
+      mode: motionMode,
+      motion_direction: "video",
+      keep_original_sound: true,
+    };
+    // Um dos dois é obrigatório como referência de movimento.
+    if (motionVideo) input.video_url = motionVideo;
+    else input.preset_motion = args.presetMotion || "Subject 3 Dance";
+    if (prompt) input.prompt = prompt;
+    return { model: "kling", task_type: "motion_control", input, config };
+  }
+
+  // ── SEEDANCE ──────────────────────────────────────────────────────────────
+  if (backend === "seedance") {
+    // Coleta todas as imagens de referência (start/end frames ou omni-reference).
+    const imgUrls: string[] = [];
+    if (referenceImages && referenceImages.length > 0) {
+      // Omni Reference: usa todas as imagens (até 12) diretamente.
+      imgUrls.push(...referenceImages.slice(0, 12));
+    } else {
+      // Start / End Frame: 1 ou 2 imagens.
+      if (imageUrl) imgUrls.push(imageUrl);
+      if (endImageUrl) imgUrls.push(endImageUrl);
+    }
+    const hasImages = imgUrls.length > 0;
+
+    // ── Seedance 2.5 (preview) ────────────────────────────────────────────
+    // task_type único "seedance-2.5" (sem split VIP, sem "-less-restriction",
+    // sem tier). Só 480p/720p (1080p é rejeitado). Suporta image_urls (até 9),
+    // video_urls (até 3) e audio_urls (até 3; exigem ao menos 1 imagem/vídeo).
+    if ((params.task_type || "").includes("2.5")) {
+      // task_type vem do catalogo: "seedance-2.5" (strict) ou
+      // "seedance-2.5-less-restriction". Fallback para a variante padrao.
+      const task25 = params.task_type || "seedance-2.5";
+      // ETAPA 7.4.4 — Seedance 2.5 suporta 480p/720p/1080p (schema oficial).
+      // Antes, qualquer coisa ≠480/720 caía em 720p (bloqueava 1080p). Agora
+      // 1080p passa; só valores realmente inválidos caem no default 720p.
+      let res25 = args.resolution || (quality === "low" ? "480p" : "720p");
+      if (!["480p", "720p", "1080p"].includes(res25)) res25 = "720p";
+      const input25: Record<string, unknown> = {
+        prompt,
+        duration: userDur,
+        resolution: res25,
+        aspect_ratio: aspect,
+      };
+      // ETAPA 7.4.3 — limites conforme schema oficial seedance-2.5: image_urls ≤9,
+      // video_urls ≤3, audio_urls ≤3 (áudio exige ao menos 1 imagem/vídeo).
+      if (imgUrls.length > 0) input25.image_urls = imgUrls.slice(0, 9);
+      if (referenceVideos && referenceVideos.length > 0) {
+        input25.video_urls = referenceVideos.slice(0, 3);
+      }
+      if (
+        referenceAudios &&
+        referenceAudios.length > 0 &&
+        (imgUrls.length > 0 || (referenceVideos && referenceVideos.length > 0))
+      ) {
+        input25.audio_urls = referenceAudios.slice(0, 3);
+      }
+      if (negativePrompt) input25.negative_prompt = negativePrompt;
+      return {
+        model: "seedance",
+        task_type: task25,
+        input: input25,
+        config,
+      };
+    }
+
+    // ETAPA 7.4.1 — CONTRATO DE BILLING: modelo EXECUTADO = modelo COBRADO.
+    // Antes, qualquer geração COM imagem era promovida silenciosamente para
+    // "-less-restriction" (custo +10% no provider), mas a rota continuava
+    // cobrando a cps STRICT → sub-cobrança (perda em planos de multiplicador
+    // baixo). A LR agora é usada SOMENTE quando o modelo escolhido é de fato LR
+    // (catálogo `less_restriction: true` → args.lessRestriction). Quem precisa
+    // de rosto real escolhe o modelo "Rosto Real" (que cobra a cps LR correta).
+    // Sem upgrade silencioso; strict permanece strict e cobra strict.
+    const useLR = args.lessRestriction === true;
+
+    // Tier: catálogo (seedanceTier) tem prioridade; senão infere do task_type.
+    const base =
+      args.seedanceTier === "fast"
+        ? "seedance-2-fast"
+        : args.seedanceTier === "mini"
+        ? "seedance-2-mini"
+        : args.seedanceTier === "pro"
+        ? "seedance-2"
+        : // sem tier explícito: usa o task_type do catálogo como base, removendo
+          // um eventual sufixo "-less-restriction" para reconstruir de forma limpa.
+          (params.task_type || "seedance-2").replace(/-less-restriction$/, "");
+    const taskType = useLR ? `${base}-less-restriction` : base;
+
+    // Resolução SEMPRE explícita (o default da PiAPI mudou para 480p).
+    // args.resolution tem prioridade; fallback por quality. fast/mini não
+    // suportam 1080p → rebaixa para 720p.
+    let resolution =
+      args.resolution || (quality === "low" ? "480p" : quality === "medium" ? "720p" : "1080p");
+    if ((base.includes("fast") || base.includes("mini")) && resolution === "1080p") {
+      resolution = "720p";
+    }
+
+    const input: Record<string, unknown> = {
+      prompt,
+      duration: userDur,
+      resolution,
+      aspect_ratio: aspect,
+    };
+    // ETAPA 7.4.3 — `mode` EXPLÍCITO (schema seedance-2 marca required; antes
+    // dependíamos da auto-inferência). Regra do schema:
+    //   sem refs → text_to_video · 1-2 imagens só → first_last_frames ·
+    //   qualquer outra combinação (3+ imagens, ou vídeo/áudio) → omni_reference.
+    // NÃO altera task_type.
+    const _hasVid = Array.isArray(referenceVideos) && referenceVideos.length > 0;
+    const _hasAud =
+      Array.isArray(referenceAudios) && referenceAudios.length > 0 && (imgUrls.length > 0 || _hasVid);
+    input.mode =
+      imgUrls.length === 0 && !_hasVid && !_hasAud
+        ? "text_to_video"
+        : imgUrls.length >= 1 && imgUrls.length <= 2 && !_hasVid && !_hasAud
+        ? "first_last_frames"
+        : "omni_reference";
+    // ETAPA 7.4.3 — limites conforme schema oficial seedance-2: image_urls ≤9,
+    // video_urls ≤3, audio_urls ≤3 (áudio exige ao menos 1 imagem/vídeo).
+    if (imgUrls.length > 0) input.image_urls = imgUrls.slice(0, 9);
+    if (referenceVideos && referenceVideos.length > 0) {
+      input.video_urls = referenceVideos.slice(0, 3);
+    }
+    if (
+      referenceAudios &&
+      referenceAudios.length > 0 &&
+      (imgUrls.length > 0 || (referenceVideos && referenceVideos.length > 0))
+    ) {
+      input.audio_urls = referenceAudios.slice(0, 3);
+    }
+    if (negativePrompt) input.negative_prompt = negativePrompt;
+    // auto_upload_assets: só na variante less-restriction COM imagens. Esse flag
+    // pede que a PiAPI hospede internamente os assets de referência (necessário
+    // para o pipeline less-restriction). asset_retention_hours limita a retenção.
+    if (useLR && hasImages) {
+      input.auto_upload_assets = true;
+      input.asset_retention_hours = 3;
+    }
+    const seedancePayload: Record<string, unknown> = {
+      model: "seedance",
+      task_type: taskType,
+      input,
+      config,
+    };
+    return seedancePayload;
+  }
+
+  // ── WAN 2.6 ────────────────────────────────────────────────────────────────
+  if (backend === "Wan") {
+    // Wan aceita 720P / 1080P (P maiúsculo). Respeita a escolha do usuário; 480p
+    // não é suportado pela Wan → sobe para 720P.
+    let resolution = (args.resolution || (quality === "high" ? "1080p" : "720p")).toUpperCase();
+    if (resolution === "480P") resolution = "720P";
+    const hasImage = Boolean(imageUrl);
+    const input: Record<string, unknown> = {
+      prompt,
+      duration: userDur,
+      resolution,
+      watermark: false,
+      ...(hasImage ? {} : { aspect_ratio: aspect }), // aspect_ratio não é suportado em img2video
+    };
+    if (imageUrl) input.image = imageUrl; // campo correto: "image", não "image_url"
+    if (negativePrompt) input.negative_prompt = negativePrompt;
+    // Audio: usa audio_url externo se fornecido; senão gera áudio nativo por padrão.
+    if (referenceAudios && referenceAudios.length > 0) {
+      input.audio_url = referenceAudios[0];
+      input.audio = true;
+    } else {
+      input.audio = args.withAudio ?? true;
+    }
+    // ETAPA 7.5.2 — capabilities do schema oficial wan26 (não afetam billing):
+    //   prompt_extend (bool), shot_type (single/multi; SÓ com prompt_extend true),
+    //   seed (int 0..2147483647).
+    const wanExtend =
+      typeof args.wanPromptExtend === "boolean" ? args.wanPromptExtend : undefined;
+    if (wanExtend !== undefined) input.prompt_extend = wanExtend;
+    // shot_type só é válido quando prompt_extend está ligado (default do provider = true).
+    if (wanExtend !== false && (args.wanShotType === "single" || args.wanShotType === "multi")) {
+      input.shot_type = args.wanShotType;
+    }
+    if (typeof seed === "number" && Number.isFinite(seed)) {
+      input.seed = Math.min(Math.max(Math.trunc(seed), 0), 2147483647);
+    }
+    return {
+      model: "Wan",
+      task_type: hasImage ? "wan26-img2video" : (params.task_type || "wan26-txt2video"),
+      input,
+      config,
+    };
+  }
+
+  // ── HAILUO (MiniMax) ─────────────────────────────────────────────────────
+  if (backend === "hailuo") {
+    // Duração válida: 6 ou 10 — snap conforme o pedido do usuário.
+    const hailuoDur = userDur;
+    // Hailuo usa resolução NUMÉRICA (1080 ou 768) por limitação do provider.
+    // Respeita a escolha do usuário quando viável: 1080 só é aceito com
+    // duration=6 (1080+10 não existe na PiAPI); caso contrário cai para 768.
+    // P6d — a UI passou a exibir "768p"; QUALQUER valor não-1080 (incl. o alias
+    // LEGADO "720p" de configs/saves antigos) normaliza CONSCIENTEMENTE para 768,
+    // exatamente como o billing (credit_cost_map["768"]). Não há downgrade
+    // silencioso: 1080p+10s já é rejeitado pré-débito na rota (validateVideoRequest).
+    const wants1080 = args.resolution
+      ? args.resolution.includes("1080")
+      : quality === "high";
+    const resolution = wants1080 && hailuoDur === 6 ? 1080 : 768;
+    // Hailuo NÃO aceita aspect_ratio no input; o campo de imagem é image_url.
+    const input: Record<string, unknown> = {
+      model: params.hailuo_model || "v2.3",
+      prompt,
+      duration: hailuoDur,
+      resolution,
+    };
+    if (imageUrl) input.image_url = imageUrl;
+    return { model: "hailuo", task_type: "video_generation", input, config };
+  }
+
+  // ── VEO 3 / VEO 3.1 ────────────────────────────────────────────────────────
+  if (backend === "veo3" || backend === "veo3.1") {
+    // Respeita a resolução do usuário; Veo3 aceita 720p/1080p → 480p sobe p/ 720p.
+    let resolution = args.resolution || (quality === "high" ? "1080p" : "720p");
+    if (resolution === "480p") resolution = "720p";
+    // duração válida: [4, 6, 8] — snap ao mais próximo do pedido, formatado como "Xs"
+    const veoDur = userDur;
+    const durStr = `${veoDur}s`; // STRING com sufixo "s"
+    const input: Record<string, unknown> = {
+      prompt,
+      duration: durStr,
+      resolution,
+      // ETAPA 7.3.1 — schema oficial PiAPI (veo3/veo31): aspect_ratio ∈ {16:9, 9:16}
+      // (o 1:1 NÃO existe no enum). Fora disso → 16:9 (default do provider).
+      aspect_ratio: ["16:9", "9:16"].includes(aspect) ? aspect : "16:9",
+      generate_audio: args.withAudio ?? Boolean(params.has_audio),
+    };
+    if (negativePrompt) input.negative_prompt = negativePrompt;
+    if (imageUrl) input.image_url = imageUrl;
+    // ETAPA 7.3.2 — reference_image_urls: schema oficial só no veo3.1 image-to-video,
+    // 1-3 imagens, e SOMENTE com aspect_ratio "16:9" + duração 8s. As refs IGNORAM o
+    // tail image (doc) → quando ativas, não enviamos tail_image_url.
+    const veoRefs = (veoReferenceImages || [])
+      .filter((u) => typeof u === "string" && /^https?:\/\//i.test(u))
+      .slice(0, 3);
+    const veoRefsActive =
+      backend === "veo3.1" && !!imageUrl && veoRefs.length >= 1 &&
+      input.aspect_ratio === "16:9" && veoDur === 8;
+    if (veoRefsActive) {
+      input.reference_image_urls = veoRefs;
+    } else if (endImageUrl && backend === "veo3.1") {
+      // ETAPA 7.3.1 — end frame: veo3.1 usa `tail_image_url`. veo3 não possui.
+      input.tail_image_url = endImageUrl;
+    }
+    // ETAPA 7.3.2 — seed: schema oficial só existe em TEXT-to-video (veo3 e veo3.1).
+    // Não há seed no image-to-video → só enviamos quando NÃO há imagem inicial.
+    if (typeof seed === "number" && Number.isFinite(seed) && !imageUrl) {
+      input.seed = Math.trunc(seed);
+    }
+    const defaultTask = backend === "veo3" ? "veo3-video" : "veo3.1-video";
+    return {
+      model: backend,
+      task_type: params.task_type || defaultTask,
+      input,
+      config,
+    };
+  }
+
+  // ── KLING TURBO (2.5) ────────────────────────────────────────────────────
+  // AUDITORIA 2: model="kling-turbo" falha 100% das vezes com internal 500.
+  // A solução correta é usar model="kling" com version="2.5" e mode="turbo".
+  // Confirmado funcionando em 2026-07-25.
+  if (backend === "kling-turbo") {
+    // ETAPA 1 P0 (contract integrity): a duração vem da ESCOLHA do usuário
+    // (args.duration → userDur, já limitado a [dur_min, dur_max] = [5, 10]),
+    // NUNCA de `quality`. Antes, `quality === "low" ? 5 : 10` fazia o Flow
+    // (que sempre envia quality "high") mandar 10s mesmo com 5s selecionado.
+    // A duração já vem resolvida pela FONTE ÚNICA (resolveVideoDurationSeconds).
+    const duration = userDur;
+    const klingVersion = (params.kling_version || "2.5").replace("-turbo", "");
+    const input: Record<string, unknown> = {
+      prompt,
+      version: klingVersion,  // "2.5" — sem o sufixo "-turbo"
+      mode: "turbo",           // mode=turbo é o correto para este modelo
+      duration,
+      aspect_ratio: klingAspect,
+    };
+    if (imageUrl) input.start_image_url = imageUrl;
+    if (endImageUrl) input.end_image_url = endImageUrl;
+    if (referenceVideos && referenceVideos.length > 0) {
+      input.reference_video_url = referenceVideos[0];
+    }
+    if (negativePrompt) input.negative_prompt = negativePrompt;
+    // Usa model="kling" (não "kling-turbo") — confirmado pela PiAPI
+    return { model: "kling", task_type: "video_generation", input, config };
+  }
+
+  // ── KLING (classic / 3.0 / omni) ─────────────────────────────────────────
+  const taskType = params.task_type || "video_generation";
+  const version = params.kling_version || "1.6";
+
+  // Kling Omni 3.0 — task_type diferente + resolution + enable_audio
+  if (taskType === "omni_video_generation") {
+    // omni_video_generation exige version 3.0; nunca usar o fallback genérico "1.6"
+    const omniVersion = version === "1.6" ? "3.0" : version;
+    // Respeita a resolução do usuário; Kling Omni aceita 720p/1080p → 480p→720p.
+    let resolution = args.resolution || (quality === "high" ? "1080p" : "720p");
+    if (resolution === "480p") resolution = "720p";
+    const input: Record<string, unknown> = {
+      prompt,
+      version: omniVersion,
+      duration: userDur,
+      resolution,
+      aspect_ratio: klingAspect,
+      // Kling Omni: a doc oficial (kling-3-omni-api) LISTA enable_audio como válido, mas a PiAPI retorna
+      // "This parameter is temporarily not supported" em runtime (áudio nativo gated no pool público, 19/08/2026).
+      // -> não enviamos enable_audio até normalizar. Quando reabrirem, reativar audio na capability do kling-omni.
+    };
+    // Kling Omni usa images[] com @image_N no prompt.
+    // Prioriza referenceImages (aba Omni Reference); senão usa start/end frame.
+    const omniImages: string[] =
+      referenceImages && referenceImages.length > 0
+        ? referenceImages.slice(0, 4)
+        : ([imageUrl, endImageUrl].filter(Boolean) as string[]);
+    if (omniImages.length > 0) {
+      input.images = omniImages;
+      // Prepend @image_N refs ao prompt (obrigatório pela PiAPI para Kling Omni)
+      const imgRefs = omniImages.map((_, i) => `@image_${i + 1}`).join(" ");
+      input.prompt = `${imgRefs} ${prompt}`;
+    }
+    // Vídeo de referência: campo "video" (singular) + @video no prompt
+    if (referenceVideos && referenceVideos.length > 0) {
+      input.video = referenceVideos[0];
+      const currentPrompt = (input.prompt as string) || prompt;
+      if (!currentPrompt.includes("@video")) {
+        input.prompt = `@video ${currentPrompt}`;
+      }
+    }
+    if (negativePrompt) input.negative_prompt = negativePrompt;
+    return { model: "kling", task_type: "omni_video_generation", input, config };
+  }
+
+  // Kling 3.0 — mode std/pro, duração livre 3–15
+  if (version === "3.0" || version === "3.0-turbo") {
+    const mode = quality === "high" ? "pro" : "std";
+    const input: Record<string, unknown> = {
+      prompt,
+      version,
+      mode,
+      duration: userDur,
+      aspect_ratio: klingAspect,
+    };
+    if (imageUrl) input.image_url = imageUrl;
+    if (endImageUrl) input.image_tail_url = endImageUrl;
+    if (referenceVideos && referenceVideos.length > 0) {
+      input.reference_video_url = referenceVideos[0];
+    }
+    // enable_audio: suportado no Kling 3.0 (não no 3.0-turbo).
+    if (version !== "3.0-turbo") {
+      input.enable_audio = args.withAudio ?? false;
+    }
+    // Multi-Shot (storyboard) — campo correto é multi_shots + prefer_multi_shots.
+    if (version === "3.0" && args.shots && args.shots.length > 0) {
+      // Construir shots candidatos (já limitados a 6)
+      let shots = args.shots.slice(0, 6).map((s) => ({
+        prompt: s.prompt,
+        duration: clampInt(s.duration, 3, 15),
+      }));
+
+      // Validar soma ≤ 15s: aparar shots excedentes
+      let totalDuration = shots.reduce((acc, s) => acc + s.duration, 0);
+      while (totalDuration > 15 && shots.length > 1) {
+        shots = shots.slice(0, shots.length - 1);
+        totalDuration = shots.reduce((acc, s) => acc + s.duration, 0);
+      }
+
+      input.prefer_multi_shots = true;
+      input.multi_shots = shots;
+    } else {
+      input.prefer_multi_shots = false; // 3.0-turbo: nunca multi_shots
+    }
+    if (negativePrompt) input.negative_prompt = negativePrompt;
+    return { model: "kling", task_type: "video_generation", input, config };
+  }
+
+  // Kling classic (1.5/1.6/2.1/2.5/2.6) — duração ENUM 5 ou 10
+  const mode = quality === "high" ? "pro" : "std";
+  const duration = quality === "low" ? 5 : 10;
+  const input: Record<string, unknown> = {
+    prompt,
+    version,
+    mode,
+    duration,
+    aspect_ratio: klingAspect,
+  };
+  if (imageUrl) input.image_url = imageUrl;
+  if (endImageUrl) input.image_tail_url = endImageUrl;
+  if (referenceVideos && referenceVideos.length > 0) {
+    input.reference_video_url = referenceVideos[0];
+  }
+  if (negativePrompt) input.negative_prompt = negativePrompt;
+  return { model: "kling", task_type: "video_generation", input, config };
+}
+
+/**
+ * Submete uma task de vídeo já montada (POST /task) e devolve o task_id.
+ */
+export async function submitVideoTask(
+  payload: Record<string, unknown>,
+  requestId = "-"
+): Promise<PiAPITaskResponse> {
+  const t0 = Date.now();
+  auditLog("piapi.submitVideoTask", "entrada", requestId, {
+    model: payload.model,
+    task_type: payload.task_type,
+  });
+  try {
+    const res = await piapiFetch<PiAPITaskResponse>("/task", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }, requestId);
+    auditLog("piapi.submitVideoTask", "sucesso", requestId, {
+      task_id: res?.data?.task_id,
+      status: res?.data?.status,
+    }, Date.now() - t0);
+    return res;
+  } catch (err) {
+    auditLog("piapi.submitVideoTask", "falha", requestId, {
+      error: err instanceof Error ? err.message : String(err),
+    }, Date.now() - t0);
+    throw err;
+  }
+}
+
+/**
+ * Extrai a URL do vídeo do output da PiAPI conforme o output_key do modelo.
+ *   output.video      → output.video (string) | output.video.url
+ *   output.video_url  → output.video_url
+ * Sem output_key: tenta ambos.
+ */
+export function extractVideoUrl(
+  output: PiAPIStatusResponse["data"]["output"],
+  outputKey?: string
+): string | null {
+  if (!output) return null;
+  const o = output as Record<string, unknown>;
+  const asUrl = (v: unknown): string | null =>
+    typeof v === "string"
+      ? v
+      : v && typeof v === "object" && typeof (v as { url?: string }).url === "string"
+        ? (v as { url: string }).url
+        : null;
+
+  // Kling Avatar e Kling classic devolvem o vídeo em output.works[].video
+  // (resource_without_watermark preferido). Doc oficial Kling Get Task.
+  const worksUrl = (): string | null => {
+    const works = o.works as
+      | Array<{ video?: { resource_without_watermark?: string; resource?: string } }>
+      | undefined;
+    const v = works?.[0]?.video;
+    return v?.resource_without_watermark || v?.resource || null;
+  };
+
+  if (outputKey === "output.video") {
+    return (
+      asUrl(o.video) ||
+      (typeof o.video_url === "string" ? o.video_url : null) ||
+      worksUrl()
+    );
+  }
+  if (outputKey === "output.video_url") {
+    return (
+      (typeof o.video_url === "string" ? o.video_url : null) ||
+      asUrl(o.video) ||
+      worksUrl()
+    );
+  }
+  // fallback: tenta todos
+  return (
+    (typeof o.video_url === "string" ? o.video_url : null) ||
+    asUrl(o.video) ||
+    worksUrl()
+  );
+}
+
+// ─── Áudio ───────────────────────────────────────────────────────────────────
+// Qubico/ace-step → task_type="txt2audio", input.style_prompt + input.lyrics
+export interface AudioGenParams {
+  model: string;
+  prompt: string;
+  lyrics?: string;
+  duration?: number;
+  quality?: "low" | "medium" | "high";
+  // Udio (music-u) — 3 modos oficiais. Quando `lyricsType` é fornecido
+  // explicitamente ele VENCE; se ausente, o branch music-u cai no fallback
+  // legado (lyrics presente ⇒ "user"; caso contrário "instrumental"), mantendo
+  // o payload byte-idêntico para callers antigos. `negativeTags`/`seed` são
+  // opcionais (avançado) e só entram no input quando fornecidos.
+  lyricsType?: "generate" | "instrumental" | "user";
+  negativeTags?: string;
+  seed?: number;
+  // ACE-Step (Qubico/ace-step, txt2audio) — P5f. negative_prompt oficial
+  // (opcional). lyrics já existe acima (reutilizado: "[inst]" instrumental ou
+  // letra do usuário, ambos resolvidos pela route). Só entra no input quando
+  // fornecido (não cria campo vazio desnecessário).
+  negativePrompt?: string;
+  // MMAudio real (Qubico/mmaudio, video2audio) — P5h. URL pública do vídeo de
+  // entrada (video2audio exige o vídeo). steps/seed NÃO enviados (DOC INCOMPLETE).
+  video?: string;
+  // Campos de TTS (usados pela rota de áudio para o motor de fala; a PiAPI
+  // em si não os consome — TTS roda via generateSpeechAbacus).
+  voice_id?: string;
+  stability?: number;
+  similarity?: number;
+  speed?: number;
+  elevenlabs_model?: string;
+}
+
+export async function generateAudio(
+  params: AudioGenParams
+): Promise<PiAPITaskResponse> {
+  // music-u (Udio real) — validado nas docs oficiais (task_type generate_music).
+  // 3 modos via lyrics_type: "generate" (AI Vocals — modelo escreve a letra),
+  // "instrumental" (sem voz) e "user" (letra custom fornecida pelo usuário).
+  // Back-compat: `lyricsType` explícito vence; sem ele, o fallback legado
+  // (lyrics ⇒ "user"; senão "instrumental") preserva o payload antigo.
+  if (params.model === "music-u") {
+    const lyricsType =
+      params.lyricsType ?? (params.lyrics ? "user" : "instrumental");
+    const input: Record<string, unknown> = {
+      gpt_description_prompt: params.prompt,
+      lyrics_type: lyricsType,
+    };
+    // lyrics só faz sentido no modo custom ("user"); o caller envia o texto
+    // ORIGINAL do usuário (nunca traduzido).
+    if (lyricsType === "user" && params.lyrics) {
+      input.lyrics = params.lyrics;
+    }
+    // Avançado — só incluídos quando fornecidos (mantém compat com o payload
+    // legado, que não enviava negative_tags/seed).
+    if (typeof params.negativeTags === "string" && params.negativeTags.length > 0) {
+      input.negative_tags = params.negativeTags;
+    }
+    if (typeof params.seed === "number" && Number.isFinite(params.seed)) {
+      input.seed = params.seed;
+    }
+    return piapiFetch<PiAPITaskResponse>("/task", {
+      method: "POST",
+      body: JSON.stringify({
+        model: "music-u",
+        task_type: "generate_music",
+        input,
+      }),
+    });
+  }
+
+  // Kling Sound SFX (P5g) — text-to-audio. Contrato oficial confirmado:
+  // model=kling, task_type=sound, input.prompt + input.duration (5|10). A route
+  // é a autoridade de validação (duration obrigatório 5|10); aqui só montamos o
+  // payload provider-near. SEM lyrics/negative_prompt/seed/config manual (a doc
+  // usa webhook, que o Fluxyra não usa). 4 saídas MP3 chegam no get-status.
+  if (params.model === "kling") {
+    return piapiFetch<PiAPITaskResponse>("/task", {
+      method: "POST",
+      body: JSON.stringify({
+        model: "kling",
+        task_type: "sound",
+        input: {
+          prompt: params.prompt,
+          duration: params.duration,
+        },
+      }),
+    });
+  }
+
+  // MMAudio real (Qubico/mmaudio) — video2audio. P5h. Contrato oficial:
+  // model=Qubico/mmaudio, task_type=video2audio, input.video + input.prompt +
+  // input.negative_prompt (opcional). steps/seed NÃO enviados (DOC INCOMPLETE).
+  // A route é a autoridade de validação (video obrigatório + prompt); aqui só o
+  // payload provider-near. Output oficial do produto = output.audio_url (single).
+  if (params.model === "Qubico/mmaudio") {
+    const mmInput: Record<string, unknown> = {
+      video: params.video,
+      prompt: params.prompt,
+    };
+    if (typeof params.negativePrompt === "string" && params.negativePrompt.length > 0) {
+      mmInput.negative_prompt = params.negativePrompt;
+    }
+    return piapiFetch<PiAPITaskResponse>("/task", {
+      method: "POST",
+      body: JSON.stringify({
+        model: "Qubico/mmaudio",
+        task_type: "video2audio",
+        input: mmInput,
+      }),
+    });
+  }
+
+  if (params.model.includes("ace-step")) {
+    // Qualidade → infer_step (COMPORTAMENTO INTERNO ATUAL; infer_step NÃO consta
+    // da doc oficial ACE-Step — preservado, não exposto, não declarado contrato).
+    const inferStep = { low: 30, medium: 60, high: 100 }[
+      params.quality ?? "high"
+    ];
+    // Contrato oficial ACE-Step (txt2audio): style_prompt, lyrics, negative_prompt,
+    // duration. P5f: a route resolve lyrics ("[inst]" instrumental | letra do
+    // usuário) e negativePrompt. lyrics mantém `|| ""` p/ back-compat de callers
+    // legados (auditado: só a audio route chama este client). negative_prompt só
+    // é incluído quando fornecido. duration segue comportamento atual (não enviado).
+    const aceInput: Record<string, unknown> = {
+      style_prompt: params.prompt,
+      lyrics: params.lyrics || "",
+      infer_step: inferStep,
+    };
+    if (typeof params.negativePrompt === "string" && params.negativePrompt.length > 0) {
+      aceInput.negative_prompt = params.negativePrompt;
+    }
+    return piapiFetch<PiAPITaskResponse>("/task", {
+      method: "POST",
+      body: JSON.stringify({
+        model: params.model,
+        task_type: "txt2audio",
+        input: aceInput,
+      }),
+    });
+  }
+
+  // Fallback
+  return piapiFetch<PiAPITaskResponse>("/task", {
+    method: "POST",
+    body: JSON.stringify({
+      model: params.model,
+      task_type: "txt2audio",
+      input: { prompt: params.prompt },
+    }),
+  });
+}
+
+// ─── Status da Task ──────────────────────────────────────────────────────────
+export async function getTaskStatus(
+  taskId: string,
+  requestId = "-"
+): Promise<PiAPIStatusResponse> {
+  const t0 = Date.now();
+  auditLog("piapi.getTaskStatus", "entrada", requestId, { task_id: taskId });
+  try {
+    const res = await piapiFetch<PiAPIStatusResponse>(
+      `/task/${taskId}`,
+      { method: "GET" },
+      requestId
+    );
+    auditLog("piapi.getTaskStatus", "sucesso", requestId, {
+      task_id: taskId,
+      status: res?.data?.status,
+      has_output: Boolean(res?.data?.output),
+      logs: res?.data?.logs || [],
+      error: res?.data?.error || null,
+    }, Date.now() - t0);
+    return res;
+  } catch (err) {
+    auditLog("piapi.getTaskStatus", "falha", requestId, {
+      task_id: taskId,
+      error: err instanceof Error ? err.message : String(err),
+    }, Date.now() - t0);
+    throw err;
+  }
+}
+
+// ─── Extrair URL do resultado ────────────────────────────────────────────────
+export function extractResultUrl(
+  output: PiAPIStatusResponse["data"]["output"]
+): string | null {
+  if (!output) return null;
+  // luma: output.video / output.video_raw podem ser objetos { url }
+  const o = output as Record<string, unknown>;
+  const videoObj = (o.video ?? o.video_raw) as
+    | { url?: string }
+    | string
+    | undefined;
+  const videoObjUrl =
+    videoObj && typeof videoObj === "object" ? videoObj.url : undefined;
+  // music-u (Udio): output.songs[0].song_path
+  const songs = o.songs as Array<{ song_path?: string }> | undefined;
+  const songUrl = songs?.[0]?.song_path;
+
+  return (
+    output.url ||
+    output.image_url ||
+    output.video_url ||
+    output.audio_url ||
+    (typeof output.video === "string" ? output.video : undefined) ||
+    videoObjUrl ||
+    output.audio ||
+    songUrl ||
+    output.image ||
+    output.images?.[0]?.url ||
+    (Array.isArray((o as { image_urls?: unknown }).image_urls)
+      ? ((o as { image_urls?: string[] }).image_urls?.[0] ?? null)
+      : null) ||
+    output.videos?.[0]?.url ||
+    null
+  );
+}
+
+/**
+ * P5g1 — Fundação multi-output (provider-agnostic). Retorna TODAS as URLs de
+ * resultado como array normalizado. Envolve os extractores single EXISTENTES
+ * (extractVideoUrl / extractResultUrl) — NÃO altera Udio/ACE/Kling extraction
+ * (FASE 6). Hoje sempre devolve ≤1 URL (nenhum provider fornece múltiplos).
+ * O suporte multi provider-specific (ex.: Kling `works[*].audio`) entra no P5g
+ * estendendo ESTA função — o resto do pipeline (status route, storage, params,
+ * UI) já lida com N a partir daqui.
+ */
+/**
+ * P5g — Extrai URLs de áudio de `output.works[]` (Kling Sound). Política de URL:
+ *   1. resource_without_watermark (se string não vazia);
+ *   2. fallback resource;
+ *   3. work sem nenhum dos dois → ignorado.
+ * Preserva ordem; strings vazias descartadas; dedupe é feito por normalizeResultUrls.
+ * Só o Kling Sound retorna works[].audio — Udio/ACE/TTS não têm works[], então
+ * caem no extractor single. NÃO inventa 4º output (retorna o que existe).
+ */
+function extractWorksAudioUrls(
+  output: PiAPIStatusResponse["data"]["output"]
+): string[] {
+  const works = (output as { works?: unknown } | null | undefined)?.works;
+  if (!Array.isArray(works)) return [];
+  const urls: string[] = [];
+  for (const w of works) {
+    const audio = (w as { audio?: { resource?: unknown; resource_without_watermark?: unknown } } | null)
+      ?.audio;
+    if (!audio) continue;
+    const clean =
+      typeof audio.resource_without_watermark === "string"
+        ? audio.resource_without_watermark.trim()
+        : "";
+    const fallback = typeof audio.resource === "string" ? audio.resource.trim() : "";
+    const url = clean || fallback;
+    if (url) urls.push(url);
+  }
+  return urls;
+}
+
+export function extractResultUrls(
+  output: PiAPIStatusResponse["data"]["output"],
+  isVideo = false,
+  outputKey?: string
+): string[] {
+  if (isVideo) {
+    return normalizeResultUrls({ resultUrl: extractVideoUrl(output, outputKey) ?? undefined });
+  }
+  // Áudio/imagem. Kling Sound (P5g): output.works[*].audio → múltiplos outputs.
+  const worksUrls = extractWorksAudioUrls(output);
+  if (worksUrls.length > 0) return normalizeResultUrls({ resultUrls: worksUrls });
+  // Demais (Udio songs[], ACE audio_url, TTS, imagem) → extractor single legado.
+  return normalizeResultUrls({ resultUrl: extractResultUrl(output) ?? undefined });
 }
