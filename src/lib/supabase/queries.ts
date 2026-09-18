@@ -29,7 +29,7 @@ export async function getCurrentProfile(): Promise<Profile | null> {
 }
 
 export function initialsFromProfile(profile: Profile | null): string {
-  const source = profile?.full_name || profile?.email || "Fluxyra";
+  const source = profile?.email || "Fluxyra";
   const parts = source.trim().split(/\s+/);
   if (parts.length >= 2) {
     return (parts[0][0] + parts[1][0]).toUpperCase();

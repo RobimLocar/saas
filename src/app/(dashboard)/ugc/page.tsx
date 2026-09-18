@@ -1,0 +1,3463 @@
+"use client";
+
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Package, Pencil, Plus, Trash2, ChevronRight, Sparkles, Loader2, Upload, X, Clapperboard, Check, User } from "lucide-react";
+import { toast } from "sonner";
+import { useTranslations } from "next-intl";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import { GenerationCard } from "@/components/ui/generation-card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { avatarRawCredits } from "@/lib/models/avatar-pricing";
+
+type ViewMode = "list" | "tier" | "avatar" | "project";
+type UgcTab = "script" | "avatar" | "broll" | "generations";
+
+interface ProductItem {
+  id: string;
+  title: string;
+  description: string | null;
+  image_url: string;
+  created_at: string;
+}
+
+interface ProductFormState {
+  title: string;
+  description: string;
+  imageUrl: string;
+}
+
+interface ScriptShape {
+  hook: { text: string };
+  body1: { text: string };
+  body2: { text: string };
+  cta: { text: string };
+}
+
+interface UgcProject {
+  id: string;
+  name: string;
+  product_id: string | null;
+  avatar_seed_id: string | null;
+  avatar_label: string | null;
+  avatar_image_url: string | null;
+  status: string | null;
+  script: ScriptShape | null;
+  segments: unknown;
+  broll: unknown;
+  created_at: string;
+  updated_at: string | null;
+}
+
+interface ProductCardEditState {
+  name: string;
+  description: string;
+  tags: string;
+}
+
+interface BrollClip {
+  preset: string;
+  label?: string;
+  generation_id: string;
+  status: "processing" | "completed" | "failed";
+  duration?: number;
+  audio?: boolean;
+  created_at?: string;
+  result_url?: string;
+  product_image_url?: string;
+}
+
+interface InfluencerAvatarItem {
+  id: string;
+  name: string;
+  handle: string | null;
+  status: string | null;
+  avatar_image_url: string | null;
+}
+
+type AvatarFormat = "9:16" | "1:1" | "16:9";
+
+const VIDEO_TYPES = [
+  { id: "talking-broll", title: "UGC Talking + B-Roll", subtitle: "High-converting", image: "", prompt: "Real person holding the product and talking straight to the camera in an upbeat tone, intercut with b-roll of the product in use. Natural light, phone-shot UGC style, vertical 9:16." },
+  { id: "fast-broll", title: "Fast-Cut B-Roll", subtitle: "ASMR / Visual Hook", image: "", prompt: "Fast sequence of product close-ups in ASMR style, snappy on-beat cuts, focus on texture and detail, no face, clean background and soft lighting." },
+  { id: "normal-broll", title: "Normal-Cut B-Roll", subtitle: "ASMR / Visual Hook", image: "", prompt: "Smooth close-ups of the product being used, calm pace, natural light, clean transitions and focus on the details, ASMR style." },
+  { id: "avatar-product", title: "Avatar Talking with Product", subtitle: "Holds / shows product", image: "", prompt: "Avatar segurando e mostrando o produto enquanto fala os benefícios, gestos naturais, ambiente de casa aconchegante, vertical 9:16." },
+  { id: "avatar-no-product", title: "Avatar Talking No Product", subtitle: "Just the avatar talking", image: "", prompt: "Avatar falando direto para a câmera sobre o produto, sem segurá-lo, expressão confiante e amigável, fundo neutro e desfocado." },
+  { id: "problem-solution", title: "Problem to Solution", subtitle: "Story-based", image: "", prompt: "Começa mostrando um problema do dia a dia, depois apresenta o produto como a solução, tom de alívio e storytelling, cortes claros entre as duas partes." },
+  { id: "lifestyle", title: "Lifestyle Montage", subtitle: "Aesthetic / Vibe", image: "", prompt: "Montagem lifestyle com o produto integrado à rotina, estética aspiracional, luz dourada, cortes no ritmo da música." },
+  { id: "before-after", title: "Before vs After", subtitle: "Comparison", image: "", prompt: "Comparação antes e depois usando o produto, corte claro ou split screen, ênfase na transformação e no resultado." },
+  { id: "authority", title: "Authority / Expert", subtitle: "Credibility", image: "", prompt: "Especialista explicando por que o produto funciona, tom confiável e didático, ambiente profissional, olhando direto para a câmera." },
+  { id: "day-in-life", title: "Day-in-the-Life", subtitle: "Relatable", image: "", prompt: "Rotina do dia a dia usando o produto em vários momentos, tom relatable e espontâneo, gravação de celular." },
+  { id: "reaction", title: "Reaction / First Impression", subtitle: "Emotional hook", image: "", prompt: "Primeira reação ao usar o produto, surpresa genuína, close no rosto, gancho emocional forte nos primeiros segundos." },
+  { id: "fashion", title: "Fashion Try-On", subtitle: "Showcase", image: "", prompt: "Try-on mostrando o produto vestido, giro para mostrar o caimento, espelho ou câmera fixa, vibe fashion e confiante." },
+] as const;
+
+// Capa do hero da UGC. Deixe "" para o placeholder; cole a URL da imagem gerada (recomendado 1920x640 px, ~3:1).
+const UGC_COVER_IMAGE = "";
+
+const AVATARS = [
+  { id: "a1", name: "Ana", handle: "@ugc_ana", image: "" },
+  { id: "a2", name: "Bruno", handle: "@ugc_bruno", image: "" },
+  { id: "a3", name: "Carla", handle: "@ugc_carla", image: "" },
+  { id: "a4", name: "Diego", handle: "@ugc_diego", image: "" },
+  { id: "a5", name: "Elena", handle: "@ugc_elena", image: "" },
+  { id: "a6", name: "Felipe", handle: "@ugc_felipe", image: "" },
+  { id: "a7", name: "Gabi", handle: "@ugc_gabi", image: "" },
+  { id: "a8", name: "Hugo", handle: "@ugc_hugo", image: "" },
+  { id: "a9", name: "Ines", handle: "@ugc_ines", image: "" },
+  { id: "a10", name: "Joao", handle: "@ugc_joao", image: "" },
+  { id: "a11", name: "Karina", handle: "@ugc_karina", image: "" },
+  { id: "a12", name: "Lucas", handle: "@ugc_lucas", image: "" },
+] as const;
+
+const FORMAT_PRESETS: Record<AvatarFormat, { width: number; height: number }> = {
+  "9:16": { width: 576, height: 1024 },
+  "1:1": { width: 768, height: 768 },
+  "16:9": { width: 1024, height: 576 },
+};
+
+function buildUgcPrompt(
+  scene: string,
+  speech: string,
+  opts?: { sameAsRef?: boolean }
+): string {
+  const parts: string[] = [];
+  const sc = scene.trim();
+  if (sc) parts.push(sc);
+  if (opts?.sameAsRef) {
+    parts.push(
+      "Keep exactly the same person as in the reference images: same face, hair, outfit and environment."
+    );
+  }
+  const sp = speech.trim();
+  if (sp) {
+    parts.push(
+      `The person looks at the camera and speaks directly to it (perfect lip sync, talking to camera — not an off-screen voice-over), saying, in the same language as the quoted line: "${sp}".`
+    );
+  }
+  return parts.join("\n\n");
+}
+
+function audioBufferToWav(buffer: AudioBuffer): Blob {
+  const sampleRate = buffer.sampleRate;
+  const length = buffer.length;
+  const mono = new Float32Array(length);
+  const chs = buffer.numberOfChannels || 1;
+  for (let c = 0; c < chs; c++) {
+    const ch = buffer.getChannelData(c);
+    for (let i = 0; i < length; i++) mono[i] += ch[i] / chs;
+  }
+  const blockAlign = 2;
+  const dataSize = length * blockAlign;
+  const ab = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(ab);
+  const writeStr = (off: number, str: string) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i));
+  };
+  writeStr(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, "data");
+  view.setUint32(40, dataSize, true);
+  let off = 44;
+  for (let i = 0; i < length; i++) {
+    const sample = Math.max(-1, Math.min(1, mono[i]));
+    view.setInt16(off, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+    off += 2;
+  }
+  return new Blob([view], { type: "audio/wav" });
+}
+
+async function extractAudioAsWav(file: File): Promise<Blob | null> {
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const AC =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AC) return null;
+    const ctx = new AC();
+    const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
+    void ctx.close();
+    if (!audioBuffer || audioBuffer.length === 0) return null;
+    return audioBufferToWav(audioBuffer);
+  } catch {
+    return null;
+  }
+}
+
+function isAvatarFormat(value: unknown): value is AvatarFormat {
+  return value === "9:16" || value === "1:1" || value === "16:9";
+}
+
+function parseDuration(value: unknown): 4 | 6 | 8 {
+  return value === 4 || value === 6 || value === 8 ? value : 6;
+}
+
+function parseResolution(value: unknown): "720p" | "1080p" | "4k" {
+  return value === "1080p" || value === "4k" ? value : "720p";
+}
+
+function parseFormat(value: unknown): AvatarFormat {
+  return isAvatarFormat(value) ? value : "9:16";
+}
+
+function ImageDropzone({
+  id,
+  title,
+  subtitle,
+  disabled,
+  onFileSelect,
+  cta,
+  previewUrl,
+  uploading,
+  onRemovePreview,
+}: {
+  id: string;
+  title: string;
+  subtitle?: string;
+  disabled?: boolean;
+  onFileSelect: (file: File) => void;
+  cta?: string;
+  previewUrl?: string;
+  uploading?: boolean;
+  onRemovePreview?: () => void;
+}) {
+  const t = useTranslations("ugc");
+  const [dragging, setDragging] = useState(false);
+
+  return (
+    <label
+      htmlFor={id}
+      className={`block rounded-2xl border-2 border-dashed bg-[#111111] p-6 text-center transition-all duration-200 ${
+        dragging
+          ? "border-[#7C3AED] bg-[#7C3AED]/5"
+          : "border-[#2A2A2A] hover:border-[#7C3AED]/60"
+      } ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+      onDragOver={(event) => {
+        event.preventDefault();
+        if (!disabled) setDragging(true);
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(event) => {
+        event.preventDefault();
+        setDragging(false);
+        if (disabled) return;
+        const file = event.dataTransfer.files?.[0];
+        if (file) onFileSelect(file);
+      }}
+    >
+      <input
+        id={id}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        disabled={disabled}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) onFileSelect(file);
+          event.currentTarget.value = "";
+        }}
+      />
+
+      {previewUrl ? (
+        <div className="relative mx-auto max-w-xs">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={previewUrl} alt={title} className="mx-auto max-h-48 w-full rounded-xl object-cover" />
+          {onRemovePreview ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onRemovePreview();
+              }}
+              className="absolute right-2 top-2 rounded-full border border-[#2A2A2A] bg-black/70 p-1 text-white"
+              aria-label={t("removePreview")}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+        </div>
+      ) : uploading ? (
+        <div className="flex flex-col items-center gap-2">
+          <Loader2 className="h-6 w-6 animate-spin text-[#A78BFA]" />
+          <p className="text-sm text-[#888888]">{t("uploading")}</p>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center gap-2">
+          <Upload className={`h-8 w-8 ${dragging ? "text-[#7C3AED]" : "text-[#888888]"}`} />
+          <p className="text-sm font-medium text-[#E5E5E5]">{title}</p>
+          <p className="text-xs text-[#888888]">
+            {subtitle || t("dropDefault")}
+          </p>
+          {cta ? <span className="text-xs text-[#A78BFA]">{cta}</span> : null}
+        </div>
+      )}
+    </label>
+  );
+}
+
+function emptyForm(): ProductFormState {
+  return {
+    title: "",
+    description: "",
+    imageUrl: "",
+  };
+}
+
+function emptyProjectForm(): ProductCardEditState {
+  return {
+    name: "",
+    description: "",
+    tags: "",
+  };
+}
+
+function emptyScript(): ScriptShape {
+  return {
+    hook: { text: "" },
+    body1: { text: "" },
+    body2: { text: "" },
+    cta: { text: "" },
+  };
+}
+
+function formatDate(iso: string): string {
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(iso));
+}
+
+function formatDateLong(iso: string): string {
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(iso));
+}
+
+function projectCover(project: UgcProject): string | null {
+  const clips = normalizeBroll(project.broll);
+  const withProduct = clips.find(
+    (c) => typeof c.product_image_url === "string" && c.product_image_url.trim().length > 0
+  );
+  if (withProduct?.product_image_url) return withProduct.product_image_url;
+  if (project.avatar_image_url) return project.avatar_image_url;
+  return null;
+}
+
+function statusLabel(status: string | null): string {
+  const s = (status || "draft").toLowerCase();
+  if (s === "ready") return "statusReady";
+  if (s === "processing") return "statusProcessing";
+  if (s === "published") return "statusPublished";
+  if (s === "failed") return "statusFailed";
+  return "statusDraft";
+}
+
+function normalizeScript(raw: unknown): ScriptShape {
+  const obj = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const part = (key: "hook" | "body1" | "body2" | "cta") => {
+    const entry = obj[key] as Record<string, unknown> | undefined;
+    const text = typeof entry?.text === "string" ? entry.text : "";
+    return { text };
+  };
+
+  return {
+    hook: part("hook"),
+    body1: part("body1"),
+    body2: part("body2"),
+    cta: part("cta"),
+  };
+}
+
+function normalizeBroll(raw: unknown): BrollClip[] {
+  return Array.isArray(raw) ? (raw as BrollClip[]) : [];
+}
+
+
+export default function UGCPage() {
+  const t = useTranslations("ugc");
+  const [view, setView] = useState<ViewMode>("list");
+  const [selectedVideoType, setSelectedVideoType] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<UgcTab>("broll");
+
+  // Projetos UGC
+  const [projects, setProjects] = useState<UgcProject[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedProject, setSelectedProject] = useState<UgcProject | null>(null);
+
+  const [projectCreateOpen, setProjectCreateOpen] = useState(false);
+  const [projectSaving, setProjectSaving] = useState(false);
+  const [projectForm, setProjectForm] = useState<ProductCardEditState>(emptyProjectForm());
+  const [projectProductId, setProjectProductId] = useState<string>("");
+
+  const [nameEditing, setNameEditing] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [projectDeleting, setProjectDeleting] = useState(false);
+
+  const [scriptDescription, setScriptDescription] = useState("");
+  const [scriptProductId, setScriptProductId] = useState<string>("");
+  const [scriptGenerating, setScriptGenerating] = useState(false);
+  const [scriptSaving, setScriptSaving] = useState(false);
+  const [scriptDraft, setScriptDraft] = useState<ScriptShape>(emptyScript());
+
+  // ── Talking Avatar ──
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarModal, setAvatarModal] = useState<{
+    segmentKey: "hook" | "body1" | "body2" | "cta";
+    label: string;
+    defaultText: string;
+  } | null>(null);
+  const [avatarForm, setAvatarForm] = useState({
+    text: "",
+    accent: "Accent",
+    duration: 6 as 4 | 6 | 8,
+    resolution: "720p" as "720p" | "1080p" | "4k",
+    format: "9:16" as AvatarFormat,
+    cameraAngles: false,
+    productImageUrl: "",
+    productImageUploading: false,
+  });
+  const [avatarGenerating, setAvatarGenerating] = useState(false);
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
+  const [avatarPickerLoading, setAvatarPickerLoading] = useState(false);
+  const [avatarPickerSavingId, setAvatarPickerSavingId] = useState<string | null>(null);
+  const [influencerAvatars, setInfluencerAvatars] = useState<InfluencerAvatarItem[]>([]);
+  const [userCredits, setUserCredits] = useState<number | null>(null);
+  const [pollingSegments, setPollingSegments] = useState<Record<string, string>>({});
+
+  // ── B-Roll ──
+  const [brollProductImageUrl, setBrollProductImageUrl] = useState("");
+  const [brollProductUploading, setBrollProductUploading] = useState(false);
+  const [brollInsideImageUrl, setBrollInsideImageUrl] = useState("");
+  const [brollInsideUploading, setBrollInsideUploading] = useState(false);
+  const [brollAvatarImageUrl, setBrollAvatarImageUrl] = useState("");
+  const [brollAvatarUploading, setBrollAvatarUploading] = useState(false);
+  const [brollAspect, setBrollAspect] = useState("9:16");
+  const [brollResolution, setBrollResolution] = useState("720p");
+  const [extendFrameUrl, setExtendFrameUrl] = useState("");
+  const [extendExtracting, setExtendExtracting] = useState(false);
+  const [extendPrompt, setExtendPrompt] = useState("");
+  const [extendSpeech, setExtendSpeech] = useState("");
+  const [extendAudioUrl, setExtendAudioUrl] = useState("");
+  const [extendGenerating, setExtendGenerating] = useState(false);
+  const [brollDuration, setBrollDuration] = useState(8);
+  const [brollAudio, setBrollAudio] = useState(false);
+  const [brollDescription, setBrollDescription] = useState("");
+  const [brollSpeech, setBrollSpeech] = useState("");
+  const [brollGenerating, setBrollGenerating] = useState(false);
+  const [brollUnitCost, setBrollUnitCost] = useState(0);
+  const [brollRatePerSecond, setBrollRatePerSecond] = useState<Record<string, number> | null>(null);
+  // P10a — cps (créditos/seg) do Kling Avatar, vindo do catálogo via /api/models.
+  // Usado para a ESTIMATIVA da UI (a cobrança real segue a duração do áudio).
+  const [avatarRatePerSecond, setAvatarRatePerSecond] = useState<Record<string, number> | null>(null);
+  const [avatarFlatCost, setAvatarFlatCost] = useState<number | null>(null);
+
+  // Produtos (seção 4c-1 mantida)
+  const [products, setProducts] = useState<ProductItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [workingId, setWorkingId] = useState<string | null>(null);
+
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [editing, setEditing] = useState<ProductItem | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<ProductItem | null>(null);
+
+  const [form, setForm] = useState<ProductFormState>(emptyForm());
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const avatarFormatCacheRef = useRef<Map<string, string>>(new Map());
+
+  const getProcessedAvatarForFormat = useCallback(
+    async (avatarUrl: string, format: AvatarFormat): Promise<string> => {
+      const cacheKey = `${avatarUrl}::${format}`;
+      const cached = avatarFormatCacheRef.current.get(cacheKey);
+      if (cached) return cached;
+
+      const sourceRes = await fetch(avatarUrl);
+      if (!sourceRes.ok) {
+        throw new Error(t("errDownloadPortrait"));
+      }
+
+      const sourceBlob = await sourceRes.blob();
+      const objectUrl = URL.createObjectURL(sourceBlob);
+
+      try {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+
+        const loaded = await new Promise<HTMLImageElement>((resolve, reject) => {
+          img.onload = () => resolve(img);
+          img.onerror = () => reject(new Error("Falha ao carregar retrato para recorte."));
+          img.src = objectUrl;
+        });
+
+        const { width: targetW, height: targetH } = FORMAT_PRESETS[format];
+        const canvas = document.createElement("canvas");
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error(t("errCanvasCrop"));
+
+        const srcW = loaded.naturalWidth;
+        const srcH = loaded.naturalHeight;
+        const targetAspect = targetW / targetH;
+        const srcAspect = srcW / srcH;
+
+        let sx = 0;
+        let sy = 0;
+        let sw = srcW;
+        let sh = srcH;
+
+        if (srcAspect > targetAspect) {
+          sw = srcH * targetAspect;
+          sx = (srcW - sw) / 2;
+        } else if (srcAspect < targetAspect) {
+          sh = srcW / targetAspect;
+          sy = (srcH - sh) / 2;
+        }
+
+        ctx.drawImage(loaded, sx, sy, sw, sh, 0, 0, targetW, targetH);
+
+        const outputBlob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                reject(new Error("Falha ao exportar retrato recortado."));
+                return;
+              }
+              resolve(blob);
+            },
+            "image/jpeg",
+            0.92
+          );
+        });
+
+        const fd = new FormData();
+        fd.append("file", new File([outputBlob], `avatar-${format}.jpg`, { type: "image/jpeg" }));
+
+        const uploadRes = await fetch("/api/upload", {
+          method: "POST",
+          body: fd,
+        });
+        const uploadData = await uploadRes.json().catch(() => null);
+
+        if (!uploadRes.ok || !uploadData?.url) {
+          throw new Error(uploadData?.error || "Falha ao enviar retrato no formato selecionado.");
+        }
+
+        avatarFormatCacheRef.current.set(cacheKey, uploadData.url);
+        return uploadData.url as string;
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
+    },
+    []
+  );
+
+  const loadProducts = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/products", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        if (res.status === 401) {
+          setProducts([]);
+          toast.error(t("toastLoginProducts"));
+          return;
+        }
+        throw new Error(data?.error || "Falha ao carregar produtos.");
+      }
+
+      setProducts(Array.isArray(data?.products) ? data.products : []);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao carregar produtos.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const loadProjects = useCallback(async () => {
+    setProjectsLoading(true);
+    try {
+      const res = await fetch("/api/ugc/projects", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        if (res.status === 401) {
+          setProjects([]);
+          return;
+        }
+        throw new Error(data?.error || "Falha ao carregar projetos UGC.");
+      }
+
+      const list = Array.isArray(data?.projects) ? data.projects : [];
+      setProjects(list);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao carregar projetos UGC.");
+    } finally {
+      setProjectsLoading(false);
+    }
+  }, []);
+
+  const loadProject = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`/api/ugc/projects/${id}`, { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Falha ao carregar projeto.");
+      }
+
+      let project = data?.project as UgcProject;
+
+      // Reconciliação automática: se havia segmento "processing" no DB, consultar
+      // status real da geração e persistir completed/failed no próprio projeto.
+      const rawSegments =
+        ((project?.segments as Record<string, unknown> | null) ?? {}) as Record<
+          string,
+          Record<string, unknown>
+        >;
+      const mergedSegments: Record<string, unknown> = { ...rawSegments };
+      let changed = false;
+      const nextPolling: Record<string, string> = {};
+
+      for (const [segKey, seg] of Object.entries(rawSegments)) {
+        const status = typeof seg?.status === "string" ? seg.status : "";
+        const generationId =
+          typeof seg?.generation_id === "string" ? seg.generation_id : "";
+
+        if (status !== "processing" || !generationId) continue;
+
+        try {
+          const stRes = await fetch(`/api/generate/status?id=${generationId}`, {
+            cache: "no-store",
+          });
+          const stData = await stRes.json().catch(() => null);
+
+          if (!stRes.ok) {
+            nextPolling[segKey] = generationId;
+            continue;
+          }
+
+          if (stData?.status === "completed" || stData?.status === "failed") {
+            const updatedSeg: Record<string, unknown> = {
+              ...seg,
+              status: stData.status,
+              generation_id: generationId,
+            };
+            if (stData?.status === "completed" && stData?.result_url) {
+              updatedSeg.result_url = stData.result_url;
+            }
+            mergedSegments[segKey] = updatedSeg;
+            changed = true;
+          } else {
+            nextPolling[segKey] = generationId;
+          }
+        } catch {
+          nextPolling[segKey] = generationId;
+        }
+      }
+
+      if (changed) {
+        const patchRes = await fetch(`/api/ugc/projects/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ segments: mergedSegments }),
+        });
+        const patchData = await patchRes.json().catch(() => null);
+        if (patchRes.ok && patchData?.project) {
+          project = patchData.project as UgcProject;
+        } else {
+          project = { ...project, segments: mergedSegments };
+        }
+      }
+
+      const rawBroll = normalizeBroll(project?.broll);
+      const mergedBroll: BrollClip[] = [...rawBroll];
+      let brollChanged = false;
+
+      for (let i = 0; i < mergedBroll.length; i++) {
+        const clip = mergedBroll[i];
+        if (clip?.status !== "processing" || !clip?.generation_id) continue;
+
+        try {
+          const stRes = await fetch(`/api/generate/status?id=${clip.generation_id}`, {
+            cache: "no-store",
+          });
+          const stData = await stRes.json().catch(() => null);
+
+          if (!stRes.ok) {
+            nextPolling[`broll:${clip.generation_id}`] = clip.generation_id;
+            continue;
+          }
+
+          if (stData?.status === "completed" || stData?.status === "failed") {
+            mergedBroll[i] = {
+              ...clip,
+              status: stData.status,
+              ...(stData?.status === "completed" && stData?.result_url
+                ? { result_url: stData.result_url }
+                : {}),
+            };
+            brollChanged = true;
+          } else {
+            nextPolling[`broll:${clip.generation_id}`] = clip.generation_id;
+          }
+        } catch {
+          nextPolling[`broll:${clip.generation_id}`] = clip.generation_id;
+        }
+      }
+
+      if (brollChanged) {
+        const patchRes = await fetch(`/api/ugc/projects/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ broll: mergedBroll }),
+        });
+        const patchData = await patchRes.json().catch(() => null);
+        if (patchRes.ok && patchData?.project) {
+          project = patchData.project as UgcProject;
+        } else {
+          project = { ...project, broll: mergedBroll };
+        }
+      }
+
+      setPollingSegments(nextPolling);
+      setSelectedProject(project);
+      setScriptDraft(normalizeScript(project?.script));
+      setScriptProductId(project?.product_id || "");
+      setNameDraft(project?.name || "");
+      setBrollProductImageUrl(
+        normalizeBroll(project?.broll).find((clip) => typeof clip.product_image_url === "string")
+          ?.product_image_url || ""
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao carregar projeto.");
+    }
+  }, []);
+
+  const loadMe = useCallback(async () => {
+    try {
+      const res = await fetch("/api/me", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        setUserCredits(data?.credits ?? 0);
+      }
+    } catch {
+      // silencioso
+    }
+  }, []);
+
+  const loadBrollUnitCost = useCallback(async () => {
+    try {
+      const res = await fetch("/api/models?type=video", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) return;
+      const models = Array.isArray(data?.models) ? data.models : [];
+
+      const by25 = models.find((m: { model_id?: string }) => m.model_id === "seedance-2.5");
+      const byModelId = models.find((m: { model_id?: string }) => m.model_id === "seedance-2.0-fast");
+      const byName = models.find((m: { name?: string }) =>
+        typeof m.name === "string" && /seedance/i.test(m.name) && /fast/i.test(m.name)
+      );
+      const byBackend = models.find((m: { backend?: string }) => m.backend === "seedance");
+      const picked = by25 || byModelId || byName || byBackend;
+
+      if (picked && typeof picked.credit_cost === "number") {
+        setBrollUnitCost(picked.credit_cost);
+      }
+      if (picked && picked.credit_per_second && typeof picked.credit_per_second === "object") {
+        setBrollRatePerSecond(picked.credit_per_second as Record<string, number>);
+      } else {
+        setBrollRatePerSecond(null);
+      }
+
+      // P10a — tarifa do Kling Avatar (mesma fonte que o servidor usa p/ cobrar).
+      const avatarModel = models.find((m: { model_id?: string }) => m.model_id === "kling-avatar");
+      if (avatarModel && avatarModel.credit_per_second && typeof avatarModel.credit_per_second === "object") {
+        setAvatarRatePerSecond(avatarModel.credit_per_second as Record<string, number>);
+      } else {
+        setAvatarRatePerSecond(null);
+      }
+      setAvatarFlatCost(
+        avatarModel && typeof avatarModel.credit_cost === "number" ? avatarModel.credit_cost : null
+      );
+    } catch {
+      // silencioso
+    }
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount sync with the server, not derived state.
+    void loadProducts();
+    void loadProjects();
+    void loadMe();
+    void loadBrollUnitCost();
+  }, [loadProducts, loadProjects, loadMe, loadBrollUnitCost]);
+
+  useEffect(() => {
+    if (view !== "project" || !selectedProjectId) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on selection change sync with the server, not derived state.
+    void loadProject(selectedProjectId);
+  }, [view, selectedProjectId, loadProject]);
+
+  useEffect(() => {
+    if (!selectedProject) return;
+    if (brollProductImageUrl) return;
+
+    const fromProject = normalizeBroll(selectedProject.broll).find(
+      (clip) => typeof clip.product_image_url === "string" && clip.product_image_url
+    )?.product_image_url;
+    if (fromProject) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs local editable state with the loaded project on selection change.
+      setBrollProductImageUrl(fromProject);
+      return;
+    }
+
+    const linkedProduct = products.find((p) => p.id === selectedProject.product_id);
+    if (linkedProduct?.image_url) {
+      setBrollProductImageUrl(linkedProduct.image_url);
+    }
+  }, [selectedProject, products, brollProductImageUrl]);
+
+  const projectCount = projects.length;
+
+  const sortedProjects = useMemo(() => {
+    return [...projects].sort((a, b) => {
+      const aRef = a.updated_at || a.created_at;
+      const bRef = b.updated_at || b.created_at;
+      return new Date(bRef).getTime() - new Date(aRef).getTime();
+    });
+  }, [projects]);
+
+  function openCreateDialog() {
+    setEditing(null);
+    setForm(emptyForm());
+    setEditorOpen(true);
+  }
+
+  function openEditDialog(item: ProductItem) {
+    setEditing(item);
+    setForm({
+      title: item.title,
+      description: item.description || "",
+      imageUrl: item.image_url,
+    });
+    setEditorOpen(true);
+  }
+
+  function closeEditor() {
+    if (saving || uploading) return;
+    setEditorOpen(false);
+    setEditing(null);
+    setForm(emptyForm());
+  }
+
+  function openDeleteDialog(item: ProductItem) {
+    setPendingDelete(item);
+    setConfirmDeleteOpen(true);
+  }
+
+  function closeDeleteDialog() {
+    if (workingId) return;
+    setConfirmDeleteOpen(false);
+    setPendingDelete(null);
+  }
+
+  async function handleUploadImage(file: File) {
+    setUploading(true);
+    const toastId = toast.loading(t("toastUploadingImage"));
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.url) {
+        throw new Error(data?.error || "Erro no upload da imagem.");
+      }
+
+      setForm((prev) => ({ ...prev, imageUrl: data.url }));
+      toast.success(t("toastImageUploaded"), { id: toastId });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("errUploadImage"), {
+        id: toastId,
+      });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleSaveProduct() {
+    const title = form.title.trim();
+    const imageUrl = form.imageUrl.trim();
+
+    if (!title || !imageUrl) {
+      toast.error(t("toastTitleImageRequired"));
+      return;
+    }
+
+    setSaving(true);
+    try {
+      if (editing) {
+        const res = await fetch(`/api/products/${editing.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title,
+            description: form.description.trim() || null,
+            image_url: imageUrl,
+          }),
+        });
+        const data = await res.json().catch(() => null);
+
+        if (!res.ok) {
+          throw new Error(data?.error || "Erro ao atualizar produto.");
+        }
+
+        setProducts((prev) => prev.map((p) => (p.id === editing.id ? data.product : p)));
+        toast.success(t("toastProductUpdated"));
+      } else {
+        const res = await fetch("/api/products", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title,
+            description: form.description.trim() || null,
+            image_url: imageUrl,
+          }),
+        });
+        const data = await res.json().catch(() => null);
+
+        if (!res.ok) {
+          throw new Error(data?.error || "Erro ao criar produto.");
+        }
+
+        setProducts((prev) => [data.product, ...prev]);
+        toast.success(t("toastProductCreated"));
+      }
+
+      closeEditor();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("errSaveProduct"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteProduct() {
+    if (!pendingDelete) return;
+
+    setWorkingId(pendingDelete.id);
+    try {
+      const res = await fetch(`/api/products/${pendingDelete.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Erro ao excluir produto.");
+      }
+
+      setProducts((prev) => prev.filter((p) => p.id !== pendingDelete.id));
+      toast.success(t("toastProductDeleted"));
+      closeDeleteDialog();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("errDeleteProduct"));
+    } finally {
+      setWorkingId(null);
+    }
+  }
+
+  async function handleCreateProject() {
+    const name = projectForm.name.trim();
+    if (!name) {
+      toast.error(t("toastProjectNameRequired"));
+      return;
+    }
+
+    setProjectSaving(true);
+    try {
+      const res = await fetch("/api/ugc/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          product_id: projectProductId || null,
+          avatar_label: projectForm.description.trim() || null,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Erro ao criar projeto UGC.");
+      }
+
+      const created = data.project as UgcProject;
+      setProjects((prev) => [created, ...prev]);
+      setProjectCreateOpen(false);
+      setProjectForm(emptyProjectForm());
+      setProjectProductId("");
+      setSelectedProjectId(created.id);
+      setView("tier");
+      toast.success(t("toastProjectCreated"));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha ao criar projeto.");
+    } finally {
+      setProjectSaving(false);
+    }
+  }
+
+  async function handleInlineRename() {
+    if (!selectedProject) return;
+    const name = nameDraft.trim();
+    if (!name) {
+      toast.error(t("toastProjectNameEmpty"));
+      return;
+    }
+
+    const res = await fetch(`/api/ugc/projects/${selectedProject.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      toast.error(data?.error || t("errRenameProject"));
+      return;
+    }
+
+    const updated = data?.project as UgcProject;
+    setSelectedProject(updated);
+    setProjects((prev) => prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
+    setNameEditing(false);
+    toast.success(t("toastProjectRenamed"));
+  }
+
+  async function handleDeleteProject() {
+    if (!selectedProject) return;
+
+    const confirmed = window.confirm(
+      t("confirmDeleteProjectName", { name: selectedProject.name })
+    );
+    if (!confirmed) return;
+
+    setProjectDeleting(true);
+    try {
+      const res = await fetch(`/api/ugc/projects/${selectedProject.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Erro ao excluir projeto.");
+      }
+
+      setProjects((prev) => prev.filter((p) => p.id !== selectedProject.id));
+      setSelectedProjectId(null);
+      setSelectedProject(null);
+      setView("list");
+      toast.success(t("toastProjectDeleted"));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("errDeleteProject"));
+    } finally {
+      setProjectDeleting(false);
+    }
+  }
+
+  async function handleGenerateScript() {
+    if (!selectedProject) return;
+
+    const description = scriptDescription.trim();
+    if (!description) {
+      toast.error(t("toastDescribeBeforeScript"));
+      return;
+    }
+
+    setScriptGenerating(true);
+    try {
+      const res = await fetch(`/api/ugc/projects/${selectedProject.id}/script`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description,
+          product_id: scriptProductId || null,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || t("errGenScript"));
+      }
+
+      const script = normalizeScript(data?.script);
+      setScriptDraft(script);
+      setSelectedProject((prev) => (prev ? { ...prev, script } : prev));
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === selectedProject.id
+            ? { ...p, script, updated_at: new Date().toISOString() }
+            : p
+        )
+      );
+      toast.success(t("toastScriptGenerated"));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao gerar roteiro.");
+    } finally {
+      setScriptGenerating(false);
+    }
+  }
+
+  async function handleSaveScript() {
+    if (!selectedProject) return;
+
+    setScriptSaving(true);
+    try {
+      const res = await fetch(`/api/ugc/projects/${selectedProject.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ script: scriptDraft }),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || t("errSaveScript"));
+      }
+
+      const updated = data?.project as UgcProject;
+      setSelectedProject(updated);
+      setProjects((prev) => prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
+      toast.success(t("toastScriptSaved"));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar roteiro.");
+    } finally {
+      setScriptSaving(false);
+    }
+  }
+
+  async function applyAvatarImageToProject(
+    avatarImageUrl: string,
+    options?: { successMessage?: string; toastId?: string | number }
+  ) {
+    if (!selectedProject) return;
+
+    const patch = await fetch(`/api/ugc/projects/${selectedProject.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ avatar_image_url: avatarImageUrl }),
+    });
+    const pData = await patch.json().catch(() => null);
+    if (!patch.ok) throw new Error(pData?.error || "Erro ao salvar avatar.");
+
+    const updated = pData?.project as UgcProject;
+    setSelectedProject(updated);
+    setProjects((prev) => prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
+
+    if (options?.successMessage) {
+      toast.success(options.successMessage, options.toastId ? { id: options.toastId } : undefined);
+    }
+  }
+
+  async function loadInfluencerAvatars() {
+    setAvatarPickerLoading(true);
+    try {
+      const res = await fetch("/api/influencers", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || t("errLoadInfluencers"));
+
+      const list = Array.isArray(data?.influencers) ? (data.influencers as InfluencerAvatarItem[]) : [];
+      const activeOnly = list.filter(
+        (inf) => inf.status === "active" && typeof inf.avatar_image_url === "string" && inf.avatar_image_url
+      );
+      setInfluencerAvatars(activeOnly);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao carregar influencers.");
+      setInfluencerAvatars([]);
+    } finally {
+      setAvatarPickerLoading(false);
+    }
+  }
+
+  async function handleSelectInfluencerAvatar(influencer: InfluencerAvatarItem) {
+    if (!influencer.avatar_image_url) return;
+    setAvatarPickerSavingId(influencer.id);
+    const toastId = toast.loading(t("toastApplyingAvatar"));
+    try {
+      await applyAvatarImageToProject(influencer.avatar_image_url, {
+        successMessage: t("avatarAppliedFromStudio"),
+        toastId,
+      });
+      setAvatarPickerOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("errApplyAvatar"), { id: toastId });
+    } finally {
+      setAvatarPickerSavingId(null);
+    }
+  }
+
+  async function openInfluencerAvatarPicker() {
+    setAvatarPickerOpen(true);
+    await loadInfluencerAvatars();
+  }
+
+  async function handleAvatarPortraitUpload(file: File) {
+    if (!selectedProject) return;
+    setAvatarUploading(true);
+    const toastId = toast.loading(t("toastUploadingPortrait"));
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.url) throw new Error(data?.error || "Erro no upload.");
+
+      await applyAvatarImageToProject(data.url, {
+        successMessage: "Retrato do avatar salvo.",
+        toastId,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("errUploadPortrait"), { id: toastId });
+    } finally {
+      setAvatarUploading(false);
+    }
+  }
+
+  async function handleProductImageUpload(file: File) {
+    setAvatarForm((prev) => ({ ...prev, productImageUploading: true }));
+    const toastId = toast.loading(t("toastUploadingProductImage"));
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.url) throw new Error(data?.error || "Erro no upload.");
+      setAvatarForm((prev) => ({ ...prev, productImageUrl: data.url }));
+      toast.success(t("toastProductImageUploaded"), { id: toastId });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("errUploadImage"), { id: toastId });
+    } finally {
+      setAvatarForm((prev) => ({ ...prev, productImageUploading: false }));
+    }
+  }
+
+  function openAvatarSegmentModal(
+    segmentKey: "hook" | "body1" | "body2" | "cta",
+    label: string,
+    fallbackText: string
+  ) {
+    if (!selectedProject) return;
+
+    const segments =
+      ((selectedProject.segments as Record<string, unknown> | null) ?? {}) as Record<
+        string,
+        Record<string, unknown>
+      >;
+    const seg = segments[segmentKey] || {};
+
+    const nextText =
+      typeof seg.text === "string" && seg.text.trim()
+        ? seg.text
+        : fallbackText;
+
+    setAvatarForm((prev) => ({
+      ...prev,
+      text: nextText,
+      accent: typeof seg.accent === "string" ? seg.accent : "Accent",
+      duration: parseDuration(seg.duration),
+      resolution: parseResolution(seg.resolution),
+      format: parseFormat(seg.format),
+      cameraAngles: Boolean(seg.camera_angles),
+      productImageUrl:
+        typeof seg.product_image_url === "string" ? seg.product_image_url : "",
+      productImageUploading: false,
+    }));
+
+    setAvatarModal({
+      segmentKey,
+      label,
+      defaultText: fallbackText,
+    });
+  }
+
+  async function handleBrollProductImageUpload(file: File) {
+    setBrollProductUploading(true);
+    const toastId = toast.loading(t("toastUploadingProductImage"));
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.url) {
+        throw new Error(data?.error || "Falha no upload da imagem do produto.");
+      }
+      setBrollProductImageUrl(data.url);
+      toast.success(t("toastProductImageUploaded"), { id: toastId });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha no upload.", { id: toastId });
+    } finally {
+      setBrollProductUploading(false);
+    }
+  }
+
+  async function handleBrollRefUpload(
+    file: File,
+    setUploading: (v: boolean) => void,
+    setUrl: (v: string) => void,
+    labelName: string
+  ) {
+    setUploading(true);
+    const toastId = toast.loading(t("uploadingNamed", { name: labelName }));
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.url) {
+        throw new Error(data?.error || t("errUploadNamed", { name: labelName }));
+      }
+      setUrl(data.url);
+      toast.success(t("uploadedNamed", { name: labelName }), { id: toastId });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha no upload.", { id: toastId });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function extractLastFrame(file: File): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement("video");
+      video.preload = "auto";
+      video.muted = true;
+      (video as HTMLVideoElement & { playsInline?: boolean }).playsInline = true;
+      const url = URL.createObjectURL(file);
+      const cleanup = () => URL.revokeObjectURL(url);
+      video.onloadedmetadata = () => {
+        const target = Math.max(0, (video.duration || 0) - 0.1);
+        video.onseeked = () => {
+          try {
+            const canvas = document.createElement("canvas");
+            canvas.width = video.videoWidth || 720;
+            canvas.height = video.videoHeight || 1280;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) throw new Error(t("errCanvasUnsupported"));
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob(
+              (blob) => {
+                cleanup();
+                if (blob) resolve(blob);
+                else reject(new Error("Não foi possível capturar o frame."));
+              },
+              "image/jpeg",
+              0.92
+            );
+          } catch (e) {
+            cleanup();
+            reject(e instanceof Error ? e : new Error("Falha ao capturar o frame."));
+          }
+        };
+        video.currentTime = target;
+      };
+      video.onerror = () => {
+        cleanup();
+        reject(new Error("Não foi possível ler esse vídeo."));
+      };
+      video.src = url;
+    });
+  }
+
+  async function handleExtendVideoSelect(file: File) {
+    setExtendExtracting(true);
+    setExtendAudioUrl("");
+    const toastId = toast.loading(t("toastExtractingFrame"));
+    try {
+      const blob = await extractLastFrame(file);
+      const frameFile = new File([blob], "last-frame.jpg", { type: "image/jpeg" });
+      const fd = new FormData();
+      fd.append("file", frameFile);
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.url) {
+        throw new Error(data?.error || "Falha ao enviar o frame.");
+      }
+      setExtendFrameUrl(data.url);
+      // Consistência de voz: extrai o áudio do vídeo e envia como referência (best-effort).
+      try {
+        const wav = await extractAudioAsWav(file);
+        if (wav) {
+          const audioFile = new File([wav], "ref-audio.wav", { type: "audio/wav" });
+          const afd = new FormData();
+          afd.append("file", audioFile);
+          const ares = await fetch("/api/upload", { method: "POST", body: afd });
+          const adata = await ares.json().catch(() => null);
+          if (ares.ok && adata?.url) setExtendAudioUrl(adata.url);
+        }
+      } catch {
+        // sem áudio de referência — segue só com o frame
+      }
+      toast.success(t("toastFrameCaptured"), { id: toastId });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha ao extrair o frame.", { id: toastId });
+    } finally {
+      setExtendExtracting(false);
+    }
+  }
+
+  async function handleExtendGenerate() {
+    if (!selectedProject) return;
+    if (!extendFrameUrl) {
+      toast.error(t("toastAttachVideoForFrame"));
+      return;
+    }
+    if (!extendPrompt.trim()) {
+      toast.error(t("toastDescribeContinuation"));
+      return;
+    }
+    setExtendGenerating(true);
+    const toastId = toast.loading(t("toastStartingContinuation"));
+    try {
+      const res = await fetch(`/api/ugc/projects/${selectedProject.id}/broll`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_image_url: extendFrameUrl,
+          reference_images: [],
+          reference_audios: extendAudioUrl ? [extendAudioUrl] : [],
+          prompt: buildUgcPrompt(extendPrompt, extendSpeech, { sameAsRef: true }),
+          aspect_ratio: brollAspect,
+          resolution: brollResolution,
+          duration: brollDuration,
+          audio: brollAudio || Boolean(extendSpeech.trim()),
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.error || t("errStartContinuation"));
+      }
+      const clips = Array.isArray(data?.clips) ? (data.clips as BrollClip[]) : [];
+      if (clips.length === 0) {
+        throw new Error(t("errNoClipStarted"));
+      }
+      setSelectedProject((prev) => {
+        if (!prev) return prev;
+        const curr = normalizeBroll(prev.broll);
+        return { ...prev, broll: [...curr, ...clips] };
+      });
+      setPollingSegments((prev) => {
+        const next = { ...prev };
+        for (const clip of clips) {
+          next[`broll:${clip.generation_id}`] = clip.generation_id;
+        }
+        return next;
+      });
+      if (typeof data?.remaining === "number") {
+        setUserCredits(data.remaining);
+      } else {
+        void loadMe();
+      }
+      setActiveTab("generations");
+      toast.success(t("toastContinuationProcessing"), { id: toastId });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("errExtendVideo"), { id: toastId });
+    } finally {
+      setExtendGenerating(false);
+    }
+  }
+
+  async function handleGenerateBroll() {
+    if (!selectedProject) return;
+
+    if (!brollProductImageUrl) {
+      toast.error(t("toastSendProductForBroll"));
+      return;
+    }
+
+    if (!brollAvatarImageUrl) {
+      toast.error(t("toastUploadAvatarLock"));
+      return;
+    }
+
+    if (!brollDescription.trim()) {
+      toast.error(t("toastDescribeVideoBeforeGen"));
+      return;
+    }
+
+    setBrollGenerating(true);
+    const toastId = toast.loading(t("toastStartingBroll"));
+
+    try {
+      const res = await fetch(`/api/ugc/projects/${selectedProject.id}/broll`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product_image_url: brollProductImageUrl,
+          reference_images: [brollInsideImageUrl, brollAvatarImageUrl].filter(Boolean),
+          prompt: buildUgcPrompt(brollDescription, brollSpeech, {
+            sameAsRef: Boolean(brollAvatarImageUrl || brollInsideImageUrl),
+          }),
+          aspect_ratio: brollAspect,
+          resolution: brollResolution,
+          duration: brollDuration,
+          audio: brollAudio || Boolean(brollSpeech.trim()),
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.error || t("errStartBroll"));
+      }
+
+      const clips = Array.isArray(data?.clips) ? (data.clips as BrollClip[]) : [];
+      if (clips.length === 0) {
+        throw new Error(t("errNoClipStarted"));
+      }
+
+      setSelectedProject((prev) => {
+        if (!prev) return prev;
+        const curr = normalizeBroll(prev.broll);
+        return {
+          ...prev,
+          broll: [...curr, ...clips],
+        };
+      });
+
+      setPollingSegments((prev) => {
+        const next = { ...prev };
+        for (const clip of clips) {
+          next[`broll:${clip.generation_id}`] = clip.generation_id;
+        }
+        return next;
+      });
+
+      if (typeof data?.remaining === "number") {
+        setUserCredits(data.remaining);
+      } else {
+        void loadMe();
+      }
+
+      setActiveTab("generations");
+      toast.success(t("toastVideoProcessing"), { id: toastId });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao gerar B-Roll.", { id: toastId });
+    } finally {
+      setBrollGenerating(false);
+    }
+  }
+
+  async function handleGenerateSegment() {
+    if (!selectedProject || !avatarModal) return;
+    setAvatarGenerating(true);
+    const toastId = toast.loading(`Gerando ${avatarModal.label}...`);
+    try {
+      const avatarSource = selectedProject.avatar_image_url;
+      if (!avatarSource) {
+        throw new Error(t("errSendPortraitFirst"));
+      }
+
+      const formattedAvatarUrl = await getProcessedAvatarForFormat(
+        avatarSource,
+        avatarForm.format
+      );
+
+      const res = await fetch(`/api/ugc/projects/${selectedProject.id}/segment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          segment_key: avatarModal.segmentKey,
+          text: avatarForm.text,
+          accent: avatarForm.accent,
+          duration: avatarForm.duration,
+          resolution: avatarForm.resolution,
+          format: avatarForm.format,
+          avatar_image_url: formattedAvatarUrl,
+          camera_angles: avatarForm.cameraAngles,
+          product_image_url: avatarForm.productImageUrl || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || t("errGenSegment"));
+      }
+
+      const generationId: string = data.generation_id;
+      const key = avatarModal.segmentKey;
+
+      setPollingSegments(prev => ({ ...prev, [key]: generationId }));
+
+      setSelectedProject(prev => {
+        if (!prev) return prev;
+        const segs = (prev.segments as Record<string, unknown> | null) ?? {};
+        return {
+          ...prev,
+          segments: {
+            ...segs,
+            [key]: {
+              key,
+              generation_id: generationId,
+              status: "processing",
+              text: avatarForm.text,
+              duration: avatarForm.duration,
+              resolution: avatarForm.resolution,
+              format: avatarForm.format,
+              accent: avatarForm.accent,
+              camera_angles: avatarForm.cameraAngles,
+              ...(avatarForm.productImageUrl
+                ? { product_image_url: avatarForm.productImageUrl }
+                : {}),
+            },
+          },
+        };
+      });
+
+      if (userCredits !== null) {
+        setUserCredits(prev => (prev !== null ? prev - data.cost : prev));
+      }
+
+      toast.success(`${avatarModal.label} em geração!`, { id: toastId });
+      setAvatarModal(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao gerar segmento.", { id: toastId });
+    } finally {
+      setAvatarGenerating(false);
+    }
+  }
+
+  useEffect(() => {
+    const keys = Object.keys(pollingSegments);
+    if (keys.length === 0) return;
+
+    const interval = setInterval(async () => {
+      for (const key of keys) {
+        const generationId = pollingSegments[key];
+        if (!generationId) continue;
+
+        try {
+          const res = await fetch(`/api/generate/status?id=${generationId}`);
+          const data = await res.json().catch(() => null);
+
+          if (data?.status === "completed" || data?.status === "failed") {
+            setPollingSegments((prev) => {
+              const next = { ...prev };
+              delete next[key];
+              return next;
+            });
+
+            const currentProject = selectedProject;
+
+            if (key.startsWith("broll:")) {
+              const broll = normalizeBroll(currentProject?.broll);
+              const nextBroll = broll.map((clip) => {
+                if (clip.generation_id !== generationId) return clip;
+                return {
+                  ...clip,
+                  status: data.status,
+                  ...(data?.status === "completed" && data?.result_url
+                    ? { result_url: data.result_url }
+                    : {}),
+                } as BrollClip;
+              });
+
+              setSelectedProject((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      broll: nextBroll,
+                    }
+                  : prev
+              );
+
+              if (currentProject?.id) {
+                void fetch(`/api/ugc/projects/${currentProject.id}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ broll: nextBroll }),
+                });
+              }
+
+              if (data?.status === "completed") {
+                toast.success(t("toastBrollDone"));
+                void loadMe();
+              }
+
+              if (data?.status === "failed") {
+                toast.error(t("toastBrollFailed"));
+                void loadMe();
+              }
+            } else {
+              const segs = (currentProject?.segments as Record<string, unknown> | null) ?? {};
+              const seg = (segs[key] as Record<string, unknown>) ?? {};
+              const segResultUrl = typeof seg.result_url === "string" ? seg.result_url : null;
+
+              const segmentsForPatch: Record<string, unknown> = {
+                ...segs,
+                [key]: {
+                  ...seg,
+                  generation_id:
+                    typeof seg.generation_id === "string" ? seg.generation_id : generationId,
+                  status: data.status,
+                  ...(data?.status === "completed"
+                    ? { result_url: data.result_url ?? segResultUrl }
+                    : {}),
+                },
+              };
+
+              setSelectedProject((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      segments: segmentsForPatch,
+                    }
+                  : prev
+              );
+
+              if (currentProject?.id) {
+                void fetch(`/api/ugc/projects/${currentProject.id}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ segments: segmentsForPatch }),
+                });
+              }
+
+              if (data?.status === "completed") {
+                toast.success(`Segmento ${key} concluído!`);
+                void loadMe();
+              }
+
+              if (data?.status === "failed") {
+                toast.error(`Segmento ${key} falhou. Tente de novo.`);
+                void loadMe();
+              }
+            }
+          }
+        } catch {
+          // ignorar erros de polling
+        }
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [pollingSegments, loadMe, selectedProject]);
+
+  const hasScript = Boolean(
+    scriptDraft.hook.text ||
+      scriptDraft.body1.text ||
+      scriptDraft.body2.text ||
+      scriptDraft.cta.text
+  );
+
+  const brollRate = brollRatePerSecond
+    ? Number(brollRatePerSecond[brollResolution] ?? brollRatePerSecond["720p"] ?? 0)
+    : 0;
+  const brollTotalCost = brollRate > 0 ? Math.ceil(brollRate * brollDuration) : brollUnitCost;
+  const brollInsufficientCredits =
+    userCredits !== null ? userCredits < brollTotalCost : false;
+
+  const completedProjectGenerations = useMemo(() => {
+    const result: Array<{ label: string; result_url: string; created_at?: string }> = [];
+
+    const segmentLabels: Record<string, string> = {
+      hook: "Avatar • Hook",
+      body1: "Avatar • Body 1",
+      body2: "Avatar • Body 2",
+      cta: "Avatar • CTA",
+    };
+
+    const segments =
+      ((selectedProject?.segments as Record<string, unknown> | null) ?? {}) as Record<
+        string,
+        Record<string, unknown>
+      >;
+
+    for (const [key, label] of Object.entries(segmentLabels)) {
+      const seg = segments[key];
+      if (seg?.status === "completed" && typeof seg.result_url === "string") {
+        result.push({
+          label,
+          result_url: seg.result_url,
+          created_at: typeof seg.created_at === "string" ? seg.created_at : undefined,
+        });
+      }
+    }
+
+    for (const clip of normalizeBroll(selectedProject?.broll)) {
+      if (clip.status === "completed" && typeof clip.result_url === "string") {
+        result.push({
+          label: selectedProject?.name || clip.label || "Vídeo UGC",
+          result_url: clip.result_url,
+          created_at: clip.created_at,
+        });
+      }
+    }
+
+    return result.sort((a, b) => {
+      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tb - ta;
+    });
+  }, [selectedProject]);
+
+  return (
+    <div className="space-y-6 px-6">
+      {view === "list" ? (
+        <>
+          <section className="space-y-6">
+            <div className="relative h-[340px] overflow-hidden rounded-2xl border border-[#242428] sm:h-[420px]">
+              {UGC_COVER_IMAGE ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={UGC_COVER_IMAGE}
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#2a1f45] via-[#171326] to-[#0f0d16]">
+                  <span className="rounded-full bg-white/5 px-3 py-1 text-xs text-white/30 ring-1 ring-white/10">
+                    Capa 1920×640 — cole a URL em UGC_COVER_IMAGE
+                  </span>
+                </div>
+              )}
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-black/10" />
+              <div className="absolute inset-x-0 bottom-0 flex flex-col gap-4 p-6 sm:flex-row sm:items-end sm:justify-between sm:p-8">
+                <div className="max-w-xl">
+                  <h1 className="text-2xl font-bold text-white sm:text-3xl">
+                    {t("heroTitle")}
+                  </h1>
+                  <p className="mt-2 text-sm text-white/70">
+                    {t("heroSubtitle")}
+                  </p>
+                </div>
+                <Button
+                  onClick={() => setProjectCreateOpen(true)}
+                  className="shrink-0 bg-white text-black hover:bg-white/90"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  {t("newUgcProject")}
+                </Button>
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-[#F5F5F5]">{t("myProjects")}</h2>
+                  <p className="text-sm text-[#888888]">{t("myProjectsSub")}</p>
+                </div>
+                <span className="text-sm text-[#888888]">{t("seeAll")}</span>
+              </div>
+
+              {projectsLoading ? (
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i}>
+                      <Skeleton className="aspect-[3/4] w-full rounded-2xl bg-[#1A1A1A]" />
+                      <Skeleton className="mt-2 h-4 w-2/3 bg-[#1A1A1A]" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setProjectCreateOpen(true)}
+                      className="flex aspect-[3/4] w-full items-center justify-center rounded-2xl border border-[#242428] bg-[#141416] text-[#666666] transition-colors hover:border-[#7C3AED]/40 hover:text-[#A78BFA]"
+                    >
+                      <Plus className="h-8 w-8" />
+                    </button>
+                    <p className="mt-2 text-sm font-medium text-[#F5F5F5]">{t("newProject")}</p>
+                  </div>
+
+                  {sortedProjects.map((project) => {
+                    const cover = projectCover(project);
+                    const selected = selectedProjectId === project.id;
+                    return (
+                      <div key={project.id} className="min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedProjectId(project.id);
+                            setView("project");
+                            setActiveTab("broll");
+                          }}
+                          className={`group relative block aspect-[3/4] w-full overflow-hidden rounded-2xl bg-[#141416] ring-1 ring-white/5 transition-all duration-200 hover:-translate-y-0.5 hover:ring-[#7C3AED]/25 ${
+                            selected ? "ring-2 ring-[#7C3AED]" : ""
+                          }`}
+                        >
+                          {cover ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={cover}
+                              alt={project.name}
+                              className="absolute inset-0 h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-[#1c1c20] to-[#0f0f11]">
+                              <Clapperboard className="h-7 w-7 text-[#555555]" />
+                            </div>
+                          )}
+                          <span className="absolute left-2 top-2 rounded-full border border-[#F97316]/40 bg-black/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#F97316] backdrop-blur">{t("premium")}</span>
+                        </button>
+                        <p className="mt-2 line-clamp-1 text-sm font-medium text-[#F5F5F5]">
+                          {project.name}
+                        </p>
+                        <p className="text-xs text-[#888888]">
+                          {t("updatedOn", { date: formatDateLong(project.updated_at || project.created_at) })}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Seção Meus Produtos — código preservado do 4c-1 */}
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-[#F5F5F5]">{t("myProducts")}</h2>
+                <p className="mt-1 text-sm text-[#888888]">
+                  {t("myProductsSub")}
+                </p>
+              </div>
+
+              <Button
+                onClick={openCreateDialog}
+                className="rounded-full bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
+              >
+                <Plus className="mr-1 h-4 w-4" />
+                {t("addProduct")}
+              </Button>
+            </div>
+
+            {loading ? (
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {Array.from({ length: 3 }).map((_, idx) => (
+                  <div
+                    key={idx}
+                    className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-3"
+                  >
+                    <Skeleton className="mb-3 h-36 w-full bg-[#232323]" />
+                    <Skeleton className="mb-2 h-5 w-2/3 bg-[#232323]" />
+                    <Skeleton className="mb-2 h-4 w-full bg-[#232323]" />
+                    <Skeleton className="h-8 w-full bg-[#232323]" />
+                  </div>
+                ))}
+              </div>
+            ) : products.length === 0 ? (
+              <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] px-4">
+                <EmptyState
+                  icon={Package}
+                  title={t("registerFirstProduct")}
+                  description="Você poderá usar este catálogo no gerador automático de UGC."
+                  action={{ label: t("addProduct"), onClick: openCreateDialog }}
+                />
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {products.map((item) => (
+                  <article
+                    key={item.id}
+                    className="group relative overflow-hidden rounded-2xl bg-[#141416] p-3 ring-1 ring-white/5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(124,58,237,0.15)] hover:ring-[#7C3AED]/25"
+                  >
+                    <button
+                      type="button"
+                      className="absolute right-2 top-2 z-10 rounded-lg bg-black/60 p-1.5 text-xs text-red-400 opacity-0 transition-opacity duration-200 hover:bg-black/80 hover:text-red-300 group-hover:opacity-100"
+                      disabled={workingId === item.id}
+                      onClick={() => openDeleteDialog(item)}
+                    >{t("delete")}</button>
+
+                    <div className="aspect-[4/3] overflow-hidden rounded-xl border border-[#2A2A2A] bg-[#1A1A1A]">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={item.image_url}
+                        alt={item.title}
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+
+                    <div className="p-3">
+                      <h3 className="line-clamp-1 text-sm font-semibold text-white">
+                        {item.title}
+                      </h3>
+                      <p className="mt-1 line-clamp-3 min-h-[58px] text-sm text-[#A3A3A3]">
+                        {item.description || "Sem descrição"}
+                      </p>
+
+                      <p className="mt-2 text-xs text-[#777777]">Criado em {formatDate(item.created_at)}</p>
+
+                      <div className="mt-3 grid grid-cols-1 gap-2">
+                        <Button
+                          variant="outline"
+                          className="border-[#2A2A2A] text-[#F5F5F5]"
+                          disabled={workingId === item.id}
+                          onClick={() => openEditDialog(item)}
+                        >
+                          <Pencil className="mr-1 h-3.5 w-3.5" />{t("edit")}</Button>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        </>
+      ) : view === "tier" ? (
+        <section className="space-y-6">
+          <div className="flex items-center gap-2 text-sm text-[#888888]">
+            <button type="button" onClick={() => setView("list")} className="hover:text-[#F5F5F5]">
+              {t("factory")}
+            </button>
+            <span>/</span>
+            <span className="text-[#F5F5F5]">{selectedProject?.name || t("newProject")}</span>
+          </div>
+          <div className="py-4 text-center">
+            <h1 className="text-3xl font-bold text-white">{t("createUgcVideo")}</h1>
+            <p className="mt-2 text-[#888888]">{t("chooseTier")}</p>
+          </div>
+          <div className="mx-auto grid max-w-4xl gap-4 md:grid-cols-2">
+            <div className="flex flex-col rounded-2xl border border-[#242428] bg-[#141416] p-6">
+              <span className="mb-4 inline-flex w-fit items-center gap-1.5 rounded-full border border-[#7C3AED]/40 bg-[#7C3AED]/10 px-2.5 py-1 text-xs font-semibold text-[#A78BFA]">
+                <Sparkles className="h-3 w-3" />{t("premium")}</span>
+              <h2 className="text-2xl font-bold text-white">Seedance x Wise UGC</h2>
+              <p className="mt-1 text-sm text-[#888888]">{t("bestResultsMore")}</p>
+              <ul className="mt-4 space-y-2 text-sm text-[#c9c9d1]">
+                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#7C3AED]" /> {t("seedanceEngine")}</li>
+                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#7C3AED]" /> {t("charConsistency")}</li>
+                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#7C3AED]" /> {t("omniSupport")}</li>
+                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#7C3AED]" /> {t("bestForProductUgc")}</li>
+              </ul>
+              <button
+                type="button"
+                onClick={() => {
+                  setView("project");
+                  setActiveTab("broll");
+                }}
+                className="mt-6 flex items-center justify-center gap-2 rounded-xl bg-white py-3 text-sm font-semibold text-black transition-colors hover:bg-white/90"
+              >
+                {t("continuePremium")}
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex flex-col rounded-2xl border border-[#242428] bg-[#141416] p-6">
+              <span className="mb-4 inline-flex w-fit items-center gap-1.5 rounded-full border border-[#2A2A2A] bg-white/5 px-2.5 py-1 text-xs font-semibold text-[#c9c9d1]">
+                <Sparkles className="h-3 w-3" />{t("standard")}</span>
+              <h2 className="text-2xl font-bold text-white">Veo 3.1 x Kling UGC</h2>
+              <p className="mt-1 text-sm text-[#888888]">{t("greatResultsLess")}</p>
+              <ul className="mt-4 space-y-2 text-sm text-[#c9c9d1]">
+                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#666666]" /> Motores Veo 3.1 + Kling 3.0</li>
+                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#666666]" /> {t("goodMotion")}</li>
+                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#666666]" /> {t("mostEconomical")}</li>
+                <li className="flex items-center gap-2"><span className="h-1 w-1 rounded-full bg-[#666666]" /> {t("goodForUgc")}</li>
+              </ul>
+              <button
+                type="button"
+                onClick={() => setView("avatar")}
+                className="mt-6 flex items-center justify-center gap-2 rounded-xl border border-[#2A2A2A] bg-white/5 py-3 text-sm font-semibold text-[#F5F5F5] transition-colors hover:bg-white/10"
+              >
+                {t("continueStandard")}
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+          <div className="flex justify-center pt-2">
+            <button
+              type="button"
+              onClick={() => setView("list")}
+              className="flex items-center gap-1.5 text-sm text-[#888888] hover:text-[#F5F5F5]"
+            >
+              <ChevronRight className="h-4 w-4 rotate-180" /> {t("back")}
+            </button>
+          </div>
+        </section>
+      ) : view === "avatar" ? (
+        <section className="space-y-6">
+          <div className="flex items-center gap-2 text-sm text-[#888888]">
+            <button type="button" onClick={() => setView("tier")} className="hover:text-[#F5F5F5]">
+              {t("factory")}
+            </button>
+            <span>/</span>
+            <span className="text-[#F5F5F5]">Veo 3.1 x Kling UGC</span>
+          </div>
+          <div className="py-2 text-center">
+            <h1 className="text-3xl font-bold text-white">{t("chooseYourAvatar")}</h1>
+            <p className="mt-2 text-sm text-[#888888]">
+              Esse avatar será usado no conteúdo de{" "}
+              <span className="text-[#A78BFA]">{selectedProject?.name || "seu projeto"}</span>.
+            </p>
+          </div>
+          <div>
+            <h2 className="mb-3 text-sm font-semibold text-[#F5F5F5]">{t("premadeAvatars")}</h2>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+              {AVATARS.map((av) => (
+                <button
+                  key={av.id}
+                  type="button"
+                  onClick={() => {
+                    setView("project");
+                    setActiveTab("broll");
+                  }}
+                  className="group relative aspect-[3/4] overflow-hidden rounded-xl bg-[#1A1A1A] text-left ring-1 ring-white/5 transition-all duration-200 hover:-translate-y-0.5 hover:ring-[#7C3AED]/40"
+                >
+                  {av.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={av.image} alt={av.name} className="absolute inset-0 h-full w-full object-cover" />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#241a3a] to-[#141416]">
+                      <User className="h-7 w-7 text-[#7C3AED]/40" />
+                    </div>
+                  )}
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/85 to-transparent" />
+                  <div className="absolute inset-x-0 bottom-0 p-2.5">
+                    <p className="line-clamp-1 text-sm font-semibold text-white">{av.name}</p>
+                    <p className="line-clamp-1 text-[10px] text-white/60">{av.handle}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : (
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm text-[#888888]">
+              <button
+                type="button"
+                onClick={() => {
+                  setView("list");
+                  setSelectedProjectId(null);
+                  setSelectedProject(null);
+                }}
+                className="hover:text-[#F5F5F5]"
+              >
+                {t("factory")}
+              </button>
+              <span>/</span>
+              <span className="text-[#F5F5F5]">
+                {selectedProject?.name || "Projeto"}
+              </span>
+              <span className="rounded-full border border-[#7C3AED]/40 bg-[#7C3AED]/15 px-2 py-0.5 text-[10px] font-medium text-[#A78BFA]">{t("premium")}</span>
+            </div>
+            <div className="inline-flex items-center gap-1 rounded-lg border border-[#242428] bg-[#141416] p-1">
+              <button
+                type="button"
+                onClick={() => setActiveTab("broll")}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                  activeTab !== "generations"
+                    ? "bg-[#7C3AED] text-white"
+                    : "text-[#888888] hover:text-white"
+                }`}
+              >
+                {t("videoGeneration")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("generations")}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                  activeTab === "generations"
+                    ? "bg-[#7C3AED] text-white"
+                    : "text-[#888888] hover:text-white"
+                }`}
+              >{t("projectGenerationsLc")}</button>
+            </div>
+          </div>
+
+          {!selectedProject ? (
+            <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-6">
+              <div className="flex items-center gap-2 text-[#888888]">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {t("loadingProject")}
+              </div>
+            </div>
+          ) : (
+            <>
+              <section className="rounded-2xl border border-[#242428] bg-[#141416] p-6">
+                <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="max-w-xs">
+                    <h2 className="text-base font-semibold text-[#F5F5F5]">{t("howItWorks")}</h2>
+                    <p className="mt-1 text-sm text-[#888888]">
+                      {t("uploadYourProduct")}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-center gap-3">
+                    <div className="text-center">
+                      <div className="flex h-32 w-24 items-center justify-center overflow-hidden rounded-xl bg-[#1A1A1A] ring-1 ring-white/5">
+                        <Package className="h-6 w-6 text-[#7C3AED]/40" />
+                      </div>
+                      <p className="mt-1.5 text-[11px] text-[#888888]">{t("product")}</p>
+                    </div>
+                    <span className="text-lg text-[#666666]">+</span>
+                    <div className="text-center">
+                      <div className="flex h-32 w-24 items-center justify-center overflow-hidden rounded-xl bg-[#1A1A1A] ring-1 ring-white/5">
+                        <Package className="h-6 w-6 text-[#7C3AED]/40" />
+                      </div>
+                      <p className="mt-1.5 text-[11px] text-[#888888]">{t("internal")}</p>
+                    </div>
+                    <span className="text-lg text-[#666666]">+</span>
+                    <div className="text-center">
+                      <div className="flex h-32 w-24 items-center justify-center overflow-hidden rounded-xl bg-[#1A1A1A] ring-1 ring-white/5">
+                        <User className="h-6 w-6 text-[#7C3AED]/40" />
+                      </div>
+                      <p className="mt-1.5 text-[11px] text-[#888888]">{t("avatar")}</p>
+                    </div>
+                    <span className="text-lg text-[#666666]">=</span>
+                    <div className="text-center">
+                      <div className="flex h-32 w-24 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-[#241a3a] to-[#141416] ring-1 ring-[#7C3AED]/30">
+                        <Sparkles className="h-6 w-6 text-[#A78BFA]" />
+                      </div>
+                      <p className="mt-1.5 flex items-center justify-center gap-1 text-[11px] text-[#A78BFA]">
+                        <Sparkles className="h-2.5 w-2.5" /> {t("result")}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section className="space-y-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-[#F5F5F5]">{t("chooseVideoType")}</h2>
+                  <p className="text-sm text-[#888888]">
+                    {t("startWithType")}
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+                  {VIDEO_TYPES.map((vt) => {
+                    const active = selectedVideoType === vt.id;
+                    return (
+                      <button
+                        key={vt.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedVideoType(vt.id);
+                          setBrollDescription(vt.prompt);
+                          setActiveTab("broll");
+                          toast.success(t("toastExamplePromptApplied"));
+                        }}
+                        className={`group relative aspect-[9/16] overflow-hidden rounded-xl bg-[#1A1A1A] text-left ring-1 transition-all duration-200 ${
+                          active
+                            ? "ring-2 ring-[#7C3AED]"
+                            : "ring-white/5 hover:-translate-y-0.5 hover:ring-[#7C3AED]/40"
+                        }`}
+                      >
+                        {vt.image ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={vt.image}
+                            alt={vt.title}
+                            className="absolute inset-0 h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gradient-to-b from-[#2a1f45] via-[#171326] to-[#0f0d16]">
+                            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10 backdrop-blur">
+                              <Clapperboard className="h-6 w-6 text-[#A78BFA]" />
+                            </span>
+                            <span className="rounded-full bg-black/30 px-2.5 py-0.5 text-[10px] font-medium text-white/45">
+                              {t("demoSoon")}
+                            </span>
+                          </div>
+                        )}
+                        <span
+                          className={`absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full border ${
+                            active
+                              ? "border-[#7C3AED] bg-[#7C3AED]"
+                              : "border-white/40 bg-black/30"
+                          }`}
+                        >
+                          {active && <Check className="h-3 w-3 text-white" />}
+                        </span>
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/85 to-transparent" />
+                        <div className="absolute inset-x-0 bottom-0 p-2.5">
+                          <p className="line-clamp-2 text-xs font-semibold text-white">{vt.title}</p>
+                          <p className="line-clamp-1 text-[10px] text-white/60">{vt.subtitle}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-[280px] flex-1">
+                    {!nameEditing ? (
+                      <button
+                        type="button"
+                        onClick={() => setNameEditing(true)}
+                        className="text-left"
+                      >
+                        <h1 className="text-xl font-semibold text-[#F5F5F5]">
+                          {selectedProject.name}
+                        </h1>
+                        <p className="mt-1 text-xs text-[#777777]">{t("clickToEditName")}</p>
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={nameDraft}
+                          onChange={(e) => setNameDraft(e.target.value)}
+                          className="h-9 max-w-md border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
+                        />
+                        <Button
+                          onClick={() => void handleInlineRename()}
+                          className="bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
+                        >{t("save")}</Button>
+                        <Button
+                          variant="outline"
+                          className="border-[#2A2A2A] text-[#F5F5F5]"
+                          onClick={() => {
+                            setNameEditing(false);
+                            setNameDraft(selectedProject.name);
+                          }}
+                        >{t("cancel")}</Button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-[#2A2A2A] text-[#BDBDBD]">
+                      {t(statusLabel(selectedProject.status))}
+                    </Badge>
+                    <Button
+                      variant="outline"
+                      className="border-[#3A1F1F] text-[#FCA5A5] hover:bg-[#2A1313]"
+                      disabled={projectDeleting}
+                      onClick={() => void handleDeleteProject()}
+                    >
+                      <Trash2 className="mr-1 h-3.5 w-3.5" />
+                      {t("deleteProject")}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {activeTab === "script" && (
+                <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-5">
+                  <h2 className="text-base font-semibold text-[#F5F5F5]">{t("scriptWriter")}</h2>
+
+                  <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_280px_auto]">
+                    <div>
+                      <label className="mb-1 block text-xs text-[#A3A3A3]">
+                        {t("describeProduct")}
+                      </label>
+                      <Textarea
+                        value={scriptDescription}
+                        onChange={(e) => setScriptDescription(e.target.value)}
+                        placeholder={t("phDescribeProduct")}
+                        className="min-h-28 border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-xs text-[#A3A3A3]">{t("relatedProduct")}</label>
+                      <select
+                        value={scriptProductId}
+                        onChange={(e) => setScriptProductId(e.target.value)}
+                        className="h-10 w-full rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-2.5 text-sm text-[#F5F5F5] outline-none"
+                      >
+                        <option value="">{t("none")}</option>
+                        {products.map((product) => (
+                          <option key={product.id} value={product.id}>
+                            {product.title}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="flex items-end">
+                      <Button
+                        onClick={() => void handleGenerateScript()}
+                        disabled={scriptGenerating}
+                        className="h-10 w-full bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
+                      >
+                        {scriptGenerating ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />{t("generating")}</>
+                        ) : (
+                          <>
+                            <Sparkles className="mr-2 h-4 w-4" />{t("genScriptAi")}</>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {!hasScript ? (
+                    <div className="mt-5 rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] p-5 text-sm text-[#888888]">
+                      {t("describeThenGenerate")}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mt-5 grid gap-3 md:grid-cols-2">
+                        <div className="rounded-lg border border-[#7C3AED]/40 bg-[#7C3AED]/10 p-3">
+                          <div className="mb-2 flex items-center justify-between">
+                            <p className="text-sm font-semibold text-[#F5F5F5]">🎣 Hook</p>
+                            <Badge className="bg-[#7C3AED]/25 text-[#E9D5FF]">{t("hook")}</Badge>
+                          </div>
+                          <Textarea
+                            value={scriptDraft.hook.text}
+                            onChange={(e) =>
+                              setScriptDraft((prev) => ({
+                                ...prev,
+                                hook: { text: e.target.value },
+                              }))
+                            }
+                            className="min-h-24 border-[#7C3AED]/40 bg-[#141414] text-[#F5F5F5]"
+                          />
+                        </div>
+
+                        <div className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
+                          <div className="mb-2 flex items-center justify-between">
+                            <p className="text-sm font-semibold text-[#F5F5F5]">💬 Body 1</p>
+                            <Badge className="bg-[#2A2A2A] text-[#BDBDBD]">{t("benefit1")}</Badge>
+                          </div>
+                          <Textarea
+                            value={scriptDraft.body1.text}
+                            onChange={(e) =>
+                              setScriptDraft((prev) => ({
+                                ...prev,
+                                body1: { text: e.target.value },
+                              }))
+                            }
+                            className="min-h-24 border-[#2A2A2A] bg-[#141414] text-[#F5F5F5]"
+                          />
+                        </div>
+
+                        <div className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
+                          <div className="mb-2 flex items-center justify-between">
+                            <p className="text-sm font-semibold text-[#F5F5F5]">💬 Body 2</p>
+                            <Badge className="bg-[#2A2A2A] text-[#BDBDBD]">{t("benefit2")}</Badge>
+                          </div>
+                          <Textarea
+                            value={scriptDraft.body2.text}
+                            onChange={(e) =>
+                              setScriptDraft((prev) => ({
+                                ...prev,
+                                body2: { text: e.target.value },
+                              }))
+                            }
+                            className="min-h-24 border-[#2A2A2A] bg-[#141414] text-[#F5F5F5]"
+                          />
+                        </div>
+
+                        <div className="rounded-lg border border-[#16A34A]/35 bg-[#16A34A]/10 p-3">
+                          <div className="mb-2 flex items-center justify-between">
+                            <p className="text-sm font-semibold text-[#F5F5F5]">📢 CTA</p>
+                            <Badge className="bg-[#16A34A]/25 text-[#DCFCE7]">{t("cta")}</Badge>
+                          </div>
+                          <Textarea
+                            value={scriptDraft.cta.text}
+                            onChange={(e) =>
+                              setScriptDraft((prev) => ({
+                                ...prev,
+                                cta: { text: e.target.value },
+                              }))
+                            }
+                            className="min-h-24 border-[#16A34A]/40 bg-[#141414] text-[#F5F5F5]"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex justify-end">
+                        <Button
+                          onClick={() => void handleSaveScript()}
+                          disabled={scriptSaving}
+                          className="bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
+                        >
+                          {scriptSaving ? "Salvando..." : "Salvar roteiro"}
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {activeTab === "avatar" && selectedProject && (
+                <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-5">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-base font-semibold text-[#F5F5F5]">{t("talkingAvatar")}</h2>
+                    {userCredits !== null && (
+                      <span className="text-xs text-[#888888]">{userCredits} créditos disponíveis</span>
+                    )}
+                  </div>
+
+                  <div className="mt-4 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
+                    <p className="mb-2 text-xs font-medium text-[#A3A3A3]">🔒 Locked Avatar</p>
+                    <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+                      <ImageDropzone
+                        id="ugc-avatar-portrait-drop"
+                        disabled={avatarUploading}
+                        uploading={avatarUploading}
+                        previewUrl={selectedProject.avatar_image_url || undefined}
+                        title={avatarUploading ? t("toastUploadingPortrait") : "Retrato do avatar"}
+                        subtitle={t("dropDefault")}
+                        cta={selectedProject.avatar_image_url ? "Trocar retrato" : "Enviar retrato"}
+                        onFileSelect={(file) => {
+                          void handleAvatarPortraitUpload(file);
+                        }}
+                      />
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="border-[#2A2A2A] text-[#F5F5F5]"
+                        onClick={() => {
+                          void openInfluencerAvatarPicker();
+                        }}
+                      >
+                        {t("chooseFromInfluencers")}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {selectedProject.avatar_image_url && (
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      {(
+                        [
+                          { key: "hook", label: "🎣 Hook", color: "border-[#7C3AED]/40 bg-[#7C3AED]/5" },
+                          { key: "body1", label: "💬 Body 1", color: "border-[#2A2A2A] bg-[#1A1A1A]" },
+                          { key: "body2", label: "💬 Body 2", color: "border-[#2A2A2A] bg-[#1A1A1A]" },
+                          { key: "cta", label: "📢 CTA", color: "border-[#16A34A]/35 bg-[#16A34A]/5" },
+                        ] as const
+                      ).map(({ key, label, color }) => {
+                        const seg = ((selectedProject.segments as Record<string, unknown> | null) ?? {})[key] as
+                          | Record<string, unknown>
+                          | undefined;
+                        const isProcessing = seg?.status === "processing";
+                        const isCompleted = seg?.status === "completed";
+                        const isFailed = seg?.status === "failed";
+                        const videoUrl = typeof seg?.result_url === "string" ? seg.result_url : null;
+                        const scriptText =
+                          scriptDraft[key as keyof typeof scriptDraft]?.text ?? "";
+
+                        return (
+                          <div key={key} className={`rounded-lg border p-3 ${color}`}>
+                            <div className="mb-2 flex items-center justify-between">
+                              <p className="text-sm font-semibold text-[#F5F5F5]">{label}</p>
+                              {isCompleted && !videoUrl && (
+                                <Badge className="bg-[#16A34A]/20 text-[#4ADE80]">{t("completed")}</Badge>
+                              )}
+                            </div>
+
+                            {isCompleted && videoUrl ? (
+                              <div className="space-y-2">
+                                <GenerationCard
+                                  status="completed"
+                                  label={label}
+                                  result_url={videoUrl}
+                                  mediaType="video"
+                                  className="max-h-[220px]"
+                                />
+                                <Button
+                                  variant="outline"
+                                  className="w-full border-[#2A2A2A] text-[#F5F5F5]"
+                                  onClick={() => {
+                                    openAvatarSegmentModal(key, label, scriptText);
+                                  }}
+                                >{t("regenerate")}</Button>
+                              </div>
+                            ) : isProcessing ? (
+                              <GenerationCard
+                                status="processing"
+                                label={label}
+                                estimatedTime="~1–3 min"
+                              />
+                            ) : isFailed ? (
+                              <GenerationCard
+                                status="failed"
+                                label={label}
+                                onRetry={() => {
+                                  openAvatarSegmentModal(key, label, scriptText);
+                                }}
+                              />
+                            ) : (
+                              <>
+                                <p className="mb-1 line-clamp-2 text-xs text-[#888888]">
+                                  {scriptText || "Sem texto no roteiro"}
+                                </p>
+                                <p className="mb-2 text-[11px] text-[#777777]">
+                                  Formato: {parseFormat(seg?.format || "9:16")}
+                                </p>
+                                <Button
+                                  className="w-full"
+                                  onClick={() => {
+                                    openAvatarSegmentModal(key, label, scriptText);
+                                  }}
+                                >
+                                  <Sparkles className="mr-1 h-3.5 w-3.5" />{t("generate")}</Button>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div className="mt-5 flex items-center justify-between">
+                    <Button
+                      variant="outline"
+                      className="border-[#2A2A2A] text-[#F5F5F5]"
+                      onClick={() => setActiveTab("script")}
+                    >
+                      ← Voltar ao roteiro
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="border-[#2A2A2A] text-[#F5F5F5]"
+                      onClick={() => setActiveTab("broll")}
+                    >{t("goToBroll")}</Button>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "broll" && selectedProject && (
+                <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-5 space-y-4">
+                  <h2 className="text-base font-semibold text-[#F5F5F5]">{t("generateVideo")}</h2>
+                  <div className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3 text-sm text-[#A3A3A3]">
+                    {t("generateManyClips")}
+                  </div>
+
+                  <section className="rounded-2xl border border-[#242428] bg-[#141416] p-5">
+                    <div className="mb-4 flex items-center gap-3">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#7C3AED]/15 text-sm font-semibold text-[#A78BFA] ring-1 ring-[#7C3AED]/30">
+                        1
+                      </span>
+                      <div>
+                        <h3 className="text-sm font-semibold text-[#F5F5F5]">{t("uploadAssets")}</h3>
+                        <p className="text-xs text-[#888888]">
+                          {t("uploadProductClean")}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs text-[#A3A3A3]">{t("productImage")}</label>
+                          <span className="rounded-full bg-[#7C3AED]/15 px-2 py-0.5 text-[10px] font-medium text-[#A78BFA]">
+                            {t("required")}
+                          </span>
+                        </div>
+                        <ImageDropzone
+                          id="ugc-broll-product-drop"
+                          disabled={brollProductUploading}
+                          uploading={brollProductUploading}
+                          previewUrl={brollProductImageUrl || undefined}
+                          title={brollProductUploading ? t("toastUploadingImage") : "Imagem do produto"}
+                          subtitle={t("dropDefault")}
+                          cta={brollProductImageUrl ? "Trocar imagem" : "Enviar imagem"}
+                          onFileSelect={(file) => {
+                            void handleBrollProductImageUpload(file);
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs text-[#A3A3A3]">{t("internal")}</label>
+                          <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-medium text-[#888888]">
+                            {t("optional")}
+                          </span>
+                        </div>
+                        <ImageDropzone
+                          id="ugc-broll-inside-drop"
+                          disabled={brollInsideUploading}
+                          uploading={brollInsideUploading}
+                          previewUrl={brollInsideImageUrl || undefined}
+                          title={brollInsideUploading ? t("toastUploadingImage") : "Imagem do interno / uso"}
+                          subtitle={t("dropDefault")}
+                          cta={brollInsideImageUrl ? "Trocar imagem" : "Enviar imagem"}
+                          onFileSelect={(file) => {
+                            void handleBrollRefUpload(file, setBrollInsideUploading, setBrollInsideImageUrl, "imagem do interno");
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs text-[#A3A3A3]">{t("avatar")}</label>
+                          <span className="rounded-full bg-[#7C3AED]/15 px-2 py-0.5 text-[10px] font-medium text-[#A78BFA]">
+                            {t("required")}
+                          </span>
+                        </div>
+                        <ImageDropzone
+                          id="ugc-broll-avatar-drop"
+                          disabled={brollAvatarUploading}
+                          uploading={brollAvatarUploading}
+                          previewUrl={brollAvatarImageUrl || undefined}
+                          title={brollAvatarUploading ? t("toastUploadingImage") : "Imagem do avatar"}
+                          subtitle={t("dropDefault")}
+                          cta={brollAvatarImageUrl ? "Trocar imagem" : "Enviar imagem"}
+                          onFileSelect={(file) => {
+                            void handleBrollRefUpload(file, setBrollAvatarUploading, setBrollAvatarImageUrl, "imagem do avatar");
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-[#242428] bg-[#141416] p-5 space-y-4">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#7C3AED]/15 text-sm font-semibold text-[#A78BFA] ring-1 ring-[#7C3AED]/30">
+                        2
+                      </span>
+                      <div>
+                        <h3 className="text-sm font-semibold text-[#F5F5F5]">{t("configuration")}</h3>
+                        <p className="text-xs text-[#888888]">
+                          {t("clipConfig")}
+                        </p>
+                      </div>
+                    </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1.5 block text-xs text-[#A3A3A3]">{t("aspectRatio")}</label>
+                      <select
+                        value={brollAspect}
+                        onChange={(e) => setBrollAspect(e.target.value)}
+                        className="h-10 w-full rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3 text-sm text-[#F5F5F5]"
+                      >
+                        <option value="9:16">9:16 (Vertical)</option>
+                        <option value="1:1">1:1 (Quadrado)</option>
+                        <option value="16:9">16:9 (Horizontal)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs text-[#A3A3A3]">{t("resolution")}</label>
+                      <select
+                        value={brollResolution}
+                        onChange={(e) => setBrollResolution(e.target.value)}
+                        className="h-10 w-full rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3 text-sm text-[#F5F5F5]"
+                      >
+                        <option value="480p">480p</option>
+                        <option value="720p">720p</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-xs text-[#A3A3A3]">Duration: {brollDuration}s</label>
+                      <input
+                        type="range"
+                        min={4}
+                        max={15}
+                        step={1}
+                        value={brollDuration}
+                        onChange={(e) => setBrollDuration(Number(e.target.value))}
+                        className="w-full"
+                      />
+                    </div>
+
+                    <div className="flex items-end">
+                      <label className="inline-flex items-center gap-2 text-sm text-[#F5F5F5]">
+                        <button
+                          type="button"
+                          onClick={() => setBrollAudio((v) => !v)}
+                          className={`relative h-5 w-9 rounded-full transition-colors ${
+                            brollAudio ? "bg-[#7C3AED]" : "bg-[#2A2A2A]"
+                          }`}
+                        >
+                          <span
+                            className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
+                              brollAudio ? "translate-x-4" : "translate-x-0.5"
+                            }`}
+                          />
+                        </button>
+                        {t("audioOn")}
+                      </label>
+                    </div>
+                  </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-[#242428] bg-[#141416] p-5">
+                    <div className="mb-3 flex items-center gap-3">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#7C3AED]/15 text-sm font-semibold text-[#A78BFA] ring-1 ring-[#7C3AED]/30">
+                        3
+                      </span>
+                      <div>
+                        <h3 className="text-sm font-semibold text-[#F5F5F5]">{t("describeYourVideo")}</h3>
+                        <p className="text-xs text-[#888888]">
+                          {t("describeSceneAndSpeech")}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div>
+                        <div className="mb-1 flex items-center justify-between">
+                          <label className="text-xs text-[#A3A3A3]">{t("describeScene")}</label>
+                          <span className="text-[10px] text-[#666666]">{t("sceneActionMood")}</span>
+                        </div>
+                        <Textarea
+                          value={brollDescription}
+                          onChange={(e) => setBrollDescription(e.target.value)}
+                          placeholder={t("phBrollScene")}
+                          className="min-h-[110px] resize-none border-[#2A2A2A] bg-[#1A1A1A] text-sm text-[#F5F5F5] placeholder:text-[#5a5a63]"
+                        />
+                      </div>
+                      <div>
+                        <div className="mb-1 flex items-center justify-between">
+                          <label className="text-xs text-[#A3A3A3]">{t("speechText")} <span className="text-[#666666]">(opcional)</span></label>
+                          <span className="text-[10px] text-[#666666]">{t("whatPersonSays")}</span>
+                        </div>
+                        <Textarea
+                          value={brollSpeech}
+                          onChange={(e) => setBrollSpeech(e.target.value)}
+                          placeholder={t("phBrollSpeech")}
+                          className="min-h-[110px] resize-none border-[#2A2A2A] bg-[#1A1A1A] text-sm text-[#F5F5F5] placeholder:text-[#5a5a63]"
+                        />
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-[#242428] bg-[#141416] p-5">
+                    <div className="mb-3 flex items-center gap-3">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/5 text-sm font-semibold text-[#888888] ring-1 ring-white/10">
+                        4
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-semibold text-[#F5F5F5]">{t("extendAVideo")}</h3>
+                        <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-medium text-[#888888]">
+                          {t("optional")}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <label className="text-xs text-[#A3A3A3]">{t("video")}</label>
+                        {extendFrameUrl ? (
+                          <div className="space-y-2">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={extendFrameUrl}
+                              alt="Último frame"
+                              className="max-h-[180px] w-full rounded-xl object-contain ring-1 ring-white/10"
+                            />
+                            <p className="text-[11px] text-[#888888]">
+                              {t("lastFrameCapturedNote")}
+                            </p>
+                            {extendAudioUrl && (
+                              <p className="text-[11px] text-[#A78BFA]">
+                                {t("audioRefCaptured")}
+                              </p>
+                            )}
+                            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-3 py-1.5 text-xs text-[#F5F5F5] hover:bg-[#202020]">
+                              <input
+                                type="file"
+                                accept="video/*"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const f = e.target.files?.[0];
+                                  if (f) void handleExtendVideoSelect(f);
+                                  e.target.value = "";
+                                }}
+                              />
+                              {t("swapVideo")}
+                            </label>
+                          </div>
+                        ) : (
+                          <label className="flex min-h-[128px] cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#2A2A2A] bg-[#1A1A1A]/60 px-4 text-center hover:border-[#7C3AED]/50">
+                            <input
+                              type="file"
+                              accept="video/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const f = e.target.files?.[0];
+                                if (f) void handleExtendVideoSelect(f);
+                                e.target.value = "";
+                              }}
+                            />
+                            {extendExtracting ? (
+                              <>
+                                <Loader2 className="h-5 w-5 animate-spin text-[#A78BFA]" />
+                                <p className="text-xs text-[#888888]">{t("toastExtractingFrame")}</p>
+                              </>
+                            ) : (
+                              <>
+                                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10">
+                                  <Clapperboard className="h-5 w-5 text-[#555555]" />
+                                </span>
+                                <p className="text-xs text-[#888888]">{t("dragMp4Mov")}</p>
+                                <span className="text-[10px] text-[#666666]">{t("lastFrameAuto")}</span>
+                              </>
+                            )}
+                          </label>
+                        )}
+                      </div>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="mb-1 block text-xs text-[#A3A3A3]">{t("describeSceneCont")}</label>
+                          <Textarea
+                            value={extendPrompt}
+                            onChange={(e) => setExtendPrompt(e.target.value)}
+                            placeholder={t("phExtendScene")}
+                            className="min-h-[70px] resize-none border-[#2A2A2A] bg-[#1A1A1A] text-sm text-[#F5F5F5] placeholder:text-[#5a5a63]"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-[#A3A3A3]">{t("speechText")} <span className="text-[#666666]">(opcional)</span></label>
+                          <Textarea
+                            value={extendSpeech}
+                            onChange={(e) => setExtendSpeech(e.target.value)}
+                            placeholder={t("phExtendSpeech")}
+                            className="min-h-[70px] resize-none border-[#2A2A2A] bg-[#1A1A1A] text-sm text-[#F5F5F5] placeholder:text-[#5a5a63]"
+                          />
+                        </div>
+                        <Button
+                          className="w-full bg-[#7C3AED] text-white hover:bg-[#6D28D9] disabled:opacity-50"
+                          disabled={extendGenerating || !extendFrameUrl || !extendPrompt.trim()}
+                          onClick={() => void handleExtendGenerate()}
+                        >
+                          {extendGenerating ? "Gerando continuação..." : "Extend video"}
+                        </Button>
+                      </div>
+                    </div>
+                  </section>
+
+                  <div className="space-y-3">
+                    {(() => {
+                      const disabled =
+                        brollGenerating ||
+                        !brollDescription.trim() ||
+                        !brollProductImageUrl ||
+                        !brollAvatarImageUrl ||
+                        brollInsufficientCredits;
+
+                      return (
+                        <Button
+                          className="w-full bg-[#7C3AED] text-white hover:bg-[#6D28D9] disabled:opacity-50"
+                          disabled={disabled}
+                          onClick={() => void handleGenerateBroll()}
+                        >
+                          {brollGenerating ? "Gerando vídeo..." : "Generate UGC video"}
+                        </Button>
+                      );
+                    })()}
+
+                    {brollInsufficientCredits && (
+                      <p className="text-xs text-[#FCA5A5]">
+                        {t("creditsInsufficientVideo")}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="flex items-start gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
+                      <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#60A5FA]" />
+                      <div>
+                        <p className="text-xs font-medium text-[#F5F5F5]">{t("aiCanErr")}</p>
+                        <p className="text-[11px] text-[#888888]">{t("resultsVary15s")}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3">
+                      <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#FBBF24]" />
+                      <div>
+                        <p className="text-xs font-medium text-[#F5F5F5]">{t("highUse")}</p>
+                        <p className="text-[11px] text-[#888888]">{t("peakWaitNote")}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              )}
+
+              {activeTab === "generations" && selectedProject && (
+                <div className="rounded-xl border border-[#2A2A2A] bg-[#141414] p-5">
+                  <h2 className="text-base font-semibold text-[#F5F5F5]">{t("projectGenerations")}</h2>
+
+                  {completedProjectGenerations.length === 0 ? (
+                    <div className="mt-4 rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] px-4">
+                      <EmptyState
+                        icon={Sparkles}
+                        title={t("noFinishedClip")}
+                        description="Gere seu primeiro segmento de avatar ou um lote de B-Roll para preencher a galeria."
+                      />
+                    </div>
+                  ) : (
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {completedProjectGenerations.map((item, index) => (
+                        <div
+                          key={`${item.label}-${item.result_url}-${index}`}
+                          className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3"
+                        >
+                          <p className="mb-2 text-sm font-medium text-[#F5F5F5]">{item.label}</p>
+                          <video src={item.result_url} controls className="w-full rounded-lg" />
+                          <a
+                            href={item.result_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-2 inline-flex w-full items-center justify-center rounded-md border border-[#2A2A2A] px-3 py-2 text-sm text-[#F5F5F5] hover:bg-[#202020]"
+                            download
+                          >{t("download")}</a>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </section>
+      )}
+
+      {avatarPickerOpen && selectedProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-3xl rounded-xl border border-[#2A2A2A] bg-[#131313] p-5 max-h-[88vh] overflow-y-auto">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-[#F5F5F5]">{t("chooseFromInfluencers")}</h3>
+                <p className="mt-1 text-sm text-[#888888]">
+                  {t("noActivePersonaLocked")}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                className="border-[#2A2A2A] text-[#E5E5E5]"
+                onClick={() => setAvatarPickerOpen(false)}
+                disabled={Boolean(avatarPickerSavingId)}
+              >{t("close")}</Button>
+            </div>
+
+            {avatarPickerLoading ? (
+              <div className="mt-4 rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-6 text-center text-[#A3A3A3]">
+                <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+                <p className="mt-2 text-sm">{t("loadingPersonas")}</p>
+              </div>
+            ) : influencerAvatars.length === 0 ? (
+              <div className="mt-4 rounded-lg border border-dashed border-[#2A2A2A] bg-[#1A1A1A] p-6 text-center">
+                <p className="text-sm text-[#BDBDBD]">
+                  {t("noActivePersonaCreate")}
+                </p>
+                <Link
+                  href="/influencer"
+                  className="mt-2 inline-block text-sm text-[#A78BFA] hover:underline"
+                  onClick={() => setAvatarPickerOpen(false)}
+                >
+                  {t("goToInfluencerStudio")}
+                </Link>
+              </div>
+            ) : (
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {influencerAvatars.map((inf) => (
+                  <button
+                    key={inf.id}
+                    type="button"
+                    className="rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-3 text-left transition hover:border-[#7C3AED]/60 disabled:opacity-60"
+                    disabled={avatarPickerSavingId !== null}
+                    onClick={() => {
+                      void handleSelectInfluencerAvatar(inf);
+                    }}
+                  >
+                    <div className="overflow-hidden rounded-lg border border-[#2A2A2A] bg-[#111111]">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={inf.avatar_image_url || ""}
+                        alt={inf.name}
+                        className="h-36 w-full object-cover"
+                      />
+                    </div>
+                    <p className="mt-2 line-clamp-1 text-sm font-semibold text-[#F5F5F5]">{inf.name}</p>
+                    <p className="line-clamp-1 text-xs text-[#8B8B8B]">{inf.handle || "@sem_handle"}</p>
+                    {avatarPickerSavingId === inf.id && (
+                      <p className="mt-2 text-xs text-[#A78BFA]">{t("applying")}</p>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {avatarModal && selectedProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-lg rounded-xl border border-[#2A2A2A] bg-[#131313] p-5 overflow-y-auto max-h-[90vh]">
+            <h3 className="text-lg font-semibold text-[#F5F5F5]">Generate: {avatarModal.label}</h3>
+            <p className="mt-1 text-sm text-[#888888]">{t("configureSegment")}</p>
+
+            <div className="mt-4 space-y-4">
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className="text-xs text-[#A3A3A3]">{t("avatarSpeech")}</label>
+                  {(() => {
+                    const words = avatarForm.text.trim() ? avatarForm.text.trim().split(/\s+/).length : 0;
+                    const rec = Math.round(avatarForm.duration * 2.75);
+                    const lo = Math.round(rec * 0.7);
+                    const hi = Math.round(rec * 1.2);
+                    const status = words === 0 ? "" : words < lo ? "Muito pouco" : words > hi ? "Muito longo" : "Bom";
+                    const color = status === "Bom" ? "text-[#4ADE80]" : status === "" ? "text-[#777777]" : "text-[#FCA5A5]";
+                    return (
+                      <span className={`text-xs ${color}`}>
+                        {words} / ~{rec} palavras{status ? ` · ${status}` : ""} · alvo {avatarForm.duration}s
+                      </span>
+                    );
+                  })()}
+                </div>
+                <Textarea
+                  value={avatarForm.text}
+                  onChange={(e) => setAvatarForm(prev => ({ ...prev, text: e.target.value }))}
+                  placeholder={t("phAvatarSpeech")}
+                  className="min-h-24 border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs text-[#A3A3A3]">{t("accent")}</label>
+                <select
+                  value={avatarForm.accent}
+                  onChange={(e) => setAvatarForm(prev => ({ ...prev, accent: e.target.value }))}
+                  className="h-10 w-full rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] px-2.5 text-sm text-[#F5F5F5] outline-none"
+                >
+                  {["Accent", "Irish", "Scottish", "French", "German", "Spanish", "Italian"].map(a => (
+                    <option key={a} value={a}>{a}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs text-[#A3A3A3]">{t("duration")}</label>
+                <div className="flex gap-2">
+                  {([4, 6, 8] as const).map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setAvatarForm((prev) => ({ ...prev, duration: d }))}
+                      className={`flex-1 rounded-lg border py-1.5 text-sm transition ${
+                        avatarForm.duration === d
+                          ? "border-[#7C3AED] bg-[#7C3AED]/20 text-[#F5F5F5]"
+                          : "border-[#2A2A2A] bg-[#1A1A1A] text-[#BDBDBD]"
+                      }`}
+                    >
+                      {d}s
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1 text-xs text-[#777777]">{t("audioDurNote")}</p>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs text-[#A3A3A3]">{t("quality")}</label>
+                <div className="flex gap-2">
+                  {([
+                    { key: "720p", label: "720p · std quality" },
+                    { key: "1080p", label: "1080p · pro quality" },
+                  ] as const).map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() =>
+                        setAvatarForm((prev) => ({
+                          ...prev,
+                          resolution: item.key,
+                        }))
+                      }
+                      className={`flex-1 rounded-lg border py-1.5 text-[11px] transition ${
+                        avatarForm.resolution === item.key
+                          ? "border-[#7C3AED] bg-[#7C3AED]/20 text-[#F5F5F5]"
+                          : "border-[#2A2A2A] bg-[#1A1A1A] text-[#BDBDBD]"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs text-[#A3A3A3]">{t("format")}</label>
+                <div className="flex gap-2">
+                  {(["9:16", "1:1", "16:9"] as AvatarFormat[]).map((format) => (
+                    <button
+                      key={format}
+                      type="button"
+                      onClick={() =>
+                        setAvatarForm((prev) => ({
+                          ...prev,
+                          format,
+                        }))
+                      }
+                      className={`flex-1 rounded-lg border py-1.5 text-sm transition ${
+                        avatarForm.format === format
+                          ? "border-[#7C3AED] bg-[#7C3AED]/20 text-[#F5F5F5]"
+                          : "border-[#2A2A2A] bg-[#1A1A1A] text-[#BDBDBD]"
+                      }`}
+                    >
+                      {format}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAvatarForm(prev => ({ ...prev, cameraAngles: !prev.cameraAngles }))}
+                  className={`relative h-5 w-9 rounded-full transition-colors ${
+                    avatarForm.cameraAngles ? "bg-[#7C3AED]" : "bg-[#2A2A2A]"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
+                      avatarForm.cameraAngles ? "translate-x-4" : "translate-x-0.5"
+                    }`}
+                  />
+                </button>
+                <span className="text-sm text-[#F5F5F5]">{t("multipleCameraAngles")}</span>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs text-[#A3A3A3]">
+                  Product Image{" "}
+                  <span className="text-[#777777]">{t("compositionSoon")}</span>
+                </label>
+                <div className="space-y-2">
+                  <ImageDropzone
+                    id="ugc-avatar-product-image-drop"
+                    disabled={avatarForm.productImageUploading}
+                    uploading={avatarForm.productImageUploading}
+                    previewUrl={avatarForm.productImageUrl || undefined}
+                    onRemovePreview={() =>
+                      setAvatarForm((prev) => ({ ...prev, productImageUrl: "" }))
+                    }
+                    title={
+                      avatarForm.productImageUploading
+                        ? t("toastUploadingProductImage")
+                        : "Imagem do produto"
+                    }
+                    subtitle={t("dropDefault")}
+                    cta={avatarForm.productImageUrl ? "Trocar imagem" : "Enviar imagem"}
+                    onFileSelect={(file) => {
+                      void handleProductImageUpload(file);
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5">
+              {(() => {
+                // P10a — ESTIMATIVA (a cobrança real segue a duração medida do áudio).
+                // cps já vem ajustado por plano de /api/models (mesma fonte que o B-Roll);
+                // não reaplicar multiplicador. `duration` aqui é apenas o alvo de comprimento.
+                const rate = avatarRatePerSecond
+                  ? Number(avatarRatePerSecond[avatarForm.resolution] ?? avatarRatePerSecond["720p"] ?? 0)
+                  : 0;
+                const estCost =
+                  rate > 0 ? avatarRawCredits(rate, avatarForm.duration) : (avatarFlatCost ?? 0);
+                const balance = userCredits ?? 0;
+                // Gate suave: só bloqueia sem saldo p/ a estimativa (o servidor faz o gate real).
+                const insufficient = balance < estCost;
+                return (
+                  <>
+                    <Button
+                      className="w-full bg-[#7C3AED] text-white hover:bg-[#6D28D9] disabled:opacity-50"
+                      disabled={avatarGenerating || insufficient || !avatarForm.text.trim()}
+                      onClick={() => void handleGenerateSegment()}
+                    >
+                      {avatarGenerating ? (
+                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t("generating")}</>
+                      ) : insufficient ? (
+                        "Créditos esgotados"
+                      ) : (
+                        "Generate Talking Avatar"
+                      )}
+                    </Button>
+                    <p className="mt-2 text-center text-xs text-[#777777]">
+                      ~{estCost} créditos (estimativa) · cobrança pela duração real do áudio
+                    </p>
+                  </>
+                );
+              })()}
+            </div>
+
+            <p className="mt-2 text-center text-xs text-[#777777]">
+              {t("resultsMayVary")}
+            </p>
+
+            <div className="mt-4 flex justify-end">
+              <Button
+                variant="outline"
+                className="border-[#2A2A2A] text-[#E5E5E5]"
+                disabled={avatarGenerating}
+                onClick={() => setAvatarModal(null)}
+              >{t("cancel")}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {projectCreateOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-[#242428] bg-[#0f0f11] p-6 shadow-2xl">
+            <div className="mb-5 flex flex-col items-center text-center">
+              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-[#7C3AED]/15">
+                <Clapperboard className="h-6 w-6 text-[#A78BFA]" />
+              </div>
+              <h3 className="text-xl font-semibold text-white">{t("newUgcProject")}</h3>
+              <p className="mt-1 text-sm text-[#888888]">
+                {t("createProjectOrganize")}
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs text-[#A3A3A3]">{t("projectNameReq")}</label>
+                <Input
+                  value={projectForm.name}
+                  onChange={(e) =>
+                    setProjectForm((prev) => ({ ...prev, name: e.target.value }))
+                  }
+                  placeholder={t("phProjectName")}
+                  className="border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1 border-[#2A2A2A] text-[#E5E5E5]"
+                onClick={() => {
+                  if (!projectSaving) {
+                    setProjectCreateOpen(false);
+                    setProjectForm(emptyProjectForm());
+                    setProjectProductId("");
+                  }
+                }}
+                disabled={projectSaving}
+              >{t("cancel")}</Button>
+              <Button
+                className="flex-1 bg-white text-black hover:bg-white/90"
+                onClick={() => void handleCreateProject()}
+                disabled={projectSaving}
+              >
+                {projectSaving ? "Criando..." : "Criar projeto"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editorOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-lg rounded-xl border border-[#2A2A2A] bg-[#131313] p-5">
+            <h3 className="text-lg font-semibold text-[#F5F5F5]">
+              {editing ? t("editProductTitle") : t("addProduct")}
+            </h3>
+            <p className="mt-1 text-sm text-[#888888]">
+              {t("uploadImageFillData")}
+            </p>
+
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="mb-1 block text-xs text-[#A3A3A3]">{t("productImageReq")}</label>
+                <ImageDropzone
+                  id="ugc-product-drop"
+                  disabled={uploading || saving}
+                  uploading={uploading}
+                  previewUrl={form.imageUrl || undefined}
+                  onRemovePreview={() => setForm((prev) => ({ ...prev, imageUrl: "" }))}
+                  title={uploading ? t("toastUploadingImage") : "Imagem do produto"}
+                  subtitle={t("dropDefault")}
+                  cta={form.imageUrl ? "Trocar imagem" : "Enviar imagem"}
+                  onFileSelect={(file) => {
+                    void handleUploadImage(file);
+                  }}
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs text-[#A3A3A3]">{t("title")}</label>
+                <Input
+                  value={form.title}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, title: event.target.value }))
+                  }
+                  placeholder={t("phProductTitle")}
+                  className="border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs text-[#A3A3A3]">{t("description")}</label>
+                <Textarea
+                  value={form.description}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, description: event.target.value }))
+                  }
+                  placeholder={t("phProductDesc")}
+                  className="min-h-24 border-[#2A2A2A] bg-[#1A1A1A] text-[#F5F5F5]"
+                />
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                className="border-[#2A2A2A] text-[#E5E5E5]"
+                onClick={closeEditor}
+                disabled={saving || uploading}
+              >{t("cancel")}</Button>
+              <Button
+                className="bg-[#7C3AED] text-white hover:bg-[#6D28D9]"
+                onClick={() => void handleSaveProduct()}
+                disabled={saving || uploading}
+              >
+                {saving ? "Salvando..." : editing ? "Salvar alterações" : "Criar produto"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteOpen && pendingDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md rounded-xl border border-[#2A2A2A] bg-[#131313] p-5">
+            <h3 className="text-lg font-semibold text-[#F5F5F5]">{t("deleteProduct")}</h3>
+            <p className="mt-1 text-sm text-[#888888]">
+              {t("confirmDeleteProduct")} <strong>{pendingDelete.title}</strong>? {t("cannotUndo")}
+            </p>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                className="border-[#2A2A2A] text-[#E5E5E5]"
+                onClick={closeDeleteDialog}
+                disabled={workingId === pendingDelete.id}
+              >{t("cancel")}</Button>
+              <Button
+                variant="outline"
+                className="border-[#3A1F1F] text-[#FCA5A5] hover:bg-[#2A1313]"
+                onClick={() => void handleDeleteProduct()}
+                disabled={workingId === pendingDelete.id}
+              >
+                {workingId === pendingDelete.id ? "Excluindo..." : "Excluir"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

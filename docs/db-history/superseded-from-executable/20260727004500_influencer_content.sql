@@ -1,0 +1,3 @@
+-- ARCHIVED / NON-EXECUTABLE — superseded by 20260821190000_historical_drift_capture.sql
+-- Preserved copy: docs/db-history/local-migrations-pre-reconcile/20260727004500_influencer_content.sql
+-- ACTION REQUIRED (owner): git rm this file. (Sandbox could not unlink on OneDrive; delete declined.)

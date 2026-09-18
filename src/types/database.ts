@@ -1,6 +1,5 @@
-// Tipos do schema do Supabase (Fluxyra v2).
-// Reflete supabase/migrations/0001_init.sql. Pode ser regenerado depois via
-// `supabase gen types typescript`.
+// Tipos do schema do Supabase — refletem o banco de PRODUÇÃO do Fluxyra
+// (projeto pckfdyrhksdkwakptyuk). O banco hospedado é a fonte de verdade.
 
 export type Modality = "image" | "video" | "audio";
 export type GenerationStatus =
@@ -10,156 +9,134 @@ export type GenerationStatus =
   | "failed"
   | "refunded";
 export type PlanCode = "free" | "starter" | "pro" | "agency";
-export type CreditTxnType =
+
+/** Motivos usados no ledger de créditos (coluna `reason`). */
+export type CreditReason =
   | "welcome"
   | "subscription"
   | "topup"
+  | "purchase"
   | "generation"
   | "refund"
-  | "referral"
   | "adjustment";
 
-export interface SubscriptionPlan {
-  id: string;
-  code: PlanCode;
-  name: string;
-  price_brl: number;
-  monthly_credits: number;
-  daily_limit: number;
-  parallel_generations: number;
-  rollover_cap: number;
-  pix_enabled: boolean;
-  nfe_required: boolean;
-  stripe_price_id_monthly: string | null;
-  stripe_price_id_annual: string | null;
-  features: string[];
-  is_active: boolean;
-  sort_order: number;
-  created_at: string;
-}
-
+/** Catálogo de modelos de IA (tabela `ai_models`). */
 export interface AiModel {
   id: string;
-  slug: string;
   name: string;
-  modality: Modality;
-  provider: string;
-  provider_fallback: string | null;
-  provider_model_id: string | null;
-  credits: number;
-  measured_api_cost_usd: number | null;
-  cost_last_verified_at: string | null;
-  description: string | null;
-  thumbnail_url: string | null;
-  is_premium: boolean;
+  provider: string; // 'piapi' | 'atlas' | ...
+  type: Modality; // modalidade do modelo
+  model_id: string; // identificador do modelo no provider (ex.: 'flux-dev')
+  credit_cost: number; // créditos cobrados por geração
+  params: Record<string, unknown>;
   is_active: boolean;
+  thumbnail_url: string | null;
+  min_plan: PlanCode; // plano mínimo para usar o modelo
   sort_order: number;
   created_at: string;
 }
 
+/** Perfil do usuário (tabela `profiles`, 1:1 com auth.users). */
 export interface Profile {
   id: string;
   email: string | null;
-  full_name: string | null;
-  avatar_url: string | null;
   credits_balance: number;
-  plan_code: PlanCode;
   stripe_customer_id: string | null;
-  stripe_subscription_id: string | null;
-  subscription_status: string | null;
-  subscription_renews_at: string | null;
-  daily_generations_used: number;
-  daily_reset_at: string;
-  onboarding_completed: boolean;
-  referral_code: string | null;
-  referred_by: string | null;
+  plan: PlanCode;
+  plan_credits_monthly: number;
   created_at: string;
-  updated_at: string;
 }
 
+/** Fila/histórico de gerações (tabela `generations`). */
 export interface Generation {
   id: string;
   user_id: string;
-  model_id: string | null;
-  modality: Modality;
+  model_id: string | null; // FK -> ai_models.id
+  type: Modality;
   prompt: string | null;
   negative_prompt: string | null;
   params: Record<string, unknown>;
   status: GenerationStatus;
-  provider: string | null;
+  result_url: string | null;
   provider_task_id: string | null;
-  credits_charged: number;
+  credits_used: number;
   error_message: string | null;
-  started_at: string | null;
-  completed_at: string | null;
   created_at: string;
+  updated_at: string;
 }
 
+/** Jobs de geração (tabela legada `generation_jobs`, usada pela v1). */
+export interface GenerationJob {
+  id: string;
+  user_id: string;
+  modality: Modality;
+  provider: string;
+  model: string;
+  model_variant: string | null;
+  prompt: string | null;
+  params: Record<string, unknown>;
+  status: string;
+  external_job_id: string | null;
+  result_url: string | null;
+  thumbnail_url: string | null;
+  credits_cost: number;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Biblioteca de mídias do usuário (tabela `assets`). */
 export interface Asset {
   id: string;
   user_id: string;
-  generation_id: string | null;
-  modality: Modality;
-  storage_path: string;
-  thumbnail_path: string | null;
-  mime_type: string | null;
-  width: number | null;
-  height: number | null;
-  duration_seconds: number | null;
-  is_favorite: boolean;
-  metadata: Record<string, unknown>;
+  category: string; // 'image' | 'video' | 'audio' | 'custom' | ...
+  name: string | null;
+  image_url: string | null; // URL pública da mídia
   created_at: string;
 }
 
-export interface Seed {
-  id: string;
-  user_id: string;
-  name: string;
-  description: string | null;
-  reference_asset_id: string | null;
-  metadata: Record<string, unknown>;
-  created_at: string;
-}
-
-export interface SavedPrompt {
+/** Produtos do usuário (tabela `products` — UGC Factory). */
+export interface Product {
   id: string;
   user_id: string;
   title: string | null;
-  prompt: string;
-  modality: Modality | null;
-  tags: string[];
-  created_at: string;
-}
-
-export interface Flow {
-  id: string;
-  user_id: string | null;
-  name: string;
   description: string | null;
-  is_template: boolean;
-  definition: Record<string, unknown>;
+  image_url: string | null;
   created_at: string;
 }
 
+/** Ledger de créditos (tabela `credit_transactions`). */
 export interface CreditTransaction {
   id: string;
   user_id: string;
-  amount: number;
-  type: CreditTxnType;
-  balance_after: number | null;
-  generation_id: string | null;
-  reference: string | null;
-  metadata: Record<string, unknown>;
+  amount: number; // + entrada, - saída
+  reason: CreditReason | string;
+  related_job_id: string | null;
   created_at: string;
 }
 
-export interface Referral {
+/** Compras avulsas de créditos (tabela `credit_purchases`). */
+export interface CreditPurchase {
   id: string;
-  referrer_id: string;
-  referred_id: string | null;
-  referred_email: string | null;
+  user_id: string;
+  stripe_session_id: string | null;
+  credits: number;
+  amount_cents: number;
   status: string;
-  credits_awarded: number;
-  converted_at: string | null;
   created_at: string;
+}
+
+/** Assinaturas Stripe (tabela `subscriptions`). */
+export interface Subscription {
+  id: string;
+  user_id: string;
+  stripe_subscription_id: string | null;
+  stripe_price_id: string | null;
+  plan: PlanCode;
+  status: string;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  cancel_at_period_end: boolean;
+  created_at: string;
+  updated_at: string;
 }

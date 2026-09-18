@@ -7,7 +7,7 @@ export default function SignupPage() {
       <div className="space-y-1.5 text-center">
         <h1 className="text-xl font-semibold">Crie sua conta</h1>
         <p className="text-sm text-muted-foreground">
-          Ganhe <span className="font-semibold text-accent">10 créditos grátis</span> ao se cadastrar.
+          Teste grátis: gere <span className="font-semibold text-accent">1 imagem com IA</span>. Sem cartão.
         </p>
       </div>
       <Suspense>

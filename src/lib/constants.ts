@@ -1,6 +1,10 @@
 // Regras de negócio do Fluxyra (v2.0) — §5 e §6 da documentação.
 
-export const WELCOME_CREDITS = 10;
+// GROWTH-02 — Fluxyra não tem free plan recorrente: novos usuários entram com
+// saldo 0 e recebem apenas 1 imagem grátis global por e-mail (entitlement em
+// free_image_trials, NÃO é crédito). A antiga WELCOME_CREDITS (20) foi removida
+// — não tinha consumidor em código (o grant era só no trigger handle_new_user,
+// agora = 0). Não reintroduzir crédito de boas-vindas.
 
 // Câmbio de referência e stress test (§5.6)
 export const FX_REFERENCE_BRL = 5.5;
@@ -13,6 +17,18 @@ export const MIN_MARGIN = 0.4;
 // Cooldown de 30s para gerações acima de 10 créditos (§4, §6)
 export const HIGH_COST_THRESHOLD_CREDITS = 10;
 export const HIGH_COST_COOLDOWN_SECONDS = 30;
+export const FREE_PLAN_COST_MULTIPLIER = 2;
+
+// Multiplicador de CONSUMO de créditos por plano (não altera o preço-base das IAs;
+// só faz a mesma geração consumir mais créditos nos planos menores).
+// Escada suave: free 2x · básico(starter) 1,3x · pro 1,1x · agency 1x.
+// Planos desconhecidos (ex.: "base" da landing) pagam 1x.
+export const PLAN_COST_MULTIPLIER: Record<string, number> = {
+  free: 2,
+  starter: 1.3,
+  pro: 1.1,
+  agency: 1,
+};
 
 // Alertas de saldo (§6)
 export const LOW_BALANCE_TOAST_PCT = 0.2; // toast < 20%
@@ -21,12 +37,15 @@ export const LOW_BALANCE_EMAIL_PCT = 0.1; // e-mail < 10%
 // Polling de gerações (§1.4 — React Query polling a cada 3s)
 export const GENERATION_POLL_INTERVAL_MS = 3000;
 
-// Top-ups (§5.5) — créditos avulsos não expiram
+// P7c — DEPRECATED / LEGADO (BRL): não é usado por nenhum caminho de runtime.
+// A fonte de verdade dos top-ups (USD + Stripe Price IDs) é `@/lib/stripe/client`
+// (TOPUP_PACKS). Mantido apenas como referência histórica; não importar.
+// @deprecated use TOPUP_PACKS de @/lib/stripe/client
 export const TOPUP_PACKS = [
-  { credits: 100, price_brl: 39 },
-  { credits: 300, price_brl: 99 },
-  { credits: 700, price_brl: 199 },
-  { credits: 1500, price_brl: 379 },
+  { credits: 200, price_brl: 39 },
+  { credits: 600, price_brl: 99 },
+  { credits: 1400, price_brl: 199 },
+  { credits: 3000, price_brl: 379 },
 ] as const;
 
 export const MODALITIES = ["image", "video", "audio"] as const;
