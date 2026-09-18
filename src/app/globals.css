@@ -150,6 +150,22 @@
   --surface: #ffffff;
 }
 
+/* FLUXYRA-LANDING-MOTION-PASS-05 — slow marquee for the models strip.
+   Content is duplicated once in JS (src/components/marketing/motion.tsx) so
+   translateX(-50%) loops seamlessly; only transform is animated. */
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee {
+  animation: marquee 34s linear infinite;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

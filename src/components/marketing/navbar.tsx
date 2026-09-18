@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { motion, useScroll, useMotionValueEvent } from "framer-motion";
 import { Menu, X } from "lucide-react";
 import { Logo } from "@/components/shared/logo";
+import { EASE } from "@/components/marketing/motion";
 
 const NAV_LINKS = [
   { href: "#workflow", label: "Recursos" },
@@ -15,10 +17,25 @@ const NAV_LINKS = [
 
 export function MarketingNavbar() {
   const [open, setOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const { scrollY } = useScroll();
+  // Stays visually stable — only a very slight scale (never
+  // width/height/top/left, per task §14) plus a stronger shadow on scroll.
+  // Never hides/reappears.
+  useMotionValueEvent(scrollY, "change", (latest) => setScrolled(latest > 24));
 
   return (
     <header className="fixed inset-x-0 top-4 z-50 px-4 sm:px-6">
-      <div className="mx-auto flex h-14 max-w-[1200px] items-center justify-between rounded-2xl border border-border bg-surface/90 px-4 shadow-[0_1px_2px_rgba(21,19,25,0.04),0_12px_32px_-16px_rgba(21,19,25,0.12)] backdrop-blur-xl sm:px-5">
+      <motion.div
+        animate={{ scale: scrolled ? 0.97 : 1 }}
+        transition={{ duration: 0.3, ease: EASE }}
+        style={{ transformOrigin: "top center" }}
+        className={`mx-auto flex h-14 max-w-[1200px] items-center justify-between rounded-2xl border border-border bg-surface/90 px-4 backdrop-blur-xl transition-shadow duration-300 sm:px-5 ${
+          scrolled
+            ? "shadow-[0_2px_4px_rgba(21,19,25,0.06),0_20px_44px_-16px_rgba(21,19,25,0.18)]"
+            : "shadow-[0_1px_2px_rgba(21,19,25,0.04),0_12px_32px_-16px_rgba(21,19,25,0.12)]"
+        }`}
+      >
         <Link
           href="/"
           className="flex items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
@@ -67,7 +84,7 @@ export function MarketingNavbar() {
         >
           {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
-      </div>
+      </motion.div>
 
       {open && (
         <div
