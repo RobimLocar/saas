@@ -39,6 +39,8 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-surface: var(--surface);
+  --color-primary-hover: var(--primary-hover);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -118,6 +120,34 @@
   --sidebar-accent-foreground: #f5f5f5;
   --sidebar-border: #2a2a2a;
   --sidebar-ring: #7c3aed;
+}
+
+/* FLUXYRA-LANDING-PREMIUM-REDESIGN-01 — light editorial theme, scoped ONLY to
+   the (marketing) route group via this class on its layout wrapper. Does not
+   touch :root/.dark (the dashboard/Studio app stays dark-first, unchanged).
+   Tokens derived from the real brand palette already in :root/.dark above
+   (primary #7C3AED, accent #8B5CF6, chart-3/4 #A78BFA/#6D28D9) — no new hues
+   invented. */
+.marketing-theme {
+  --background: #faf9fd;
+  --foreground: #151319;
+  --card: #ffffff;
+  --card-foreground: #151319;
+  --popover: #ffffff;
+  --popover-foreground: #151319;
+  --primary: #7c3aed;
+  --primary-hover: #6d28d9;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f1fb;
+  --secondary-foreground: #151319;
+  --muted: #f3f1f9;
+  --muted-foreground: #6b6875;
+  --accent: #8b5cf6;
+  --accent-foreground: #ffffff;
+  --border: #e9e6f3;
+  --input: #e9e6f3;
+  --ring: #7c3aed;
+  --surface: #ffffff;
 }
 
 @layer base {

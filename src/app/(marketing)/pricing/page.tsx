@@ -105,14 +105,14 @@ export default function PricingPage() {
   return (
     <div className="px-6 py-20">
       {/* ─── Header ──────────────────────────────────────── */}
-      <div className="max-w-2xl mx-auto text-center mb-12">
-        <span className="inline-block px-3 py-1 rounded-full bg-muted border border-border text-xs text-muted-foreground mb-4">
+      <div className="max-w-2xl mx-auto text-center mb-14">
+        <span className="inline-block px-3 py-1.5 rounded-full bg-surface border border-border text-xs font-medium text-muted-foreground mb-4 shadow-sm">
           Preços simples e transparentes
         </span>
-        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-4">
+        <h1 className="font-bold tracking-tight mb-4 text-foreground [font-size:clamp(2rem,4.5vw,3rem)]">
           Escolha seu plano
         </h1>
-        <p className="text-muted-foreground text-base">
+        <p className="text-muted-foreground text-base leading-relaxed">
           Créditos para gerar imagem, vídeo e áudio com os melhores modelos de
           IA. Faça upgrade ou downgrade quando quiser.
         </p>
@@ -123,10 +123,10 @@ export default function PricingPage() {
         {PLANS.map((plan) => (
           <div
             key={plan.name}
-            className={`rounded-2xl p-6 flex flex-col ${
+            className={`rounded-3xl p-6 flex flex-col bg-surface ${
               plan.highlight
-                ? "bg-primary/5 border-2 border-primary shadow-lg shadow-primary/10"
-                : "bg-card border border-border"
+                ? "border-2 border-primary shadow-[0_16px_40px_-20px_rgba(124,58,237,0.35)]"
+                : "border border-border shadow-sm"
             }`}
           >
             {plan.badge && (
@@ -138,7 +138,7 @@ export default function PricingPage() {
               {plan.name}
             </h3>
             <div className="mt-4 mb-1 flex items-end gap-1">
-              <span className="text-4xl font-extrabold">
+              <span className="text-4xl font-extrabold text-foreground">
                 ${plan.price.monthly}
               </span>
               <span className="text-muted-foreground text-sm mb-1">/mês</span>
@@ -151,10 +151,10 @@ export default function PricingPage() {
 
             <Link
               href={plan.ctaHref}
-              className={`h-11 rounded-lg flex items-center justify-center text-sm font-medium transition mb-6 ${
+              className={`h-11 rounded-xl flex items-center justify-center text-sm font-semibold transition mb-6 ${
                 plan.highlight
-                  ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                  : "border border-border hover:bg-muted/50"
+                  ? "bg-primary text-primary-foreground hover:bg-primary-hover"
+                  : "border border-border text-foreground hover:bg-muted"
               }`}
             >
               {plan.cta}
@@ -174,7 +174,7 @@ export default function PricingPage() {
 
       {/* ─── Top-up Packs (recarga) ──────────────────────── */}
       <div id="recarga" className="max-w-3xl mx-auto mb-24 scroll-mt-24">
-        <h2 className="text-2xl font-bold text-center mb-3">
+        <h2 className="text-2xl font-bold text-center mb-3 text-foreground">
           Recarregar créditos
         </h2>
         <p className="text-muted-foreground text-center text-sm mb-10">
@@ -188,10 +188,10 @@ export default function PricingPage() {
               type="button"
               onClick={() => handleTopup(t.id)}
               disabled={loadingPack !== null}
-              className={`relative rounded-xl border bg-card p-4 text-center transition disabled:opacity-60 ${
+              className={`relative rounded-2xl border bg-surface p-4 text-center transition disabled:opacity-60 ${
                 t.recommended
-                  ? "border-2 border-primary shadow-lg shadow-primary/10"
-                  : "border-border hover:border-primary/40"
+                  ? "border-2 border-primary shadow-[0_16px_40px_-20px_rgba(124,58,237,0.35)]"
+                  : "border-border shadow-sm hover:border-primary/40"
               }`}
             >
               {t.recommended && (
