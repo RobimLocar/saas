@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { stripe, PLANS, TOPUP_PACKS, PlanKey } from "@/lib/stripe/client";
 
 export async function POST(req: NextRequest) {
@@ -45,10 +46,19 @@ export async function POST(req: NextRequest) {
         metadata: { supabase_user_id: user.id },
       });
       customerId = customer.id;
-      await supabase
+      // profiles não tem policy de UPDATE para authenticated (só
+      // profiles_select_own) — usar service role, mesmo padrão de toda
+      // outra escrita privilegiada em profiles (webhook-processor.ts,
+      // credits.ts). Um update via client authenticated aqui seria um
+      // no-op silencioso sob RLS (0 linhas afetadas, sem erro).
+      const service = createServiceClient();
+      const { error: customerIdErr } = await service
         .from("profiles")
         .update({ stripe_customer_id: customerId })
         .eq("id", user.id);
+      if (customerIdErr) {
+        console.error("[stripe/create-checkout] Falha ao salvar stripe_customer_id:", customerIdErr);
+      }
     }
 
     // ─── Assinatura ─────────────────────────────────
