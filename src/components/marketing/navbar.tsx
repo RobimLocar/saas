@@ -19,21 +19,22 @@ export function MarketingNavbar() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const { scrollY } = useScroll();
-  // Stays visually stable — only a very slight scale (never
-  // width/height/top/left, per task §14) plus a stronger shadow on scroll.
-  // Never hides/reappears.
-  useMotionValueEvent(scrollY, "change", (latest) => setScrolled(latest > 24));
+  // Sticky/fixed always — never hides/reappears (task §13). Past ~80px it
+  // shrinks height/padding by ~10% and firms up the shadow/background
+  // opacity. This is the one deliberate exception to "never animate height"
+  // (task §19): a single fixed header reacting to a discrete threshold, not
+  // a continuous scroll-linked interpolation across many elements.
+  useMotionValueEvent(scrollY, "change", (latest) => setScrolled(latest > 80));
 
   return (
     <header className="fixed inset-x-0 top-4 z-50 px-4 sm:px-6">
       <motion.div
-        animate={{ scale: scrolled ? 0.97 : 1 }}
+        animate={{ height: scrolled ? 50 : 56 }}
         transition={{ duration: 0.3, ease: EASE }}
-        style={{ transformOrigin: "top center" }}
-        className={`mx-auto flex h-14 max-w-[1200px] items-center justify-between rounded-2xl border border-border bg-surface/90 px-4 backdrop-blur-xl transition-shadow duration-300 sm:px-5 ${
+        className={`mx-auto flex max-w-[1200px] items-center justify-between rounded-2xl border border-border backdrop-blur-xl transition-[padding,background-color,box-shadow] duration-300 ${
           scrolled
-            ? "shadow-[0_2px_4px_rgba(21,19,25,0.06),0_20px_44px_-16px_rgba(21,19,25,0.18)]"
-            : "shadow-[0_1px_2px_rgba(21,19,25,0.04),0_12px_32px_-16px_rgba(21,19,25,0.12)]"
+            ? "bg-surface/95 px-3.5 shadow-[0_2px_4px_rgba(21,19,25,0.06),0_20px_44px_-16px_rgba(21,19,25,0.18)] sm:px-4"
+            : "bg-surface/85 px-4 shadow-[0_1px_2px_rgba(21,19,25,0.04),0_12px_32px_-16px_rgba(21,19,25,0.12)] sm:px-5"
         }`}
       >
         <Link

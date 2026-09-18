@@ -166,6 +166,34 @@
   animation: marquee 34s linear infinite;
 }
 
+/* FLUXYRA-LANDING-DIRECTED-MOTION-PASS-06 — two-direction image marquee for
+   the output gallery. --marquee-duration set inline per row. */
+@keyframes marquee-x {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes marquee-x-rev {
+  from {
+    transform: translateX(-50%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-marquee-x {
+  animation: marquee-x var(--marquee-duration, 40s) linear infinite;
+}
+
+.animate-marquee-x-rev {
+  animation: marquee-x-rev var(--marquee-duration, 40s) linear infinite;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
