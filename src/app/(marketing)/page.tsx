@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useState } from "react";
-import { ArrowRight, Check, Wand2, ChevronDown } from "lucide-react";
+import { ArrowRight, Check, Wand2, ChevronDown, ImageOff } from "lucide-react";
 
 // ─── Real, already-supported models (per product catalog) ──────────────────
 const LEADING_MODELS = ["Nano Banana", "Kling", "Seedance", "GPT Image", "Veo", "ElevenLabs"];
@@ -18,35 +18,42 @@ const HERO_STATS = [
   { value: "3", label: "Modalidades" },
 ];
 
+// needsAsset: true = no real photo/screenshot exists yet for this slot.
+// Rendered as an honest "aguardando asset real" panel — never a fabricated
+// screenshot, never the old placeholder image (removed per editorial pass 04).
 const WORKFLOW_ITEMS = {
-  imagem: { title: "Imagem", desc: "Fotorrealista ou estilizada, pronta em segundos.", src: "/marketing/image.webp" },
-  video: { title: "Vídeo", desc: "Vídeos cinematográficos com os modelos mais avançados.", src: "/marketing/video.webp" },
-  audio: { title: "Áudio", desc: "Trilhas, efeitos e narrações compostos por IA.", src: "/marketing/audio.webp" },
+  imagem: { title: "Imagem", desc: "Fotorrealista ou estilizada, pronta em segundos.", src: "/marketing/image.webp", needsAsset: false },
+  video: { title: "Vídeo", desc: "Vídeos cinematográficos com os modelos mais avançados.", src: "", needsAsset: true },
+  audio: { title: "Áudio", desc: "Trilhas, efeitos e narrações compostos por IA.", src: "", needsAsset: true },
 };
 
 const ECOSYSTEM_ITEMS = [
-  { key: "studio", title: "Studio", desc: "Interface unificada para gerar imagem, vídeo e áudio com controle total.", src: "/marketing/studio.webp" },
-  { key: "ugc", title: "UGC", desc: "Roteiro, avatar falante e B-roll — produção de UGC que converte.", src: "/marketing/ugc.webp" },
-  { key: "flows", title: "Flows", desc: "Automatize criações encadeando prompts, modelos e referências.", src: "/marketing/flows.webp" },
-  { key: "influencer", title: "Influencer", desc: "Personas consistentes para criar conteúdo em escala.", src: "/marketing/influencer.webp" },
+  { key: "studio", title: "Studio", desc: "Interface unificada para gerar imagem, vídeo e áudio com controle total.", src: "", needsAsset: true },
+  { key: "ugc", title: "UGC", desc: "Roteiro, avatar falante e B-roll — produção de UGC que converte.", src: "/marketing/ugc.webp", needsAsset: false },
+  { key: "flows", title: "Flows", desc: "Automatize criações encadeando prompts, modelos e referências.", src: "", needsAsset: true },
+  { key: "influencer", title: "Influencer", desc: "Personas consistentes para criar conteúdo em escala.", src: "", needsAsset: true },
 ];
 
+// Mapeamento por conteúdo real (não por nome de arquivo) — cada foto vai para
+// a categoria que ela de fato retrata.
 const USE_CASES = [
-  { title: "Fotos de produto", src: "/marketing/gallery-01.webp" },
-  { title: "Conteúdo UGC", src: "/marketing/gallery-02.webp" },
+  { title: "Fotos de produto", src: "/marketing/gallery-02.webp" },
+  { title: "Conteúdo UGC", src: "/marketing/gallery-01.webp" },
   { title: "Campanhas de marca", src: "/marketing/gallery-03.webp" },
-  { title: "Visuais cinematográficos", src: "/marketing/gallery-04.webp" },
-  { title: "Conteúdo para redes sociais", src: "/marketing/gallery-05.webp" },
-  { title: "Interiores e design", src: "/marketing/gallery-06.webp" },
+  { title: "Visuais cinematográficos", src: "/marketing/hero-main.webp" },
+  { title: "Conteúdo para redes sociais", src: "/marketing/gallery-04.webp" },
+  { title: "Interiores e design", src: "/marketing/image.webp" },
 ];
 
+// Todos os 7 assets reais disponíveis hoje — sem repetição, sem placeholder.
 const GALLERY = [
-  { src: "/marketing/gallery-01.webp", ratio: "aspect-square" },
-  { src: "/marketing/gallery-02.webp", ratio: "aspect-[4/5]" },
-  { src: "/marketing/gallery-03.webp", ratio: "aspect-square" },
-  { src: "/marketing/gallery-04.webp", ratio: "aspect-[4/5]" },
-  { src: "/marketing/gallery-05.webp", ratio: "aspect-square" },
-  { src: "/marketing/gallery-06.webp", ratio: "aspect-[4/5]" },
+  { src: "/marketing/hero-main.webp", ratio: "aspect-square" },
+  { src: "/marketing/image.webp", ratio: "aspect-[4/5]" },
+  { src: "/marketing/ugc.webp", ratio: "aspect-square" },
+  { src: "/marketing/gallery-01.webp", ratio: "aspect-[4/5]" },
+  { src: "/marketing/gallery-02.webp", ratio: "aspect-square" },
+  { src: "/marketing/gallery-03.webp", ratio: "aspect-[4/5]" },
+  { src: "/marketing/gallery-04.webp", ratio: "aspect-square" },
 ];
 
 // ─── Real pricing data (mirrors src/lib/stripe/client.ts PLANS) ─────────────
@@ -66,6 +73,17 @@ const FAQS = [
 ];
 
 const H2 = "text-center font-bold tracking-tight text-foreground [font-size:clamp(2rem,4.5vw,3.25rem)]";
+
+/** Slot sem asset real ainda — NUNCA um mockup de interface inventado.
+ * Painel neutro + rótulo curto, claramente distinto de qualquer imagem. */
+function NeedsAssetPanel({ label }: { label: string }) {
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-muted p-4 text-center" aria-hidden="true">
+      <ImageOff className="h-7 w-7 text-muted-foreground/40" />
+      <p className="text-xs font-medium text-muted-foreground/70">{label}</p>
+    </div>
+  );
+}
 
 function FaqItem({ q, a }: { q: string; a: string }) {
   const [open, setOpen] = useState(false);
@@ -140,7 +158,7 @@ export default function MarketingHomePage() {
           </p>
 
           <div className="relative mx-auto mt-12 aspect-[16/10] max-w-[1100px] overflow-hidden rounded-3xl border border-border shadow-[0_24px_64px_-32px_rgba(21,19,25,0.24)]">
-            <Image src="/marketing/studio.webp" alt="Galeria do Studio Fluxyra" fill sizes="(min-width: 1100px) 1100px, 100vw" className="object-cover" />
+            <NeedsAssetPanel label="Screenshot real do Studio — em breve" />
           </div>
 
           <div className="mt-10 flex flex-wrap items-center justify-center gap-x-10 gap-y-3">
@@ -173,7 +191,7 @@ export default function MarketingHomePage() {
             {/* Vídeo — vertical, coluna estreita, ocupa as duas linhas */}
             <div className="overflow-hidden rounded-3xl border border-border bg-surface shadow-sm md:col-start-3 md:row-span-2">
               <div className="relative aspect-[9/16] md:h-full">
-                <Image src={WORKFLOW_ITEMS.video.src} alt="Exemplo de geração de vídeo" fill sizes="(min-width: 768px) 33vw, 100vw" className="object-cover" />
+                <NeedsAssetPanel label="Exemplo real de vídeo — em breve" />
               </div>
               <div className="p-6">
                 <h3 className="text-xl font-semibold text-foreground">{WORKFLOW_ITEMS.video.title}</h3>
@@ -185,7 +203,7 @@ export default function MarketingHomePage() {
             <div className="overflow-hidden rounded-3xl border border-border bg-surface shadow-sm md:col-span-2 md:row-start-2">
               <div className="flex flex-col sm:flex-row sm:items-center">
                 <div className="relative h-32 w-full sm:h-full sm:w-56 sm:shrink-0">
-                  <Image src={WORKFLOW_ITEMS.audio.src} alt="Exemplo de geração de áudio" fill sizes="224px" className="object-cover" />
+                  <NeedsAssetPanel label="Exemplo real de áudio — em breve" />
                 </div>
                 <div className="p-6">
                   <h3 className="text-xl font-semibold text-foreground">{WORKFLOW_ITEMS.audio.title}</h3>
@@ -206,7 +224,7 @@ export default function MarketingHomePage() {
             {/* Studio — dominante, imagem grande */}
             <div className="group overflow-hidden rounded-3xl border border-border bg-surface shadow-sm md:col-span-7">
               <div className="relative aspect-[16/10]">
-                <Image src={ECOSYSTEM_ITEMS[0].src} alt={ECOSYSTEM_ITEMS[0].title} fill sizes="(min-width: 768px) 58vw, 100vw" className="object-cover transition-transform duration-500 group-hover:scale-105" />
+                <NeedsAssetPanel label="Screenshot real do Studio — em breve" />
               </div>
               <div className="p-6">
                 <h3 className="text-lg font-semibold text-foreground">{ECOSYSTEM_ITEMS[0].title}</h3>
@@ -228,7 +246,7 @@ export default function MarketingHomePage() {
             {/* Flows — banner estreito */}
             <div className="group overflow-hidden rounded-3xl border border-border bg-surface shadow-sm md:col-span-5">
               <div className="relative aspect-[4/3]">
-                <Image src={ECOSYSTEM_ITEMS[2].src} alt={ECOSYSTEM_ITEMS[2].title} fill sizes="(min-width: 768px) 42vw, 100vw" className="object-cover transition-transform duration-500 group-hover:scale-105" />
+                <NeedsAssetPanel label="Screenshot real do Flows — em breve" />
               </div>
               <div className="p-6">
                 <h3 className="text-lg font-semibold text-foreground">{ECOSYSTEM_ITEMS[2].title}</h3>
@@ -239,7 +257,7 @@ export default function MarketingHomePage() {
             {/* Influencer — dominante */}
             <div className="group overflow-hidden rounded-3xl border border-border bg-surface shadow-sm md:col-span-7">
               <div className="relative aspect-[16/9]">
-                <Image src={ECOSYSTEM_ITEMS[3].src} alt={ECOSYSTEM_ITEMS[3].title} fill sizes="(min-width: 768px) 58vw, 100vw" className="object-cover transition-transform duration-500 group-hover:scale-105" />
+                <NeedsAssetPanel label="Output real do Influencer Studio — em breve" />
               </div>
               <div className="p-6">
                 <h3 className="text-lg font-semibold text-foreground">{ECOSYSTEM_ITEMS[3].title}</h3>
@@ -284,7 +302,7 @@ export default function MarketingHomePage() {
             </div>
 
             <div className="relative aspect-[4/3] overflow-hidden rounded-3xl border border-border shadow-sm">
-              <Image src="/marketing/flows.webp" alt="Editor visual de Flows" fill sizes="(min-width: 1024px) 50vw, 100vw" className="object-cover" />
+              <NeedsAssetPanel label="Screenshot real do editor de Flows — em breve" />
             </div>
           </div>
         </div>
