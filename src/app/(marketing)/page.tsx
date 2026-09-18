@@ -1,192 +1,71 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useState } from "react";
-import {
-  ArrowRight,
-  Check,
-  Image as ImageIcon,
-  Video,
-  Music,
-  Sparkles,
-  Layers,
-  Users,
-  Workflow as WorkflowIcon,
-  Wand2,
-  ShoppingBag,
-  Megaphone,
-  Film,
-  Share2,
-  Building2,
-  ChevronDown,
-} from "lucide-react";
+import { ArrowRight, Check, Wand2, ChevronDown } from "lucide-react";
 
 // ─── Real, already-supported models (per product catalog) ──────────────────
 const LEADING_MODELS = ["Nano Banana", "Kling", "Seedance", "GPT Image", "Veo", "ElevenLabs"];
 
-// ─── Real, already-approved trust figures (unchanged from prior landing) ───
+// ─── Real, verified trust figures only (live count confirmed against the
+// production ai_models catalog: exactly 30 active rows — stated as an exact
+// number, not "30+", so the claim stays provably accurate). Unverified
+// claims (discount %, "already used by creators") removed per editorial
+// pass 03. ──────────────────────────────────────────────────────────────
 const HERO_STATS = [
-  { value: "30+", label: "Modelos de IA" },
+  { value: "30", label: "Modelos de IA" },
   { value: "3", label: "Modalidades" },
-  { value: "68%", label: "Mais barato" },
 ];
 
-const WORKFLOW_ITEMS = [
-  {
-    icon: ImageIcon,
-    title: "Imagem",
-    desc: "Fotorrealista ou estilizada, pronta em segundos.",
-    tone: "from-violet-100 to-white",
-  },
-  {
-    icon: Video,
-    title: "Vídeo",
-    desc: "Vídeos cinematográficos com os modelos mais avançados.",
-    tone: "from-purple-100 to-white",
-  },
-  {
-    icon: Music,
-    title: "Áudio",
-    desc: "Trilhas, efeitos e narrações compostos por IA.",
-    tone: "from-fuchsia-100 to-white",
-  },
-];
+const WORKFLOW_ITEMS = {
+  imagem: { title: "Imagem", desc: "Fotorrealista ou estilizada, pronta em segundos.", src: "/marketing/image.webp" },
+  video: { title: "Vídeo", desc: "Vídeos cinematográficos com os modelos mais avançados.", src: "/marketing/video.webp" },
+  audio: { title: "Áudio", desc: "Trilhas, efeitos e narrações compostos por IA.", src: "/marketing/audio.webp" },
+};
 
 const ECOSYSTEM_ITEMS = [
-  {
-    icon: Layers,
-    title: "Studio",
-    desc: "Interface unificada para gerar imagem, vídeo e áudio com controle total.",
-    span: "md:col-span-3 md:row-span-2",
-  },
-  {
-    icon: Users,
-    title: "UGC",
-    desc: "Roteiro, avatar falante e B-roll — produção de UGC que converte.",
-    span: "md:col-span-2",
-  },
-  {
-    icon: Sparkles,
-    title: "Influencer",
-    desc: "Personas consistentes para criar conteúdo em escala.",
-    span: "md:col-span-2",
-  },
-  {
-    icon: Wand2,
-    title: "Wise",
-    desc: "Assistente de IA que aprimora prompts e recomenda o modelo ideal.",
-    span: "md:col-span-2",
-  },
-  {
-    icon: WorkflowIcon,
-    title: "Flows",
-    desc: "Automatize criações encadeando prompts, modelos e referências.",
-    span: "md:col-span-3",
-  },
+  { key: "studio", title: "Studio", desc: "Interface unificada para gerar imagem, vídeo e áudio com controle total.", src: "/marketing/studio.webp" },
+  { key: "ugc", title: "UGC", desc: "Roteiro, avatar falante e B-roll — produção de UGC que converte.", src: "/marketing/ugc.webp" },
+  { key: "flows", title: "Flows", desc: "Automatize criações encadeando prompts, modelos e referências.", src: "/marketing/flows.webp" },
+  { key: "influencer", title: "Influencer", desc: "Personas consistentes para criar conteúdo em escala.", src: "/marketing/influencer.webp" },
 ];
 
 const USE_CASES = [
-  { icon: ShoppingBag, title: "Fotos de produto" },
-  { icon: Users, title: "Conteúdo UGC" },
-  { icon: Megaphone, title: "Campanhas de marca" },
-  { icon: Film, title: "Visuais cinematográficos" },
-  { icon: Share2, title: "Conteúdo para redes sociais" },
-  { icon: Building2, title: "Interiores e design" },
+  { title: "Fotos de produto", src: "/marketing/gallery-01.webp" },
+  { title: "Conteúdo UGC", src: "/marketing/gallery-02.webp" },
+  { title: "Campanhas de marca", src: "/marketing/gallery-03.webp" },
+  { title: "Visuais cinematográficos", src: "/marketing/gallery-04.webp" },
+  { title: "Conteúdo para redes sociais", src: "/marketing/gallery-05.webp" },
+  { title: "Interiores e design", src: "/marketing/gallery-06.webp" },
 ];
 
-// ─── Real pricing data (mirrors src/lib/stripe/client.ts PLANS — do not
-// invent or diverge from these values; this is a presentational-only teaser
-// that links to /pricing for the full comparison + top-ups). ─────────────
+const GALLERY = [
+  { src: "/marketing/gallery-01.webp", ratio: "aspect-square" },
+  { src: "/marketing/gallery-02.webp", ratio: "aspect-[4/5]" },
+  { src: "/marketing/gallery-03.webp", ratio: "aspect-square" },
+  { src: "/marketing/gallery-04.webp", ratio: "aspect-[4/5]" },
+  { src: "/marketing/gallery-05.webp", ratio: "aspect-square" },
+  { src: "/marketing/gallery-06.webp", ratio: "aspect-[4/5]" },
+];
+
+// ─── Real pricing data (mirrors src/lib/stripe/client.ts PLANS) ─────────────
 const PRICING_TEASER = [
-  {
-    name: "Teste grátis",
-    price: "R$0",
-    period: "",
-    features: ["1 geração de imagem grátis (Nano Banana)", "Sem cartão de crédito"],
-    cta: "Testar grátis",
-    href: "/signup",
-    highlight: false,
-  },
-  {
-    name: "Starter",
-    price: "$19",
-    period: "/mês",
-    features: ["1.000 créditos mensais", "Kling, Seedance, GPT Image 2"],
-    cta: "Assinar Starter",
-    href: "/signup",
-    highlight: true,
-    badge: "Popular",
-  },
-  {
-    name: "Pro",
-    price: "$49",
-    period: "/mês",
-    features: ["3.000 créditos mensais", "Veo 3.1, Hailuo, ElevenLabs"],
-    cta: "Assinar Pro",
-    href: "/signup",
-    highlight: false,
-  },
-  {
-    name: "Agency",
-    price: "$149",
-    period: "/mês",
-    features: ["10.000 créditos mensais", "Todos os modelos premium"],
-    cta: "Assinar Agency",
-    href: "/signup",
-    highlight: false,
-  },
+  { name: "Teste grátis", price: "R$0", period: "", features: ["1 geração de imagem grátis (Nano Banana)", "Sem cartão de crédito"], cta: "Testar grátis", href: "/signup", highlight: false },
+  { name: "Starter", price: "$19", period: "/mês", features: ["1.000 créditos mensais", "Kling, Seedance, GPT Image 2"], cta: "Assinar Starter", href: "/signup", highlight: true, badge: "Popular" },
+  { name: "Pro", price: "$49", period: "/mês", features: ["3.000 créditos mensais", "Veo 3.1, Hailuo, ElevenLabs"], cta: "Assinar Pro", href: "/signup", highlight: false },
+  { name: "Agency", price: "$149", period: "/mês", features: ["10.000 créditos mensais", "Todos os modelos premium"], cta: "Assinar Agency", href: "/signup", highlight: false },
 ];
 
-// ─── FAQ — grounded strictly in already-shipped, verified product behavior.
-// No new commercial claims invented. ─────────────────────────────────────
 const FAQS = [
-  {
-    q: "Preciso de cartão de crédito para testar?",
-    a: "Não. Você cria a conta e recebe 1 geração de imagem grátis (modelo Nano Banana) sem precisar cadastrar um cartão.",
-  },
-  {
-    q: "Os créditos servem para imagem, vídeo e áudio?",
-    a: "Sim. Fluxyra usa um único pool de créditos por conta, válido para qualquer modalidade — imagem, vídeo ou áudio.",
-  },
-  {
-    q: "Os créditos dos planos pagos expiram?",
-    a: "Nos planos Pro e Agency, os créditos acumulam e não expiram. Você também pode comprar pacotes avulsos de recarga a qualquer momento.",
-  },
-  {
-    q: "Posso cancelar ou trocar de plano quando quiser?",
-    a: "Sim. Gerencie sua assinatura, troque de plano ou cancele diretamente pelo portal de cobrança, sem precisar falar com suporte.",
-  },
-  {
-    q: "Quais modelos de IA estão disponíveis?",
-    a: "Modelos líderes de mercado como Nano Banana, Kling, Seedance, GPT Image, Veo e ElevenLabs, entre outros — todos acessíveis no mesmo workspace.",
-  },
+  { q: "Preciso de cartão de crédito para testar?", a: "Não. Você cria a conta e recebe 1 geração de imagem grátis (modelo Nano Banana) sem precisar cadastrar um cartão." },
+  { q: "Os créditos servem para imagem, vídeo e áudio?", a: "Sim. Fluxyra usa um único pool de créditos por conta, válido para qualquer modalidade — imagem, vídeo ou áudio." },
+  { q: "Os créditos dos planos pagos expiram?", a: "Nos planos Pro e Agency, os créditos acumulam e não expiram. Você também pode comprar pacotes avulsos de recarga a qualquer momento." },
+  { q: "Posso cancelar ou trocar de plano quando quiser?", a: "Sim. Gerencie sua assinatura, troque de plano ou cancele diretamente pelo portal de cobrança, sem precisar falar com suporte." },
+  { q: "Quais modelos de IA estão disponíveis?", a: "Modelos líderes de mercado como Nano Banana, Kling, Seedance, GPT Image, Veo e ElevenLabs, entre outros — todos acessíveis no mesmo workspace." },
 ];
 
-/** Composição abstrata de blocos — placeholder claramente substituível para
- * visuais de produto/hero. Sem asset externo, sem screenshot falso/borrado. */
-function MediaTileGrid({ className = "" }: { className?: string }) {
-  const tiles = [
-    { tone: "row-span-2 bg-gradient-to-br from-violet-200 via-violet-100 to-white", icon: ImageIcon },
-    { tone: "bg-gradient-to-br from-fuchsia-100 to-white", icon: Video },
-    { tone: "bg-gradient-to-br from-purple-200 to-white", icon: Sparkles },
-    { tone: "row-span-2 bg-gradient-to-br from-violet-100 via-white to-fuchsia-50", icon: Music },
-    { tone: "bg-gradient-to-br from-violet-50 to-white", icon: WorkflowIcon },
-    { tone: "bg-gradient-to-br from-purple-100 via-violet-50 to-white", icon: Users },
-  ];
-  return (
-    <div className={`grid grid-cols-3 gap-3 ${className}`} aria-hidden="true">
-      {tiles.map((t, i) => (
-        <div
-          key={i}
-          className={`flex items-end justify-end rounded-2xl border border-border p-3 shadow-[0_1px_2px_rgba(21,19,25,0.03),0_10px_24px_-16px_rgba(21,19,25,0.18)] transition-shadow duration-300 hover:shadow-[0_1px_2px_rgba(21,19,25,0.04),0_18px_36px_-16px_rgba(21,19,25,0.24)] ${t.tone}`}
-          style={{ minHeight: i % 3 === 0 ? 160 : 96 }}
-        >
-          <t.icon className="h-5 w-5 text-primary/40" />
-        </div>
-      ))}
-    </div>
-  );
-}
+const H2 = "text-center font-bold tracking-tight text-foreground [font-size:clamp(2rem,4.5vw,3.25rem)]";
 
 function FaqItem({ q, a }: { q: string; a: string }) {
   const [open, setOpen] = useState(false);
@@ -210,137 +89,189 @@ export default function MarketingHomePage() {
   return (
     <>
       {/* ═══ HERO ═══════════════════════════════════════════════════════ */}
-      <section className="px-6 pb-20 pt-10 sm:pt-16">
-        <div className="mx-auto grid max-w-[1200px] items-center gap-12 lg:grid-cols-2">
-          <div>
-            <div className="mb-6 inline-flex items-center gap-3 rounded-full border border-border bg-surface px-3 py-1.5 text-sm text-muted-foreground">
-              <span className="flex -space-x-2" aria-hidden="true">
-                <span className="h-5 w-5 rounded-full border-2 border-surface bg-gradient-to-br from-violet-400 to-violet-600" />
-                <span className="h-5 w-5 rounded-full border-2 border-surface bg-gradient-to-br from-fuchsia-400 to-purple-500" />
-                <span className="h-5 w-5 rounded-full border-2 border-surface bg-gradient-to-br from-purple-300 to-violet-500" />
-              </span>
-              Criadores e equipes já publicam com Fluxyra
-            </div>
+      <section className="px-6 pb-24 pt-14 sm:pt-20">
+        <div className="mx-auto max-w-3xl text-center">
+          <h1 className="font-bold leading-[1.05] tracking-tight text-foreground [font-size:clamp(2.4rem,7vw,4.75rem)]">
+            Uma plataforma criativa para transformar qualquer ideia em conteúdo.
+          </h1>
 
-            <h1 className="text-[2.6rem] font-bold leading-[1.08] tracking-tight text-foreground [font-size:clamp(2.2rem,5vw,3.4rem)]">
-              Uma plataforma criativa para transformar qualquer ideia em conteúdo.
-            </h1>
+          <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">
+            Crie imagens, vídeos, áudio, UGC e campanhas com os melhores modelos de IA em um só lugar.
+          </p>
 
-            <p className="mt-6 max-w-lg text-lg leading-relaxed text-muted-foreground">
-              Crie imagens, vídeos, áudio, UGC e campanhas com os melhores modelos de IA em um só lugar.
-            </p>
-
-            <div className="mt-9 flex flex-wrap items-center gap-3">
-              <Link
-                href="/signup"
-                className="inline-flex items-center gap-2 rounded-xl bg-foreground px-6 py-3.5 text-base font-semibold text-background shadow-[0_12px_32px_-12px_rgba(21,19,25,0.35)] transition duration-200 hover:-translate-y-0.5 hover:bg-foreground/90 hover:shadow-[0_16px_36px_-12px_rgba(21,19,25,0.4)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              >
-                Começar grátis
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-              <a
-                href="#workflow"
-                className="inline-flex items-center gap-2 rounded-xl border border-border bg-surface px-6 py-3.5 text-base font-medium text-foreground transition duration-200 hover:-translate-y-0.5 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              >
-                Ver recursos
-              </a>
-            </div>
-
-            <div className="mt-12 flex flex-wrap items-center gap-x-10 gap-y-4">
-              {HERO_STATS.map((s) => (
-                <div key={s.label}>
-                  <p className="text-2xl font-bold text-foreground">{s.value}</p>
-                  <p className="text-sm text-muted-foreground">{s.label}</p>
-                </div>
-              ))}
-            </div>
+          <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+            <Link
+              href="/signup"
+              className="inline-flex items-center gap-2 rounded-xl bg-foreground px-6 py-3.5 text-base font-semibold text-background shadow-[0_12px_32px_-12px_rgba(21,19,25,0.35)] transition duration-200 hover:-translate-y-0.5 hover:bg-foreground/90 hover:shadow-[0_16px_36px_-12px_rgba(21,19,25,0.4)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              Começar grátis
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+            <a
+              href="#workflow"
+              className="inline-flex items-center gap-2 rounded-xl border border-border bg-surface px-6 py-3.5 text-base font-medium text-foreground transition duration-200 hover:-translate-y-0.5 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              Ver recursos
+            </a>
           </div>
 
-          <MediaTileGrid className="hidden lg:grid" />
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-x-10 gap-y-4">
+            {HERO_STATS.map((s) => (
+              <div key={s.label}>
+                <p className="text-2xl font-bold text-foreground">{s.value}</p>
+                <p className="text-sm text-muted-foreground">{s.label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Mídia cinematográfica full-width — 16:9, sem gradiente/blob/ícone gigante */}
+        <div className="relative mx-auto mt-14 aspect-video max-w-[1200px] overflow-hidden rounded-3xl border border-border shadow-[0_24px_64px_-32px_rgba(21,19,25,0.28)]">
+          <Image src="/marketing/hero-main.webp" alt="Studio Fluxyra em uso" fill priority sizes="(min-width: 1200px) 1200px, 100vw" className="object-cover" />
         </div>
       </section>
 
-      {/* ═══ LEADING MODELS ═════════════════════════════════════════════ */}
-      <section className="border-y border-border bg-secondary/60 px-6 py-16">
+      {/* ═══ STUDIO SHOWCASE ════════════════════════════════════════════ */}
+      <section className="border-y border-border bg-secondary/60 px-6 py-24">
         <div className="mx-auto max-w-[1200px]">
-          <h2 className="text-center text-3xl font-bold tracking-tight text-foreground [font-size:clamp(1.6rem,3.5vw,2.2rem)]">
-            Os melhores modelos. Um único workspace.
-          </h2>
-          <p className="mx-auto mt-3 max-w-xl text-center text-muted-foreground">
+          <h2 className={H2}>Os melhores modelos. Um único workspace.</h2>
+          <p className="mx-auto mt-4 max-w-xl text-center text-muted-foreground">
             Acesse os modelos líderes de IA generativa direto do Studio Fluxyra, sem trocar de ferramenta.
           </p>
 
-          <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+          <div className="relative mx-auto mt-12 aspect-[16/10] max-w-[1100px] overflow-hidden rounded-3xl border border-border shadow-[0_24px_64px_-32px_rgba(21,19,25,0.24)]">
+            <Image src="/marketing/studio.webp" alt="Galeria do Studio Fluxyra" fill sizes="(min-width: 1100px) 1100px, 100vw" className="object-cover" />
+          </div>
+
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-x-10 gap-y-3">
             {LEADING_MODELS.map((m) => (
-              <span
-                key={m}
-                className="rounded-full border border-border bg-surface px-5 py-2 text-sm font-medium text-foreground shadow-sm"
-              >
+              <span key={m} className="text-sm font-medium tracking-wide text-muted-foreground">
                 {m}
               </span>
             ))}
           </div>
-
-          <MediaTileGrid className="mx-auto mt-12 max-w-3xl grid-cols-4" />
         </div>
       </section>
 
-      {/* ═══ WORKFLOW ═══════════════════════════════════════════════════ */}
-      <section id="workflow" className="scroll-mt-24 px-6 py-24">
+      {/* ═══ WORKFLOW — assimétrico ════════════════════════════════════ */}
+      <section id="workflow" className="scroll-mt-24 px-6 py-28">
         <div className="mx-auto max-w-[1200px]">
-          <h2 className="text-center text-3xl font-bold tracking-tight text-foreground [font-size:clamp(1.8rem,4vw,2.6rem)]">
-            Tudo o que sua próxima ideia precisa.
-          </h2>
+          <h2 className={H2}>Tudo o que sua próxima ideia precisa.</h2>
 
-          <div className="mt-14 grid gap-6 md:grid-cols-3">
-            {WORKFLOW_ITEMS.map((item) => (
-              <div key={item.title} className="group overflow-hidden rounded-3xl border border-border bg-surface shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_44px_-20px_rgba(21,19,25,0.22)]">
-                <div className={`flex h-44 items-center justify-center bg-gradient-to-br ${item.tone}`} aria-hidden="true">
-                  <item.icon className="h-12 w-12 text-primary transition-transform duration-300 group-hover:scale-110" />
+          <div className="mt-14 grid gap-6 md:grid-cols-3 md:grid-rows-2">
+            {/* Imagem — grande, 2/3 de largura */}
+            <div className="overflow-hidden rounded-3xl border border-border bg-surface shadow-sm md:col-span-2">
+              <div className="relative aspect-[16/9]">
+                <Image src={WORKFLOW_ITEMS.imagem.src} alt="Exemplo de geração de imagem" fill sizes="(min-width: 768px) 66vw, 100vw" className="object-cover" />
+              </div>
+              <div className="p-6">
+                <h3 className="text-xl font-semibold text-foreground">{WORKFLOW_ITEMS.imagem.title}</h3>
+                <p className="mt-2 text-sm text-muted-foreground">{WORKFLOW_ITEMS.imagem.desc}</p>
+              </div>
+            </div>
+
+            {/* Vídeo — vertical, coluna estreita, ocupa as duas linhas */}
+            <div className="overflow-hidden rounded-3xl border border-border bg-surface shadow-sm md:col-start-3 md:row-span-2">
+              <div className="relative aspect-[9/16] md:h-full">
+                <Image src={WORKFLOW_ITEMS.video.src} alt="Exemplo de geração de vídeo" fill sizes="(min-width: 768px) 33vw, 100vw" className="object-cover" />
+              </div>
+              <div className="p-6">
+                <h3 className="text-xl font-semibold text-foreground">{WORKFLOW_ITEMS.video.title}</h3>
+                <p className="mt-2 text-sm text-muted-foreground">{WORKFLOW_ITEMS.video.desc}</p>
+              </div>
+            </div>
+
+            {/* Áudio — bloco horizontal, mais baixo */}
+            <div className="overflow-hidden rounded-3xl border border-border bg-surface shadow-sm md:col-span-2 md:row-start-2">
+              <div className="flex flex-col sm:flex-row sm:items-center">
+                <div className="relative h-32 w-full sm:h-full sm:w-56 sm:shrink-0">
+                  <Image src={WORKFLOW_ITEMS.audio.src} alt="Exemplo de geração de áudio" fill sizes="224px" className="object-cover" />
                 </div>
                 <div className="p-6">
-                  <h3 className="text-xl font-semibold text-foreground">{item.title}</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">{item.desc}</p>
+                  <h3 className="text-xl font-semibold text-foreground">{WORKFLOW_ITEMS.audio.title}</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">{WORKFLOW_ITEMS.audio.desc}</p>
                 </div>
               </div>
-            ))}
+            </div>
           </div>
         </div>
       </section>
 
       {/* ═══ ECOSYSTEM ══════════════════════════════════════════════════ */}
-      <section id="ecosystem" className="scroll-mt-24 bg-secondary/60 px-6 py-24">
+      <section id="ecosystem" className="scroll-mt-24 bg-secondary/60 px-6 py-28">
         <div className="mx-auto max-w-[1200px]">
-          <h2 className="text-center text-3xl font-bold tracking-tight text-foreground [font-size:clamp(1.8rem,4vw,2.6rem)]">
-            Um ecossistema, todas as suas ferramentas.
-          </h2>
+          <h2 className={H2}>Um ecossistema, todas as suas ferramentas.</h2>
 
-          <div className="mt-14 grid gap-5 md:grid-cols-5">
-            {ECOSYSTEM_ITEMS.map((item) => (
-              <div
-                key={item.title}
-                className={`rounded-3xl border border-border bg-surface p-7 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-[0_20px_44px_-20px_rgba(21,19,25,0.22)] ${item.span}`}
-              >
-                <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10">
-                  <item.icon className="h-5 w-5 text-primary" />
-                </div>
-                <h3 className="text-lg font-semibold text-foreground">{item.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{item.desc}</p>
+          <div className="mt-14 grid gap-6 md:grid-cols-12">
+            {/* Studio — dominante, imagem grande */}
+            <div className="group overflow-hidden rounded-3xl border border-border bg-surface shadow-sm md:col-span-7">
+              <div className="relative aspect-[16/10]">
+                <Image src={ECOSYSTEM_ITEMS[0].src} alt={ECOSYSTEM_ITEMS[0].title} fill sizes="(min-width: 768px) 58vw, 100vw" className="object-cover transition-transform duration-500 group-hover:scale-105" />
               </div>
-            ))}
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-foreground">{ECOSYSTEM_ITEMS[0].title}</h3>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{ECOSYSTEM_ITEMS[0].desc}</p>
+              </div>
+            </div>
+
+            {/* UGC */}
+            <div className="group overflow-hidden rounded-3xl border border-border bg-surface shadow-sm md:col-span-5">
+              <div className="relative aspect-[4/3]">
+                <Image src={ECOSYSTEM_ITEMS[1].src} alt={ECOSYSTEM_ITEMS[1].title} fill sizes="(min-width: 768px) 42vw, 100vw" className="object-cover transition-transform duration-500 group-hover:scale-105" />
+              </div>
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-foreground">{ECOSYSTEM_ITEMS[1].title}</h3>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{ECOSYSTEM_ITEMS[1].desc}</p>
+              </div>
+            </div>
+
+            {/* Flows — banner estreito */}
+            <div className="group overflow-hidden rounded-3xl border border-border bg-surface shadow-sm md:col-span-5">
+              <div className="relative aspect-[4/3]">
+                <Image src={ECOSYSTEM_ITEMS[2].src} alt={ECOSYSTEM_ITEMS[2].title} fill sizes="(min-width: 768px) 42vw, 100vw" className="object-cover transition-transform duration-500 group-hover:scale-105" />
+              </div>
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-foreground">{ECOSYSTEM_ITEMS[2].title}</h3>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{ECOSYSTEM_ITEMS[2].desc}</p>
+              </div>
+            </div>
+
+            {/* Influencer — dominante */}
+            <div className="group overflow-hidden rounded-3xl border border-border bg-surface shadow-sm md:col-span-7">
+              <div className="relative aspect-[16/9]">
+                <Image src={ECOSYSTEM_ITEMS[3].src} alt={ECOSYSTEM_ITEMS[3].title} fill sizes="(min-width: 768px) 58vw, 100vw" className="object-cover transition-transform duration-500 group-hover:scale-105" />
+              </div>
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-foreground">{ECOSYSTEM_ITEMS[3].title}</h3>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{ECOSYSTEM_ITEMS[3].desc}</p>
+              </div>
+            </div>
+
+            {/* Wise — textual, fecha a faixa */}
+            <div className="flex items-center gap-5 rounded-3xl border border-border bg-surface p-7 shadow-sm md:col-span-12">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+                <Wand2 className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Wise</h3>
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                  Assistente de IA que aprimora prompts e recomenda o modelo ideal para cada geração.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
       {/* ═══ FLOWS ══════════════════════════════════════════════════════ */}
-      <section id="flows" className="scroll-mt-24 px-6 py-24">
+      <section id="flows" className="scroll-mt-24 px-6 py-28">
         <div className="mx-auto max-w-[1200px]">
           <div className="grid items-center gap-12 lg:grid-cols-2">
             <div>
-              <h2 className="text-3xl font-bold tracking-tight text-foreground [font-size:clamp(1.8rem,4vw,2.6rem)]">
+              <h2 className="font-bold tracking-tight text-foreground [font-size:clamp(2rem,4.5vw,3.25rem)]">
                 Conecte ideias, modelos e mídia em um único fluxo.
               </h2>
-              <p className="mt-4 max-w-md text-muted-foreground">
+              <p className="mt-5 max-w-md text-lg text-muted-foreground">
                 Monte pipelines visuais que conectam prompts, modelos e referências — sem repetir trabalho manual a cada geração.
               </p>
               <Link
@@ -352,49 +283,49 @@ export default function MarketingHomePage() {
               </Link>
             </div>
 
-            {/* Placeholder de diagrama de fluxo — abstrato, sem asset externo */}
-            <div className="rounded-3xl border border-border bg-surface p-8 shadow-sm" aria-hidden="true">
-              <div className="flex items-center justify-between gap-3">
-                {["Ideia", "Modelo", "Mídia"].map((label, i) => (
-                  <div key={label} className="flex flex-1 items-center gap-3">
-                    <div className="flex h-16 flex-1 items-center justify-center rounded-2xl border border-border bg-gradient-to-br from-violet-50 to-white text-sm font-medium text-foreground">
-                      {label}
-                    </div>
-                    {i < 2 && <div className="h-px w-6 shrink-0 bg-border" />}
-                  </div>
-                ))}
-              </div>
-              <div className="mt-6 h-24 rounded-2xl border border-dashed border-border" />
+            <div className="relative aspect-[4/3] overflow-hidden rounded-3xl border border-border shadow-sm">
+              <Image src="/marketing/flows.webp" alt="Editor visual de Flows" fill sizes="(min-width: 1024px) 50vw, 100vw" className="object-cover" />
             </div>
           </div>
         </div>
       </section>
 
-      {/* ═══ MODELS STRIP ═══════════════════════════════════════════════ */}
-      <section className="border-y border-border px-6 py-10">
-        <div className="mx-auto flex max-w-[1200px] flex-wrap items-center justify-center gap-x-10 gap-y-3">
-          {LEADING_MODELS.map((m) => (
-            <span key={m} className="text-sm font-semibold tracking-wide text-muted-foreground">
-              {m}
-            </span>
-          ))}
-        </div>
-      </section>
-
-      {/* ═══ USE CASES ══════════════════════════════════════════════════ */}
-      <section className="px-6 py-24">
+      {/* ═══ USE CASES — imagem primeiro ════════════════════════════════ */}
+      <section className="bg-secondary/60 px-6 py-28">
         <div className="mx-auto max-w-[1200px]">
-          <h2 className="text-center text-3xl font-bold tracking-tight text-foreground [font-size:clamp(1.8rem,4vw,2.6rem)]">
-            Crie para qualquer formato.
-          </h2>
+          <h2 className={H2}>Crie para qualquer formato.</h2>
 
           <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {USE_CASES.map((uc) => (
-              <div key={uc.title} className="rounded-2xl border border-border bg-surface p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-[0_16px_36px_-20px_rgba(21,19,25,0.2)]">
-                <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10">
-                  <uc.icon className="h-5 w-5 text-primary" />
+              <div key={uc.title} className="group relative aspect-[4/5] overflow-hidden rounded-2xl border border-border shadow-sm">
+                <Image src={uc.src} alt={uc.title} fill sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw" className="object-cover transition-transform duration-500 group-hover:scale-105" />
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent p-5 pt-16">
+                  <h3 className="text-base font-semibold text-white">{uc.title}</h3>
                 </div>
-                <h3 className="text-base font-semibold text-foreground">{uc.title}</h3>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ═══ OUTPUT GALLERY ═════════════════════════════════════════════ */}
+      <section className="px-6 py-24">
+        <div className="mx-auto max-w-[1200px]">
+          <h2 className={H2}>Feito com Fluxyra.</h2>
+
+          <div className="mt-10 flex gap-4 overflow-x-auto pb-2 sm:grid sm:grid-cols-3 sm:overflow-visible lg:grid-cols-6">
+            {GALLERY.map((g, i) => (
+              <div
+                key={g.src}
+                className={`group relative ${g.ratio} w-40 shrink-0 overflow-hidden rounded-2xl border border-border shadow-sm sm:w-auto`}
+              >
+                <Image
+                  src={g.src}
+                  alt={`Criação Fluxyra ${i + 1}`}
+                  fill
+                  sizes="(min-width: 1024px) 16vw, (min-width: 640px) 33vw, 160px"
+                  className="object-cover transition-transform duration-300 group-hover:scale-105"
+                />
               </div>
             ))}
           </div>
@@ -402,12 +333,10 @@ export default function MarketingHomePage() {
       </section>
 
       {/* ═══ PRICING ════════════════════════════════════════════════════ */}
-      <section id="pricing" className="scroll-mt-24 bg-secondary/60 px-6 py-24">
+      <section id="pricing" className="scroll-mt-24 bg-secondary/60 px-6 py-28">
         <div className="mx-auto max-w-[1200px]">
-          <h2 className="text-center text-3xl font-bold tracking-tight text-foreground [font-size:clamp(1.8rem,4vw,2.6rem)]">
-            Planos simples e transparentes.
-          </h2>
-          <p className="mx-auto mt-3 max-w-xl text-center text-muted-foreground">
+          <h2 className={H2}>Planos simples e transparentes.</h2>
+          <p className="mx-auto mt-4 max-w-xl text-center text-muted-foreground">
             Comece grátis. Faça upgrade quando precisar de mais créditos.
           </p>
 
@@ -465,11 +394,9 @@ export default function MarketingHomePage() {
       </section>
 
       {/* ═══ FAQ ════════════════════════════════════════════════════════ */}
-      <section id="faq" className="scroll-mt-24 px-6 py-24">
+      <section id="faq" className="scroll-mt-24 px-6 py-28">
         <div className="mx-auto max-w-2xl">
-          <h2 className="text-center text-3xl font-bold tracking-tight text-foreground [font-size:clamp(1.8rem,4vw,2.6rem)]">
-            Perguntas frequentes
-          </h2>
+          <h2 className={H2}>Perguntas frequentes</h2>
 
           <div className="mt-10 space-y-3">
             {FAQS.map((item) => (
@@ -480,12 +407,12 @@ export default function MarketingHomePage() {
       </section>
 
       {/* ═══ CTA FINAL ══════════════════════════════════════════════════ */}
-      <section className="px-6 pb-24">
+      <section className="px-6 pb-28">
         <div className="mx-auto max-w-[1200px] rounded-3xl border border-border bg-surface p-12 text-center shadow-sm">
-          <h2 className="text-3xl font-bold tracking-tight text-foreground [font-size:clamp(1.8rem,4vw,2.4rem)]">
+          <h2 className="font-bold tracking-tight text-foreground [font-size:clamp(2rem,4.5vw,2.75rem)]">
             Pronto para criar com IA?
           </h2>
-          <p className="mx-auto mt-3 max-w-md text-muted-foreground">
+          <p className="mx-auto mt-4 max-w-md text-lg text-muted-foreground">
             Teste grátis: gere 1 imagem com IA. Sem cartão de crédito.
           </p>
           <Link
