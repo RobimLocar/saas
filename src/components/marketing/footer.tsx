@@ -16,7 +16,11 @@ export function MarketingFooter() {
         <Logo showText />
         <nav aria-label="Links do rodapé" className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
           {FOOTER_LINKS.map((link) => (
-            <Link key={link.label} href={link.href} className="transition hover:text-foreground">
+            <Link
+              key={link.label}
+              href={link.href}
+              className="rounded transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
               {link.label}
             </Link>
           ))}

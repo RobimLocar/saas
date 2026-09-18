@@ -123,10 +123,10 @@ export default function PricingPage() {
         {PLANS.map((plan) => (
           <div
             key={plan.name}
-            className={`rounded-3xl p-6 flex flex-col bg-surface ${
+            className={`rounded-3xl p-6 flex flex-col bg-surface transition-all duration-300 hover:-translate-y-1 ${
               plan.highlight
-                ? "border-2 border-primary shadow-[0_16px_40px_-20px_rgba(124,58,237,0.35)]"
-                : "border border-border shadow-sm"
+                ? "border-2 border-primary shadow-[0_16px_40px_-20px_rgba(124,58,237,0.35)] hover:shadow-[0_20px_48px_-20px_rgba(124,58,237,0.42)]"
+                : "border border-border shadow-sm hover:border-primary/30 hover:shadow-[0_16px_36px_-20px_rgba(21,19,25,0.2)]"
             }`}
           >
             {plan.badge && (
@@ -151,7 +151,7 @@ export default function PricingPage() {
 
             <Link
               href={plan.ctaHref}
-              className={`h-11 rounded-xl flex items-center justify-center text-sm font-semibold transition mb-6 ${
+              className={`h-11 rounded-xl flex items-center justify-center text-sm font-semibold transition mb-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface ${
                 plan.highlight
                   ? "bg-primary text-primary-foreground hover:bg-primary-hover"
                   : "border border-border text-foreground hover:bg-muted"
@@ -188,10 +188,10 @@ export default function PricingPage() {
               type="button"
               onClick={() => handleTopup(t.id)}
               disabled={loadingPack !== null}
-              className={`relative rounded-2xl border bg-surface p-4 text-center transition disabled:opacity-60 ${
+              className={`relative rounded-2xl border bg-surface p-4 text-center transition-all duration-300 disabled:opacity-60 disabled:hover:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
                 t.recommended
-                  ? "border-2 border-primary shadow-[0_16px_40px_-20px_rgba(124,58,237,0.35)]"
-                  : "border-border shadow-sm hover:border-primary/40"
+                  ? "border-2 border-primary shadow-[0_16px_40px_-20px_rgba(124,58,237,0.35)] hover:-translate-y-1"
+                  : "border-border shadow-sm hover:-translate-y-1 hover:border-primary/40"
               }`}
             >
               {t.recommended && (
@@ -224,7 +224,7 @@ export default function PricingPage() {
         </p>
         <Link
           href="/signup"
-          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-primary text-primary-foreground font-semibold hover:bg-primary/90 transition"
+          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-primary text-primary-foreground font-semibold transition duration-200 hover:-translate-y-0.5 hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           Criar conta grátis
           <ArrowRight className="w-4 h-4" />

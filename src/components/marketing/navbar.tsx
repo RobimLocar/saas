@@ -19,7 +19,11 @@ export function MarketingNavbar() {
   return (
     <header className="fixed inset-x-0 top-4 z-50 px-4 sm:px-6">
       <div className="mx-auto flex h-14 max-w-[1200px] items-center justify-between rounded-2xl border border-border bg-surface/90 px-4 shadow-[0_1px_2px_rgba(21,19,25,0.04),0_12px_32px_-16px_rgba(21,19,25,0.12)] backdrop-blur-xl sm:px-5">
-        <Link href="/" className="flex items-center" aria-label="Fluxyra — página inicial">
+        <Link
+          href="/"
+          className="flex items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+          aria-label="Fluxyra — página inicial"
+        >
           <Logo showText />
         </Link>
 
@@ -28,7 +32,11 @@ export function MarketingNavbar() {
           className="hidden items-center gap-7 text-sm font-medium text-muted-foreground md:flex"
         >
           {NAV_LINKS.map((link) => (
-            <a key={link.href} href={link.href} className="transition hover:text-foreground">
+            <a
+              key={link.href}
+              href={link.href}
+              className="rounded transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+            >
               {link.label}
             </a>
           ))}
@@ -37,13 +45,13 @@ export function MarketingNavbar() {
         <div className="hidden items-center gap-2 md:flex">
           <Link
             href="/login"
-            className="rounded-xl px-3.5 py-2 text-sm font-medium text-muted-foreground transition hover:text-foreground"
+            className="rounded-xl px-3.5 py-2 text-sm font-medium text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
           >
             Entrar
           </Link>
           <Link
             href="/signup"
-            className="rounded-xl bg-foreground px-4 py-2 text-sm font-semibold text-background shadow-sm transition hover:bg-foreground/90"
+            className="rounded-xl bg-foreground px-4 py-2 text-sm font-semibold text-background shadow-sm transition duration-200 hover:-translate-y-0.5 hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
           >
             Começar grátis
           </Link>
@@ -55,7 +63,7 @@ export function MarketingNavbar() {
           aria-expanded={open}
           aria-controls="mobile-nav-panel"
           aria-label={open ? "Fechar menu" : "Abrir menu"}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-foreground md:hidden"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface md:hidden"
         >
           {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
@@ -71,7 +79,7 @@ export function MarketingNavbar() {
               key={link.href}
               href={link.href}
               onClick={() => setOpen(false)}
-              className="rounded-lg px-3 py-2.5 text-sm font-medium text-foreground hover:bg-muted"
+              className="rounded-lg px-3 py-2.5 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
               {link.label}
             </a>
@@ -80,14 +88,14 @@ export function MarketingNavbar() {
             <Link
               href="/login"
               onClick={() => setOpen(false)}
-              className="rounded-lg px-3 py-2.5 text-center text-sm font-medium text-muted-foreground hover:bg-muted"
+              className="rounded-lg px-3 py-2.5 text-center text-sm font-medium text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
               Entrar
             </Link>
             <Link
               href="/signup"
               onClick={() => setOpen(false)}
-              className="rounded-lg bg-foreground px-3 py-2.5 text-center text-sm font-semibold text-background"
+              className="rounded-lg bg-foreground px-3 py-2.5 text-center text-sm font-semibold text-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
               Começar grátis
             </Link>

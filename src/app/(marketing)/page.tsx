@@ -102,7 +102,7 @@ const PRICING_TEASER = [
     name: "Teste grátis",
     price: "R$0",
     period: "",
-    desc: "1 geração de imagem grátis (Nano Banana). Sem cartão.",
+    features: ["1 geração de imagem grátis (Nano Banana)", "Sem cartão de crédito"],
     cta: "Testar grátis",
     href: "/signup",
     highlight: false,
@@ -111,7 +111,7 @@ const PRICING_TEASER = [
     name: "Starter",
     price: "$19",
     period: "/mês",
-    desc: "1.000 créditos mensais · Kling, Seedance, GPT Image 2",
+    features: ["1.000 créditos mensais", "Kling, Seedance, GPT Image 2"],
     cta: "Assinar Starter",
     href: "/signup",
     highlight: true,
@@ -121,7 +121,7 @@ const PRICING_TEASER = [
     name: "Pro",
     price: "$49",
     period: "/mês",
-    desc: "3.000 créditos mensais · Veo 3.1, Hailuo, ElevenLabs",
+    features: ["3.000 créditos mensais", "Veo 3.1, Hailuo, ElevenLabs"],
     cta: "Assinar Pro",
     href: "/signup",
     highlight: false,
@@ -130,7 +130,7 @@ const PRICING_TEASER = [
     name: "Agency",
     price: "$149",
     period: "/mês",
-    desc: "10.000 créditos mensais · Todos os modelos premium",
+    features: ["10.000 créditos mensais", "Todos os modelos premium"],
     cta: "Assinar Agency",
     href: "/signup",
     highlight: false,
@@ -166,17 +166,23 @@ const FAQS = [
  * visuais de produto/hero. Sem asset externo, sem screenshot falso/borrado. */
 function MediaTileGrid({ className = "" }: { className?: string }) {
   const tiles = [
-    "row-span-2 bg-gradient-to-br from-violet-200 via-violet-100 to-white",
-    "bg-gradient-to-br from-fuchsia-100 to-white",
-    "bg-gradient-to-br from-purple-200 to-white",
-    "row-span-2 bg-gradient-to-br from-violet-100 via-white to-fuchsia-50",
-    "bg-gradient-to-br from-violet-50 to-white",
-    "bg-gradient-to-br from-purple-100 via-violet-50 to-white",
+    { tone: "row-span-2 bg-gradient-to-br from-violet-200 via-violet-100 to-white", icon: ImageIcon },
+    { tone: "bg-gradient-to-br from-fuchsia-100 to-white", icon: Video },
+    { tone: "bg-gradient-to-br from-purple-200 to-white", icon: Sparkles },
+    { tone: "row-span-2 bg-gradient-to-br from-violet-100 via-white to-fuchsia-50", icon: Music },
+    { tone: "bg-gradient-to-br from-violet-50 to-white", icon: WorkflowIcon },
+    { tone: "bg-gradient-to-br from-purple-100 via-violet-50 to-white", icon: Users },
   ];
   return (
     <div className={`grid grid-cols-3 gap-3 ${className}`} aria-hidden="true">
       {tiles.map((t, i) => (
-        <div key={i} className={`rounded-2xl border border-border shadow-sm ${t}`} style={{ minHeight: i % 3 === 0 ? 160 : 96 }} />
+        <div
+          key={i}
+          className={`flex items-end justify-end rounded-2xl border border-border p-3 shadow-[0_1px_2px_rgba(21,19,25,0.03),0_10px_24px_-16px_rgba(21,19,25,0.18)] transition-shadow duration-300 hover:shadow-[0_1px_2px_rgba(21,19,25,0.04),0_18px_36px_-16px_rgba(21,19,25,0.24)] ${t.tone}`}
+          style={{ minHeight: i % 3 === 0 ? 160 : 96 }}
+        >
+          <t.icon className="h-5 w-5 text-primary/40" />
+        </div>
       ))}
     </div>
   );
@@ -190,7 +196,7 @@ function FaqItem({ q, a }: { q: string; a: string }) {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left"
+        className="flex w-full items-center justify-between gap-4 rounded-2xl px-5 py-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
         <span className="text-base font-semibold text-foreground">{q}</span>
         <ChevronDown className={`h-5 w-5 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
@@ -227,14 +233,14 @@ export default function MarketingHomePage() {
             <div className="mt-9 flex flex-wrap items-center gap-3">
               <Link
                 href="/signup"
-                className="inline-flex items-center gap-2 rounded-xl bg-foreground px-6 py-3.5 text-base font-semibold text-background shadow-[0_12px_32px_-12px_rgba(21,19,25,0.35)] transition hover:bg-foreground/90"
+                className="inline-flex items-center gap-2 rounded-xl bg-foreground px-6 py-3.5 text-base font-semibold text-background shadow-[0_12px_32px_-12px_rgba(21,19,25,0.35)] transition duration-200 hover:-translate-y-0.5 hover:bg-foreground/90 hover:shadow-[0_16px_36px_-12px_rgba(21,19,25,0.4)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 Começar grátis
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <a
                 href="#workflow"
-                className="inline-flex items-center gap-2 rounded-xl border border-border bg-surface px-6 py-3.5 text-base font-medium text-foreground transition hover:bg-muted"
+                className="inline-flex items-center gap-2 rounded-xl border border-border bg-surface px-6 py-3.5 text-base font-medium text-foreground transition duration-200 hover:-translate-y-0.5 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 Ver recursos
               </a>
@@ -288,9 +294,9 @@ export default function MarketingHomePage() {
 
           <div className="mt-14 grid gap-6 md:grid-cols-3">
             {WORKFLOW_ITEMS.map((item) => (
-              <div key={item.title} className="overflow-hidden rounded-3xl border border-border bg-surface shadow-sm">
+              <div key={item.title} className="group overflow-hidden rounded-3xl border border-border bg-surface shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_44px_-20px_rgba(21,19,25,0.22)]">
                 <div className={`flex h-44 items-center justify-center bg-gradient-to-br ${item.tone}`} aria-hidden="true">
-                  <item.icon className="h-12 w-12 text-primary" />
+                  <item.icon className="h-12 w-12 text-primary transition-transform duration-300 group-hover:scale-110" />
                 </div>
                 <div className="p-6">
                   <h3 className="text-xl font-semibold text-foreground">{item.title}</h3>
@@ -313,7 +319,7 @@ export default function MarketingHomePage() {
             {ECOSYSTEM_ITEMS.map((item) => (
               <div
                 key={item.title}
-                className={`rounded-3xl border border-border bg-surface p-7 shadow-sm ${item.span}`}
+                className={`rounded-3xl border border-border bg-surface p-7 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-[0_20px_44px_-20px_rgba(21,19,25,0.22)] ${item.span}`}
               >
                 <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10">
                   <item.icon className="h-5 w-5 text-primary" />
@@ -339,7 +345,7 @@ export default function MarketingHomePage() {
               </p>
               <Link
                 href="/flows"
-                className="mt-8 inline-flex items-center gap-2 rounded-xl border border-border bg-surface px-5 py-3 text-sm font-medium text-foreground transition hover:bg-muted"
+                className="mt-8 inline-flex items-center gap-2 rounded-xl border border-border bg-surface px-5 py-3 text-sm font-medium text-foreground transition duration-200 hover:-translate-y-0.5 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 Ver Flows
                 <ArrowRight className="h-4 w-4" />
@@ -384,7 +390,7 @@ export default function MarketingHomePage() {
 
           <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {USE_CASES.map((uc) => (
-              <div key={uc.title} className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
+              <div key={uc.title} className="rounded-2xl border border-border bg-surface p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-[0_16px_36px_-20px_rgba(21,19,25,0.2)]">
                 <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10">
                   <uc.icon className="h-5 w-5 text-primary" />
                 </div>
@@ -409,8 +415,10 @@ export default function MarketingHomePage() {
             {PRICING_TEASER.map((plan) => (
               <div
                 key={plan.name}
-                className={`flex flex-col rounded-3xl bg-surface p-6 shadow-sm ${
-                  plan.highlight ? "border-2 border-primary shadow-[0_16px_40px_-20px_rgba(124,58,237,0.35)]" : "border border-border"
+                className={`flex flex-col rounded-3xl bg-surface p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 ${
+                  plan.highlight
+                    ? "border-2 border-primary shadow-[0_16px_40px_-20px_rgba(124,58,237,0.35)] hover:shadow-[0_20px_48px_-20px_rgba(124,58,237,0.42)]"
+                    : "border border-border hover:border-primary/30 hover:shadow-[0_16px_36px_-20px_rgba(21,19,25,0.2)]"
                 }`}
               >
                 {plan.badge && (
@@ -423,13 +431,17 @@ export default function MarketingHomePage() {
                   <span className="text-3xl font-bold text-foreground">{plan.price}</span>
                   <span className="mb-0.5 text-sm text-muted-foreground">{plan.period}</span>
                 </div>
-                <p className="mt-3 flex items-start gap-2 text-sm text-muted-foreground">
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                  {plan.desc}
-                </p>
+                <ul className="mt-4 space-y-2">
+                  {plan.features.map((f) => (
+                    <li key={f} className="flex items-start gap-2 text-sm text-muted-foreground">
+                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                      {f}
+                    </li>
+                  ))}
+                </ul>
                 <Link
                   href={plan.href}
-                  className={`mt-6 flex h-11 items-center justify-center rounded-xl text-sm font-semibold transition ${
+                  className={`mt-6 flex h-11 items-center justify-center rounded-xl text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface ${
                     plan.highlight
                       ? "bg-primary text-primary-foreground hover:bg-primary-hover"
                       : "border border-border text-foreground hover:bg-muted"
@@ -442,7 +454,10 @@ export default function MarketingHomePage() {
           </div>
 
           <p className="mt-8 text-center text-sm text-muted-foreground">
-            <Link href="/pricing" className="font-medium text-primary hover:underline">
+            <Link
+              href="/pricing"
+              className="rounded font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-secondary"
+            >
               Ver comparação completa e pacotes de recarga
             </Link>
           </p>
@@ -475,7 +490,7 @@ export default function MarketingHomePage() {
           </p>
           <Link
             href="/signup"
-            className="mt-8 inline-flex items-center gap-2 rounded-xl bg-foreground px-8 py-4 text-base font-semibold text-background transition hover:bg-foreground/90"
+            className="mt-8 inline-flex items-center gap-2 rounded-xl bg-foreground px-8 py-4 text-base font-semibold text-background transition duration-200 hover:-translate-y-0.5 hover:bg-foreground/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
           >
             Criar conta grátis
             <ArrowRight className="h-4 w-4" />
