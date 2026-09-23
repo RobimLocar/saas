@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Sidebar } from "@/components/shared/sidebar";
 import { Topbar } from "@/components/shared/topbar";
+import { DashboardShell } from "@/components/shared/dashboard-shell";
 import { getCurrentProfile, initialsFromProfile } from "@/lib/supabase/queries";
 
 export default async function DashboardLayout({
@@ -13,11 +14,17 @@ export default async function DashboardLayout({
   return (
     <div className="relative min-h-screen bg-background">
       <Topbar />
-      <Sidebar
-        credits={profile?.credits_balance ?? 0}
-        initials={initialsFromProfile(profile)}
-      />
-      <main className="ml-[220px] pt-[72px]">{children}</main>
+      <DashboardShell
+        sidebar={
+          <Sidebar
+            credits={profile?.credits_balance ?? 0}
+            initials={initialsFromProfile(profile)}
+            email={profile?.email ?? null}
+          />
+        }
+      >
+        {children}
+      </DashboardShell>
     </div>
   );
 }

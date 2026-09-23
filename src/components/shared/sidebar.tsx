@@ -2,13 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { PortalButton } from "@/components/shared/portal-button";
+import { logout } from "@/app/(auth)/actions";
 import { motion } from "framer-motion";
 import {
   Clapperboard,
   Copy,
   Folder,
   LayoutGrid,
+  LogOut,
   Sprout,
   Users,
   WandSparkles,
@@ -17,13 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
-import {
-  DesktopSidebar,
-  MobileSidebar,
-  Sidebar as SidebarPrimitive,
-  SidebarLink,
-  useSidebar,
-} from "@/components/ui/sidebar";
+import { DesktopSidebar, MobileSidebar, SidebarLink, useSidebar } from "@/components/ui/sidebar";
 
 type NavItem = {
   href: string;
@@ -49,9 +46,73 @@ const appsNav: NavItem[] = [
 interface SidebarProps {
   credits?: number;
   initials?: string;
+  email?: string | null;
 }
 
-function SidebarContent({ credits, initials }: { credits: number; initials: string }) {
+/** Account/credits/logout menu — the sidebar's avatar circle had no click
+ * handler at all before this fix (task §3: no logout entry point existed
+ * anywhere in the dashboard UI). */
+function UserMenu({ initials, email, credits }: { initials: string; email?: string | null; credits: number }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(event: MouseEvent) {
+      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
+    }
+    function onEsc(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onEsc);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onEsc);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-label="Menu da conta"
+        className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1A1A1A] text-xs font-semibold text-[#F5F5F5] transition-colors hover:bg-[#242428]"
+      >
+        {initials}
+      </button>
+
+      {open && (
+        <div className="absolute bottom-full right-0 z-50 mb-2 min-w-[200px] rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-1 shadow-xl">
+          {email && (
+            <div className="truncate border-b border-[#2A2A2A] px-3 py-2 text-xs text-[#888888]">{email}</div>
+          )}
+          <Link
+            href="/pricing"
+            onClick={() => setOpen(false)}
+            className="flex items-center justify-between rounded-md px-3 py-2 text-sm text-[#CFCFCF] hover:bg-[#242428] hover:text-[#F5F5F5]"
+          >
+            <span>Créditos</span>
+            <span className="font-medium text-[#F5F5F5]">{credits}</span>
+          </Link>
+          <form action={logout}>
+            <button
+              type="submit"
+              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-[#CFCFCF] hover:bg-[#242428] hover:text-[#F5F5F5]"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Sair
+            </button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SidebarContent({ credits, initials, email }: { credits: number; initials: string; email?: string | null }) {
   const pathname = usePathname();
   const t = useTranslations("nav");
   const { open, animate } = useSidebar();
@@ -154,9 +215,7 @@ function SidebarContent({ credits, initials }: { credits: number; initials: stri
 
           <div className="flex items-center gap-2">
             <PortalButton />
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1A1A1A] text-xs font-semibold text-[#F5F5F5]">
-              {initials}
-            </div>
+            <UserMenu initials={initials} email={email} credits={credits} />
           </div>
         </div>
       </div>
@@ -164,16 +223,20 @@ function SidebarContent({ credits, initials }: { credits: number; initials: stri
   );
 }
 
-export function Sidebar({ credits = 0, initials = "FL" }: SidebarProps) {
+// FLUXYRA-STUDIO-SIDEBAR-UX-FIX-01 — no longer provides its own
+// SidebarProvider: the context now lives in DashboardShell (one level up),
+// shared with <main>'s margin and the composer's centering, so all three
+// react to the same open/collapsed state instead of drifting independently.
+export function Sidebar({ credits = 0, initials = "FL", email = null }: SidebarProps) {
   return (
-    <SidebarPrimitive animate>
+    <>
       <DesktopSidebar className="fixed left-2.5 top-[80px] z-20 h-[calc(100vh-100px)] rounded-2xl border border-[#242428] bg-[#0f0f11]/95 shadow-[0_8px_40px_rgba(0,0,0,0.45)] backdrop-blur">
-        <SidebarContent credits={credits} initials={initials} />
+        <SidebarContent credits={credits} initials={initials} email={email} />
       </DesktopSidebar>
 
       <MobileSidebar className="fixed left-0 top-[72px] z-20 border-b border-[#2A2A2A] bg-[#111111]">
-        <SidebarContent credits={credits} initials={initials} />
+        <SidebarContent credits={credits} initials={initials} email={email} />
       </MobileSidebar>
-    </SidebarPrimitive>
+    </>
   );
 }
