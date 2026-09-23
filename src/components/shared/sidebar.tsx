@@ -1,13 +1,26 @@
 "use client";
 
-// FLUXYRA-STUDIO-NAVIGATION-UX-PASS-02 — the sidebar is navigation only now:
-// no credits/billing/settings/logout, no hover-driven expand/collapse, no
-// shared layout state with <main> or the composer. It's a self-contained,
-// fixed-width component again (its own SidebarProvider, scoped internally,
-// used only to drive the mobile hamburger drawer's open/close — desktop
-// never changes width, so there's nothing else to synchronize).
+// FLUXYRA-STUDIO-SIDEBAR-ORIGINAL-BEHAVIOR-RESTORE — sidebar goes back to
+// the original interaction: collapsed/compact by default, expands on
+// hover with a smooth width animation. Still navigation-only (no
+// credits/billing/settings/logout — those stay in the Topbar's UserMenu).
+//
+// This is entirely self-contained inside the sidebar: <main>'s margin
+// (md:ml-[240px] in (dashboard)/layout.tsx) and the composer's offset
+// (md:left-[calc(50%+120px)] in generation-dock.tsx) already reserve a
+// gutter sized for this sidebar's *expanded* width, regardless of whether
+// it's currently rendered collapsed or expanded. So hovering to expand
+// never reaches into the gallery or covers the composer — nothing outside
+// this file needs to change.
+//
+// Desktop hover-state and the mobile hamburger drawer get their own,
+// separate SidebarProvider instances: they share the same underlying
+// context implementation, but DesktopSidebar's onMouseEnter/onMouseLeave
+// would otherwise flip the same `open` flag that controls the mobile
+// full-screen drawer's visibility, popping it open on desktop hover.
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { motion } from "framer-motion";
 import {
   Clapperboard,
   Copy,
@@ -20,7 +33,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
-import { MobileSidebar, Sidebar as SidebarProvider, useSidebar } from "@/components/ui/sidebar";
+import {
+  DesktopSidebar,
+  MobileSidebar,
+  Sidebar as SidebarProvider,
+  useSidebar,
+} from "@/components/ui/sidebar";
 
 type NavItem = {
   href: string;
@@ -43,7 +61,9 @@ const navItems: NavItem[] = [
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const t = useTranslations("nav");
+  const { open, animate } = useSidebar();
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  const expanded = animate ? open : true;
 
   return (
     <nav className="flex flex-col gap-0.5">
@@ -64,11 +84,25 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             <item.icon
               className={cn("h-[18px] w-[18px] shrink-0", active ? "text-[#8B5CF6]" : "text-[#888888]")}
             />
-            <span className={cn("whitespace-pre", active && "font-medium")}>{t(item.labelKey)}</span>
+            <motion.span
+              animate={{
+                display: animate ? (open ? "inline-block" : "none") : "inline-block",
+                opacity: expanded ? 1 : 0,
+              }}
+              className={cn("whitespace-pre", active && "font-medium")}
+            >
+              {t(item.labelKey)}
+            </motion.span>
             {item.badge && (
-              <span className="ml-auto rounded bg-[#2A2A2A] px-1.5 py-0.5 text-[9px] font-semibold text-[#A3A3A3]">
+              <motion.span
+                animate={{
+                  display: animate ? (open ? "inline-block" : "none") : "inline-block",
+                  opacity: expanded ? 1 : 0,
+                }}
+                className="ml-auto rounded bg-[#2A2A2A] px-1.5 py-0.5 text-[9px] font-semibold text-[#A3A3A3]"
+              >
                 {item.badge}
-              </span>
+              </motion.span>
             )}
           </Link>
         );
@@ -88,18 +122,21 @@ function MobileNav() {
 
 /** Pure app navigation — Studio/Flows/Wise/Influencer Studio/Fábrica UGC/
  * Seeds/Assets/Meus Prompts only. Account, credits, billing and logout all
- * live in the Topbar's user menu now (see topbar.tsx).
- *
- * FLUXYRA-STUDIO-NAVIGATION-POLISH-01 — height sized to content (h-fit)
- * instead of stretching to fill the viewport, so the card doesn't carry a
- * large empty gap below the last item. */
+ * live in the Topbar's user menu (see topbar.tsx). Desktop: collapsed
+ * (icons only) by default, expands on hover. Mobile: unchanged hamburger
+ * drawer, independent open state. */
 export function Sidebar() {
   return (
-    <SidebarProvider animate={false}>
-      <aside className="fixed left-2.5 top-[80px] z-20 hidden h-fit w-[240px] flex-col rounded-2xl border border-[#242428] bg-[#0f0f11]/95 px-3 py-3 shadow-[0_8px_40px_rgba(0,0,0,0.45)] backdrop-blur md:flex">
-        <NavLinks />
-      </aside>
-      <MobileNav />
-    </SidebarProvider>
+    <>
+      <SidebarProvider>
+        <DesktopSidebar className="fixed left-2.5 top-[80px] z-20 h-fit overflow-hidden rounded-2xl border border-[#242428] bg-[#0f0f11]/95 px-3 py-3 shadow-[0_8px_40px_rgba(0,0,0,0.45)] backdrop-blur">
+          <NavLinks />
+        </DesktopSidebar>
+      </SidebarProvider>
+
+      <SidebarProvider animate={false}>
+        <MobileNav />
+      </SidebarProvider>
+    </>
   );
 }
