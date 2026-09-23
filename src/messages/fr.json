@@ -17,6 +17,10 @@
   "topbar": {
     "search": "Rechercher",
     "account": "Compte",
+    "myAccount": "Mon compte",
+    "currentCredits": "Crédits actuels",
+    "rechargeCredits": "Recharger des crédits",
+    "plansAndBilling": "Plans et facturation",
     "settings": "Paramètres",
     "billing": "Abonnement",
     "logout": "Se déconnecter",

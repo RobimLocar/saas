@@ -12,14 +12,6 @@ interface SidebarLinkItem {
   icon: React.JSX.Element | React.ReactNode;
 }
 
-// FLUXYRA-STUDIO-SIDEBAR-UX-FIX-01 — single source of truth for the desktop
-// sidebar's reserved-column widths, so DesktopSidebar's own animation, the
-// dashboard main content's margin-left, and the generation-dock's
-// sidebar-aware centering all reference the same numbers instead of
-// duplicating magic pixel values across three files.
-export const SIDEBAR_WIDTH_EXPANDED = 280;
-export const SIDEBAR_WIDTH_COLLAPSED = 72;
-
 interface SidebarContextProps {
   open: boolean;
   setOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -98,11 +90,7 @@ export const DesktopSidebar = ({
         className
       )}
       animate={{
-        width: animate
-          ? open
-            ? `${SIDEBAR_WIDTH_EXPANDED}px`
-            : `${SIDEBAR_WIDTH_COLLAPSED}px`
-          : `${SIDEBAR_WIDTH_EXPANDED}px`,
+        width: animate ? (open ? "240px" : "72px") : "240px",
       }}
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}

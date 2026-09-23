@@ -59,7 +59,6 @@ import { applyPlanMultiplierValue } from "@/lib/billing/plan-cost";
 import { serializeVideoRequestForMode } from "@/lib/models/mode-serializer";
 import { resolveVideoCapabilities, durationsForResolution, type VideoModelForCaps } from "@/lib/models/video-capabilities";
 import { advancedParamsSpec, type AdvancedParamSpec, GROK_VOICE_IDS, elementTag } from "@/lib/models/reference-schema";
-import { useSidebar } from "@/components/ui/sidebar";
 
 type Modality = "image" | "video" | "audio";
 
@@ -929,15 +928,6 @@ function SubjectUrlList({
 
 export function GenerationDock() {
   const t = useTranslations("dock");
-  // FLUXYRA-STUDIO-SIDEBAR-UX-FIX-01 — the dock is `position: fixed` and was
-  // centered on the full viewport width, so its left half sat under the
-  // sidebar's reserved column once the desktop-margin fix (DashboardShell)
-  // made <main> narrower — the dock itself needed to shift its center-point
-  // too, since fixed elements ignore an ancestor's margin. Desktop-only via
-  // the md: prefix below; mobile keeps its original full-viewport centering.
-  const { open: sidebarOpen, animate: sidebarAnimate } = useSidebar();
-  const sidebarExpanded = sidebarAnimate ? sidebarOpen : true;
-  const dockCenterOffset = sidebarExpanded ? 140 : 36; // half of 280px / 72px
   const activeTab = useStudioStore((s) => s.activeTab);
   const setActiveTab = useStudioStore((s) => s.setActiveTab);
   const prompt = useStudioStore((s) => s.prompt);
@@ -2059,8 +2049,12 @@ export function GenerationDock() {
 
   return (
     <section
-      className="fixed bottom-4 left-1/2 z-30 mx-auto w-full max-w-[1100px] min-w-0 -translate-x-1/2 rounded-2xl border border-[#242428] bg-[#141416] px-4 py-4 shadow-[0_-8px_40px_rgba(0,0,0,0.4)] backdrop-blur-sm transition-[left] duration-300 ease-in-out md:left-[var(--dock-center)]"
-      style={{ "--dock-center": `calc(50% + ${dockCenterOffset}px)` } as React.CSSProperties}
+      // FLUXYRA-STUDIO-NAVIGATION-UX-PASS-02 — the sidebar is now a fixed,
+      // never-resizing 240px rail (src/app/(dashboard)/layout.tsx), so this
+      // offset (half of 240px) is a plain static value again — no more
+      // useSidebar()/CSS-variable sync needed. Mobile keeps left-1/2
+      // (full-viewport centering) since md:left-[...] only applies at md+.
+      className="fixed bottom-4 left-1/2 z-30 mx-auto w-full max-w-[1100px] min-w-0 -translate-x-1/2 rounded-2xl border border-[#242428] bg-[#141416] px-4 py-4 shadow-[0_-8px_40px_rgba(0,0,0,0.4)] backdrop-blur-sm md:left-[calc(50%+120px)]"
     >
       {/* Painel Assist — duas colunas (CATEGORIES | {CAT} · CLICK TO ADD) */}
       {activeTab !== "audio" && assistOpen && (

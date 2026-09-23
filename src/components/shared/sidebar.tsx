@@ -1,26 +1,26 @@
 "use client";
 
+// FLUXYRA-STUDIO-NAVIGATION-UX-PASS-02 — the sidebar is navigation only now:
+// no credits/billing/settings/logout, no hover-driven expand/collapse, no
+// shared layout state with <main> or the composer. It's a self-contained,
+// fixed-width component again (its own SidebarProvider, scoped internally,
+// used only to drive the mobile hamburger drawer's open/close — desktop
+// never changes width, so there's nothing else to synchronize).
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import { PortalButton } from "@/components/shared/portal-button";
-import { logout } from "@/app/(auth)/actions";
-import { motion } from "framer-motion";
 import {
   Clapperboard,
   Copy,
   Folder,
   LayoutGrid,
-  LogOut,
   Sprout,
   Users,
   WandSparkles,
   Workflow,
-  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
-import { DesktopSidebar, MobileSidebar, SidebarLink, useSidebar } from "@/components/ui/sidebar";
+import { MobileSidebar, Sidebar as SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 
 type NavItem = {
   href: string;
@@ -29,13 +29,10 @@ type NavItem = {
   badge?: string;
 };
 
-const mainNav: NavItem[] = [
+const navItems: NavItem[] = [
   { href: "/studio", labelKey: "studio", icon: LayoutGrid },
   { href: "/flows", labelKey: "flows", icon: Workflow },
   { href: "/wise", labelKey: "wise", icon: WandSparkles, badge: "BETA" },
-];
-
-const appsNav: NavItem[] = [
   { href: "/influencer", labelKey: "influencer", icon: Users },
   { href: "/ugc", labelKey: "ugc", icon: Clapperboard },
   { href: "/seeds", labelKey: "seeds", icon: Sprout },
@@ -43,200 +40,62 @@ const appsNav: NavItem[] = [
   { href: "/my-prompts", labelKey: "myPrompts", icon: Copy },
 ];
 
-interface SidebarProps {
-  credits?: number;
-  initials?: string;
-  email?: string | null;
-}
-
-/** Account/credits/logout menu — the sidebar's avatar circle had no click
- * handler at all before this fix (task §3: no logout entry point existed
- * anywhere in the dashboard UI). */
-function UserMenu({ initials, email, credits }: { initials: string; email?: string | null; credits: number }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function onDocClick(event: MouseEvent) {
-      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
-    }
-    function onEsc(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", onDocClick);
-    document.addEventListener("keydown", onEsc);
-    return () => {
-      document.removeEventListener("mousedown", onDocClick);
-      document.removeEventListener("keydown", onEsc);
-    };
-  }, [open]);
-
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-label="Menu da conta"
-        className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1A1A1A] text-xs font-semibold text-[#F5F5F5] transition-colors hover:bg-[#242428]"
-      >
-        {initials}
-      </button>
-
-      {open && (
-        <div className="absolute bottom-full right-0 z-50 mb-2 min-w-[200px] rounded-lg border border-[#2A2A2A] bg-[#1A1A1A] p-1 shadow-xl">
-          {email && (
-            <div className="truncate border-b border-[#2A2A2A] px-3 py-2 text-xs text-[#888888]">{email}</div>
-          )}
-          <Link
-            href="/pricing"
-            onClick={() => setOpen(false)}
-            className="flex items-center justify-between rounded-md px-3 py-2 text-sm text-[#CFCFCF] hover:bg-[#242428] hover:text-[#F5F5F5]"
-          >
-            <span>Créditos</span>
-            <span className="font-medium text-[#F5F5F5]">{credits}</span>
-          </Link>
-          <form action={logout}>
-            <button
-              type="submit"
-              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-[#CFCFCF] hover:bg-[#242428] hover:text-[#F5F5F5]"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-              Sair
-            </button>
-          </form>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SidebarContent({ credits, initials, email }: { credits: number; initials: string; email?: string | null }) {
+function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const t = useTranslations("nav");
-  const { open, animate } = useSidebar();
-
-  const isExpanded = animate ? open : true;
-
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
-  const renderItem = (item: NavItem) => {
-    const active = isActive(item.href);
-    const iconClass = cn(
-      "h-[18px] w-[18px] shrink-0",
-      active ? "text-[#8B5CF6]" : "text-[#888888]"
-    );
-
-    if (item.badge) {
-      return (
-        <Link
-          key={item.href}
-          href={item.href}
-          className={cn(
-            "group/sidebar flex items-center gap-2 rounded-lg border-l-2 px-2 py-2 transition-colors",
-            active
-              ? "border-[#7C3AED] bg-[#7C3AED]/15 text-white"
-              : "border-transparent text-neutral-300 hover:bg-white/5"
-          )}
-        >
-          <item.icon className={iconClass} />
-
-          <motion.span
-            animate={{
-              display: animate ? (open ? "inline-flex" : "none") : "inline-flex",
-              opacity: animate ? (open ? 1 : 0) : 1,
-            }}
-            className="items-center gap-1.5 whitespace-pre text-sm"
-          >
-            <span className={cn("transition duration-150 group-hover/sidebar:translate-x-1", active && "font-medium")}>{t(item.labelKey)}</span>
-            <span className="rounded bg-[#2A2A2A] px-1.5 py-0.5 text-[9px] font-semibold text-[#A3A3A3]">
-              {item.badge}
-            </span>
-          </motion.span>
-        </Link>
-      );
-    }
-
-    return (
-      <SidebarLink
-        key={item.href}
-        link={{
-          href: item.href,
-          label: t(item.labelKey),
-          icon: <item.icon className={iconClass} />,
-        }}
-        className={cn(
-          "border-l-2 transition-colors",
-          active
-            ? "border-[#7C3AED] bg-[#7C3AED]/15 text-white"
-            : "border-transparent text-neutral-300 hover:bg-white/5"
-        )}
-      />
-    );
-  };
-
   return (
-    <>
-      <div className="pt-1" />
-
-      <div className="flex-1 space-y-1 overflow-y-auto">
-        {mainNav.map(renderItem)}
-
-        <motion.p
-          animate={{
-            display: animate ? (open ? "block" : "none") : "block",
-            opacity: animate ? (open ? 1 : 0) : 1,
-          }}
-          className="px-3 pb-2 pt-5 text-[10px] font-semibold tracking-widest text-neutral-500"
-        >
-          {t("allApps")}
-        </motion.p>
-
-        {appsNav.map(renderItem)}
-      </div>
-
-      <div className="mt-2 border-t border-[#2A2A2A] pt-3">
-        <div className={cn("flex gap-2", isExpanded ? "items-center justify-between" : "flex-col items-center")}>
+    <nav className="flex flex-1 flex-col gap-1 overflow-y-auto">
+      {navItems.map((item) => {
+        const active = isActive(item.href);
+        return (
           <Link
-            href="/pricing"
-            className="inline-flex items-center gap-1.5 rounded-md bg-gradient-to-br from-[#EA580C] to-[#C2410C] px-2.5 py-1 text-xs font-semibold text-white transition-opacity hover:opacity-90"
+            key={item.href}
+            href={item.href}
+            onClick={onNavigate}
+            className={cn(
+              "group flex items-center gap-2.5 rounded-lg border-l-2 px-2.5 py-2 text-sm transition-colors",
+              active
+                ? "border-[#7C3AED] bg-[#7C3AED]/15 text-white"
+                : "border-transparent text-neutral-300 hover:bg-white/5"
+            )}
           >
-            <Zap className="h-3 w-3" fill="currentColor" />
-            <motion.span
-              animate={{
-                display: isExpanded ? "inline-block" : "none",
-                opacity: isExpanded ? 1 : 0,
-              }}
-            >
-              {credits}
-            </motion.span>
+            <item.icon
+              className={cn("h-[18px] w-[18px] shrink-0", active ? "text-[#8B5CF6]" : "text-[#888888]")}
+            />
+            <span className={cn("whitespace-pre", active && "font-medium")}>{t(item.labelKey)}</span>
+            {item.badge && (
+              <span className="ml-auto rounded bg-[#2A2A2A] px-1.5 py-0.5 text-[9px] font-semibold text-[#A3A3A3]">
+                {item.badge}
+              </span>
+            )}
           </Link>
-
-          <div className="flex items-center gap-2">
-            <PortalButton />
-            <UserMenu initials={initials} email={email} credits={credits} />
-          </div>
-        </div>
-      </div>
-    </>
+        );
+      })}
+    </nav>
   );
 }
 
-// FLUXYRA-STUDIO-SIDEBAR-UX-FIX-01 — no longer provides its own
-// SidebarProvider: the context now lives in DashboardShell (one level up),
-// shared with <main>'s margin and the composer's centering, so all three
-// react to the same open/collapsed state instead of drifting independently.
-export function Sidebar({ credits = 0, initials = "FL", email = null }: SidebarProps) {
+function MobileNav() {
+  const { setOpen } = useSidebar();
   return (
-    <>
-      <DesktopSidebar className="fixed left-2.5 top-[80px] z-20 h-[calc(100vh-100px)] rounded-2xl border border-[#242428] bg-[#0f0f11]/95 shadow-[0_8px_40px_rgba(0,0,0,0.45)] backdrop-blur">
-        <SidebarContent credits={credits} initials={initials} email={email} />
-      </DesktopSidebar>
+    <MobileSidebar className="fixed left-0 top-[72px] z-20 border-b border-[#2A2A2A] bg-[#111111]">
+      <NavLinks onNavigate={() => setOpen(false)} />
+    </MobileSidebar>
+  );
+}
 
-      <MobileSidebar className="fixed left-0 top-[72px] z-20 border-b border-[#2A2A2A] bg-[#111111]">
-        <SidebarContent credits={credits} initials={initials} email={email} />
-      </MobileSidebar>
-    </>
+/** Pure app navigation — Studio/Flows/Wise/Influencer Studio/Fábrica UGC/
+ * Seeds/Assets/Meus Prompts only. Account, credits, billing and logout all
+ * live in the Topbar's user menu now (see topbar.tsx). */
+export function Sidebar() {
+  return (
+    <SidebarProvider animate={false}>
+      <aside className="fixed left-2.5 top-[80px] z-20 hidden h-[calc(100vh-100px)] w-[240px] flex-col rounded-2xl border border-[#242428] bg-[#0f0f11]/95 px-4 py-4 shadow-[0_8px_40px_rgba(0,0,0,0.45)] backdrop-blur md:flex">
+        <NavLinks />
+      </aside>
+      <MobileNav />
+    </SidebarProvider>
   );
 }
