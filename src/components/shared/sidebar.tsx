@@ -46,7 +46,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   return (
-    <nav className="flex flex-1 flex-col gap-1 overflow-y-auto">
+    <nav className="flex flex-col gap-0.5">
       {navItems.map((item) => {
         const active = isActive(item.href);
         return (
@@ -55,7 +55,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             href={item.href}
             onClick={onNavigate}
             className={cn(
-              "group flex items-center gap-2.5 rounded-lg border-l-2 px-2.5 py-2 text-sm transition-colors",
+              "group flex items-center gap-2.5 rounded-lg border-l-2 px-2.5 py-1.5 text-sm transition-colors",
               active
                 ? "border-[#7C3AED] bg-[#7C3AED]/15 text-white"
                 : "border-transparent text-neutral-300 hover:bg-white/5"
@@ -88,11 +88,15 @@ function MobileNav() {
 
 /** Pure app navigation — Studio/Flows/Wise/Influencer Studio/Fábrica UGC/
  * Seeds/Assets/Meus Prompts only. Account, credits, billing and logout all
- * live in the Topbar's user menu now (see topbar.tsx). */
+ * live in the Topbar's user menu now (see topbar.tsx).
+ *
+ * FLUXYRA-STUDIO-NAVIGATION-POLISH-01 — height sized to content (h-fit)
+ * instead of stretching to fill the viewport, so the card doesn't carry a
+ * large empty gap below the last item. */
 export function Sidebar() {
   return (
     <SidebarProvider animate={false}>
-      <aside className="fixed left-2.5 top-[80px] z-20 hidden h-[calc(100vh-100px)] w-[240px] flex-col rounded-2xl border border-[#242428] bg-[#0f0f11]/95 px-4 py-4 shadow-[0_8px_40px_rgba(0,0,0,0.45)] backdrop-blur md:flex">
+      <aside className="fixed left-2.5 top-[80px] z-20 hidden h-fit w-[240px] flex-col rounded-2xl border border-[#242428] bg-[#0f0f11]/95 px-3 py-3 shadow-[0_8px_40px_rgba(0,0,0,0.45)] backdrop-blur md:flex">
         <NavLinks />
       </aside>
       <MobileNav />
