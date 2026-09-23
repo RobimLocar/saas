@@ -1,0 +1,30 @@
+-- ASSETS-TABLE-RLS-HARDENING-01 — drop the Production-only broad ALL policy
+-- on public.assets, the remaining item flagged but explicitly out of scope
+-- in 20260918030000_rls_security_hardening.sql.
+--
+-- Root cause (proven live against Production pckfdyrhksdkwakptyuk +
+-- exhaustive grep of every migration in this history): `assets_own`
+-- (cmd=ALL, qual=auth.uid()=user_id, with_check=null) exists on Production
+-- but is created by no migration — same pattern already fixed for
+-- profiles_own/credit_transactions_own. It sits alongside three narrower
+-- policies (assets_select_own, assets_insert_own, assets_delete_own) that
+-- ARE part of this migration history (20260722203159_0004_add_assets.sql)
+-- and already provide everything the app actually uses. The extra ALL
+-- policy adds an UPDATE capability (and redundant SELECT/INSERT/DELETE)
+-- that no policy in the reconciled history grants and no app code needs —
+-- src/app/api/assets/route.ts only has a GET handler; no route ever
+-- updates a public.assets row. With no WITH CHECK, that UPDATE defaults to
+-- the USING clause, so an authenticated user could otherwise rewrite any
+-- column (image_url, category, name) on their own assets rows directly via
+-- the client SDK.
+--
+-- Fix: drop the one dangerous policy. assets_select_own/assets_insert_own/
+-- assets_delete_own are untouched and remain the sole authenticated-client
+-- access path — no new UPDATE (or any other) client policy is added, per
+-- this task's own instruction to only add what the code already proves it
+-- needs.
+--
+-- Idempotent: DROP POLICY IF EXISTS is a safe no-op on any environment
+-- that never had this Production-only policy (e.g. a fresh Preview branch
+-- built purely from migrations).
+drop policy if exists assets_own on public.assets;

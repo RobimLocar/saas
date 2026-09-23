@@ -1,0 +1,1 @@
+update ai_models set params = jsonb_set(jsonb_set(params, '{kling_mode}', '"pro"'::jsonb, true), '{credit_per_second}', '{"720p": 15.6, "1080p": 24.96}'::jsonb, true) where model_id = 'kling-3.0-motion' and params->>'task_type' = 'motion_control';

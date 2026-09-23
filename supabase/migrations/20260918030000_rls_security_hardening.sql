@@ -1,0 +1,50 @@
+-- RLS-SECURITY-HARDENING-01 — drop the two Production-only broad ALL
+-- policies that let an authenticated user rewrite arbitrary columns on
+-- their own profiles/credit_transactions rows via the client SDK.
+--
+-- Root cause (proven live against Production pckfdyrhksdkwakptyuk +
+-- exhaustive grep of every migration in this history): `profiles_own` and
+-- `credit_transactions_own` (both cmd=ALL, qual=auth.uid()=owner_column,
+-- with_check=null) exist on Production but are created by NO migration —
+-- they predate this reconciled history entirely, the same pattern already
+-- documented for the stripe_customer_id column gap
+-- (20260918010000_profiles_stripe_customer_parity.sql). Combined with the
+-- unrestricted table grant already in place (authenticated has full
+-- SELECT/INSERT/UPDATE/DELETE on every public table, confirmed via raw ACL:
+-- `authenticated=arwdDxtm`), an ALL policy with no WITH CHECK defaults its
+-- WITH CHECK to the USING clause for UPDATE — meaning any authenticated
+-- user can currently run, e.g.:
+--   supabase.from('profiles').update({credits_balance: 999999, plan:
+--   'agency'}).eq('id', myOwnId)
+-- directly via the anon-key client, bypassing every RPC safeguard. Same
+-- exposure lets a user forge/edit their own credit_transactions ledger
+-- rows.
+--
+-- Fix: drop both policies. `profiles_select_own` and
+-- `credit_transactions_select_own` (both SELECT-only, created by
+-- 20260722023842_0001_init.sql) already exist and are NOT touched here —
+-- they remain the sole authenticated-client access path to these two
+-- tables. All writes continue exclusively through the SECURITY DEFINER
+-- RPCs (debit_credits, adjust_credits, grant_subscription_credits,
+-- grant_topup_credits, refund_generation_credits, claim_free_image_trial,
+-- etc.) and, for the one legitimate authenticated-flow write
+-- (stripe_customer_id in src/app/api/stripe/create-checkout/route.ts), the
+-- service-role client — neither path depends on or is affected by these
+-- policies, since RPCs run as the function owner (postgres) independent of
+-- the caller's own table-level RLS, and the service-role client bypasses
+-- RLS entirely.
+--
+-- No INSERT/UPDATE client-facing policy is added for either table (task's
+-- own instruction) — that would reopen the same class of gap with
+-- different column names.
+--
+-- Explicitly out of scope for this migration (per this task's own
+-- boundaries): `assets_own` (the same shape of policy on public.assets)
+-- and the public/private status of the `assets` Storage bucket — neither
+-- is touched here; see the accompanying report.
+--
+-- Idempotent: DROP POLICY IF EXISTS is a safe no-op on any environment
+-- that never had these Production-only policies (e.g. a fresh Preview
+-- branch built purely from migrations).
+drop policy if exists profiles_own on public.profiles;
+drop policy if exists credit_transactions_own on public.credit_transactions;

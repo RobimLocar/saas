@@ -1,0 +1,39 @@
+-- STORAGE-ASSETS-BUCKET-PARITY-01 — create the "assets" Storage bucket that
+-- every generation-output write path already assumes exists.
+--
+-- Root cause (proven live on Preview pygyqycxusfadmppfjvr, second free-trial
+-- smoke, generation 9458db27-f485-43dc-8dae-9e51061d600c):
+-- src/lib/media/persist-result.ts, src/app/api/generate/{image,audio}/route.ts
+-- and src/app/api/influencers/{generate,[id]/content}/route.ts all write
+-- durable outputs to `.storage.from("assets")`, but no migration in this
+-- history ever creates an "assets" bucket — only "uploads" is provisioned,
+-- by 20260722203159_0004_add_assets.sql. `select id,name,public from
+-- storage.buckets` on this Preview returns exactly one row ("uploads");
+-- confirmed the bucket is simply absent, not merely unauthorized.
+--
+-- Effect on a fresh branch: every Storage upload to "assets" fails ("Bucket
+-- not found"), which src/lib/media/persist-result.ts correctly treats as a
+-- hard failure (all-or-nothing persistence, never a provider-URL fallback),
+-- so every generation call fails closed with "Não foi possível salvar o
+-- resultado da geração. Seus créditos foram estornados." and the associated
+-- free-image-trial entitlement is released — exactly what was observed live.
+-- This is the confirmed root cause of the second free-trial smoke failure.
+--
+-- Fix: create the missing bucket, identical shape to the existing "uploads"
+-- bucket migration (public bucket; Supabase Storage serves public buckets via
+-- a dedicated public-object endpoint that does not evaluate storage.objects
+-- RLS, matching how src/lib/media/persist-result.ts already calls
+-- `getPublicUrl()` and expects a working public URL back).
+--
+-- No storage.objects RLS policy is added for "assets", by design and unlike
+-- "uploads": every write to this bucket in the app is performed exclusively
+-- via the service-role client (confirmed: no code path writes to "assets"
+-- with a user-scoped/anon-key client), and service_role bypasses Storage RLS
+-- entirely in Supabase's architecture. Adding owner-scoped policies here
+-- would be dead code, exactly as already true of "uploads"'s own
+-- uploads_*_own policies (also unused by app code, which writes uploads via
+-- service-role too) — not repeating that pattern for a bucket with no
+-- authenticated-client access path at all.
+insert into storage.buckets (id, name, public)
+values ('assets', 'assets', true)
+on conflict (id) do nothing;
