@@ -66,7 +66,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const expanded = animate ? open : true;
 
   return (
-    <nav className="flex flex-col gap-0.5">
+    <nav className="flex flex-col gap-2">
       {navItems.map((item) => {
         const active = isActive(item.href);
         return (
@@ -75,14 +75,14 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             href={item.href}
             onClick={onNavigate}
             className={cn(
-              "group flex items-center gap-2.5 rounded-lg border-l-2 px-2.5 py-1.5 text-sm transition-colors",
+              "group flex items-center gap-2.5 rounded-lg border-l-2 px-2.5 py-3 text-sm transition-colors",
               active
                 ? "border-[#7C3AED] bg-[#7C3AED]/15 text-white"
                 : "border-transparent text-neutral-300 hover:bg-white/5"
             )}
           >
             <item.icon
-              className={cn("h-[18px] w-[18px] shrink-0", active ? "text-[#8B5CF6]" : "text-[#888888]")}
+              className={cn("h-5 w-5 shrink-0", active ? "text-[#8B5CF6]" : "text-[#888888]")}
             />
             <motion.span
               animate={{
