@@ -2048,7 +2048,14 @@ export function GenerationDock() {
     (activeTab === "image" && refSectionOpen);
 
   return (
-    <section className="fixed bottom-4 left-1/2 z-30 mx-auto w-full max-w-[1100px] min-w-0 -translate-x-1/2 rounded-2xl border border-[#242428] bg-[#141416] px-4 py-4 shadow-[0_-8px_40px_rgba(0,0,0,0.4)] backdrop-blur-sm">
+    <section
+      // FLUXYRA-STUDIO-NAVIGATION-UX-PASS-02 — the sidebar is now a fixed,
+      // never-resizing 240px rail (src/app/(dashboard)/layout.tsx), so this
+      // offset (half of 240px) is a plain static value again — no more
+      // useSidebar()/CSS-variable sync needed. Mobile keeps left-1/2
+      // (full-viewport centering) since md:left-[...] only applies at md+.
+      className="fixed bottom-4 left-1/2 z-30 mx-auto w-full max-w-[1100px] min-w-0 -translate-x-1/2 rounded-2xl border border-[#242428] bg-[#141416] px-4 py-4 shadow-[0_-8px_40px_rgba(0,0,0,0.4)] backdrop-blur-sm md:left-[calc(50%+120px)]"
+    >
       {/* Painel Assist — duas colunas (CATEGORIES | {CAT} · CLICK TO ADD) */}
       {activeTab !== "audio" && assistOpen && (
         <div

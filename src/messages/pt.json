@@ -17,6 +17,10 @@
   "topbar": {
     "search": "Buscar",
     "account": "Conta",
+    "myAccount": "Minha conta",
+    "currentCredits": "Créditos atuais",
+    "rechargeCredits": "Recarregar créditos",
+    "plansAndBilling": "Planos e pagamentos",
     "settings": "Configurações",
     "billing": "Assinatura",
     "logout": "Sair",

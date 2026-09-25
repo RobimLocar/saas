@@ -1,8 +1,25 @@
 "use client";
 
+// FLUXYRA-STUDIO-SIDEBAR-ORIGINAL-BEHAVIOR-RESTORE — sidebar goes back to
+// the original interaction: collapsed/compact by default, expands on
+// hover with a smooth width animation. Still navigation-only (no
+// credits/billing/settings/logout — those stay in the Topbar's UserMenu).
+//
+// This is entirely self-contained inside the sidebar: <main>'s margin
+// (md:ml-[240px] in (dashboard)/layout.tsx) and the composer's offset
+// (md:left-[calc(50%+120px)] in generation-dock.tsx) already reserve a
+// gutter sized for this sidebar's *expanded* width, regardless of whether
+// it's currently rendered collapsed or expanded. So hovering to expand
+// never reaches into the gallery or covers the composer — nothing outside
+// this file needs to change.
+//
+// Desktop hover-state and the mobile hamburger drawer get their own,
+// separate SidebarProvider instances: they share the same underlying
+// context implementation, but DesktopSidebar's onMouseEnter/onMouseLeave
+// would otherwise flip the same `open` flag that controls the mobile
+// full-screen drawer's visibility, popping it open on desktop hover.
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { PortalButton } from "@/components/shared/portal-button";
 import { motion } from "framer-motion";
 import {
   Clapperboard,
@@ -13,15 +30,13 @@ import {
   Users,
   WandSparkles,
   Workflow,
-  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
 import {
   DesktopSidebar,
   MobileSidebar,
-  Sidebar as SidebarPrimitive,
-  SidebarLink,
+  Sidebar as SidebarProvider,
   useSidebar,
 } from "@/components/ui/sidebar";
 
@@ -32,13 +47,10 @@ type NavItem = {
   badge?: string;
 };
 
-const mainNav: NavItem[] = [
+const navItems: NavItem[] = [
   { href: "/studio", labelKey: "studio", icon: LayoutGrid },
   { href: "/flows", labelKey: "flows", icon: Workflow },
   { href: "/wise", labelKey: "wise", icon: WandSparkles, badge: "BETA" },
-];
-
-const appsNav: NavItem[] = [
   { href: "/influencer", labelKey: "influencer", icon: Users },
   { href: "/ugc", labelKey: "ugc", icon: Clapperboard },
   { href: "/seeds", labelKey: "seeds", icon: Sprout },
@@ -46,134 +58,85 @@ const appsNav: NavItem[] = [
   { href: "/my-prompts", labelKey: "myPrompts", icon: Copy },
 ];
 
-interface SidebarProps {
-  credits?: number;
-  initials?: string;
-}
-
-function SidebarContent({ credits, initials }: { credits: number; initials: string }) {
+function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const t = useTranslations("nav");
   const { open, animate } = useSidebar();
-
-  const isExpanded = animate ? open : true;
-
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
-
-  const renderItem = (item: NavItem) => {
-    const active = isActive(item.href);
-    const iconClass = cn(
-      "h-[18px] w-[18px] shrink-0",
-      active ? "text-[#8B5CF6]" : "text-[#888888]"
-    );
-
-    if (item.badge) {
-      return (
-        <Link
-          key={item.href}
-          href={item.href}
-          className={cn(
-            "group/sidebar flex items-center gap-2 rounded-lg border-l-2 px-2 py-2 transition-colors",
-            active
-              ? "border-[#7C3AED] bg-[#7C3AED]/15 text-white"
-              : "border-transparent text-neutral-300 hover:bg-white/5"
-          )}
-        >
-          <item.icon className={iconClass} />
-
-          <motion.span
-            animate={{
-              display: animate ? (open ? "inline-flex" : "none") : "inline-flex",
-              opacity: animate ? (open ? 1 : 0) : 1,
-            }}
-            className="items-center gap-1.5 whitespace-pre text-sm"
-          >
-            <span className={cn("transition duration-150 group-hover/sidebar:translate-x-1", active && "font-medium")}>{t(item.labelKey)}</span>
-            <span className="rounded bg-[#2A2A2A] px-1.5 py-0.5 text-[9px] font-semibold text-[#A3A3A3]">
-              {item.badge}
-            </span>
-          </motion.span>
-        </Link>
-      );
-    }
-
-    return (
-      <SidebarLink
-        key={item.href}
-        link={{
-          href: item.href,
-          label: t(item.labelKey),
-          icon: <item.icon className={iconClass} />,
-        }}
-        className={cn(
-          "border-l-2 transition-colors",
-          active
-            ? "border-[#7C3AED] bg-[#7C3AED]/15 text-white"
-            : "border-transparent text-neutral-300 hover:bg-white/5"
-        )}
-      />
-    );
-  };
+  const expanded = animate ? open : true;
 
   return (
-    <>
-      <div className="pt-1" />
-
-      <div className="flex-1 space-y-1 overflow-y-auto">
-        {mainNav.map(renderItem)}
-
-        <motion.p
-          animate={{
-            display: animate ? (open ? "block" : "none") : "block",
-            opacity: animate ? (open ? 1 : 0) : 1,
-          }}
-          className="px-3 pb-2 pt-5 text-[10px] font-semibold tracking-widest text-neutral-500"
-        >
-          {t("allApps")}
-        </motion.p>
-
-        {appsNav.map(renderItem)}
-      </div>
-
-      <div className="mt-2 border-t border-[#2A2A2A] pt-3">
-        <div className={cn("flex gap-2", isExpanded ? "items-center justify-between" : "flex-col items-center")}>
+    <nav className="flex flex-col gap-2">
+      {navItems.map((item) => {
+        const active = isActive(item.href);
+        return (
           <Link
-            href="/pricing"
-            className="inline-flex items-center gap-1.5 rounded-md bg-gradient-to-br from-[#EA580C] to-[#C2410C] px-2.5 py-1 text-xs font-semibold text-white transition-opacity hover:opacity-90"
+            key={item.href}
+            href={item.href}
+            onClick={onNavigate}
+            className={cn(
+              "group flex items-center gap-2.5 rounded-lg border-l-2 px-2.5 py-3 text-sm transition-colors",
+              active
+                ? "border-[#7C3AED] bg-[#7C3AED]/15 text-white"
+                : "border-transparent text-neutral-300 hover:bg-white/5"
+            )}
           >
-            <Zap className="h-3 w-3" fill="currentColor" />
+            <item.icon
+              className={cn("h-5 w-5 shrink-0", active ? "text-[#8B5CF6]" : "text-[#888888]")}
+            />
             <motion.span
               animate={{
-                display: isExpanded ? "inline-block" : "none",
-                opacity: isExpanded ? 1 : 0,
+                display: animate ? (open ? "inline-block" : "none") : "inline-block",
+                opacity: expanded ? 1 : 0,
               }}
+              className={cn("whitespace-pre", active && "font-medium")}
             >
-              {credits}
+              {t(item.labelKey)}
             </motion.span>
+            {item.badge && (
+              <motion.span
+                animate={{
+                  display: animate ? (open ? "inline-block" : "none") : "inline-block",
+                  opacity: expanded ? 1 : 0,
+                }}
+                className="ml-auto rounded bg-[#2A2A2A] px-1.5 py-0.5 text-[9px] font-semibold text-[#A3A3A3]"
+              >
+                {item.badge}
+              </motion.span>
+            )}
           </Link>
-
-          <div className="flex items-center gap-2">
-            <PortalButton />
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1A1A1A] text-xs font-semibold text-[#F5F5F5]">
-              {initials}
-            </div>
-          </div>
-        </div>
-      </div>
-    </>
+        );
+      })}
+    </nav>
   );
 }
 
-export function Sidebar({ credits = 0, initials = "FL" }: SidebarProps) {
+function MobileNav() {
+  const { setOpen } = useSidebar();
   return (
-    <SidebarPrimitive animate>
-      <DesktopSidebar className="fixed left-2.5 top-[80px] z-20 h-[calc(100vh-100px)] rounded-2xl border border-[#242428] bg-[#0f0f11]/95 shadow-[0_8px_40px_rgba(0,0,0,0.45)] backdrop-blur">
-        <SidebarContent credits={credits} initials={initials} />
-      </DesktopSidebar>
+    <MobileSidebar className="fixed left-0 top-[72px] z-20 border-b border-[#2A2A2A] bg-[#111111]">
+      <NavLinks onNavigate={() => setOpen(false)} />
+    </MobileSidebar>
+  );
+}
 
-      <MobileSidebar className="fixed left-0 top-[72px] z-20 border-b border-[#2A2A2A] bg-[#111111]">
-        <SidebarContent credits={credits} initials={initials} />
-      </MobileSidebar>
-    </SidebarPrimitive>
+/** Pure app navigation — Studio/Flows/Wise/Influencer Studio/Fábrica UGC/
+ * Seeds/Assets/Meus Prompts only. Account, credits, billing and logout all
+ * live in the Topbar's user menu (see topbar.tsx). Desktop: collapsed
+ * (icons only) by default, expands on hover. Mobile: unchanged hamburger
+ * drawer, independent open state. */
+export function Sidebar() {
+  return (
+    <>
+      <SidebarProvider>
+        <DesktopSidebar className="fixed left-2.5 top-[80px] z-20 h-fit overflow-hidden rounded-2xl border border-[#242428] bg-[#0f0f11]/95 px-3 py-3 shadow-[0_8px_40px_rgba(0,0,0,0.45)] backdrop-blur">
+          <NavLinks />
+        </DesktopSidebar>
+      </SidebarProvider>
+
+      <SidebarProvider animate={false}>
+        <MobileNav />
+      </SidebarProvider>
+    </>
   );
 }

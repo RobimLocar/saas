@@ -3,6 +3,10 @@ import { Sidebar } from "@/components/shared/sidebar";
 import { Topbar } from "@/components/shared/topbar";
 import { getCurrentProfile, initialsFromProfile } from "@/lib/supabase/queries";
 
+// FLUXYRA-STUDIO-NAVIGATION-UX-PASS-02 — sidebar is a fixed 240px static
+// rail (no expand/collapse, so no shared state needed with <main>) —
+// DashboardShell's dynamic margin-syncing is gone. Account/credits/billing
+// moved to the Topbar's user menu, so only it needs the profile data now.
 export default async function DashboardLayout({
   children,
 }: {
@@ -12,12 +16,13 @@ export default async function DashboardLayout({
 
   return (
     <div className="relative min-h-screen bg-background">
-      <Topbar />
-      <Sidebar
+      <Topbar
         credits={profile?.credits_balance ?? 0}
         initials={initialsFromProfile(profile)}
+        email={profile?.email ?? null}
       />
-      <main className="ml-[220px] pt-[72px]">{children}</main>
+      <Sidebar />
+      <main className="pt-[72px] md:ml-[240px]">{children}</main>
     </div>
   );
 }
