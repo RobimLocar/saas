@@ -203,6 +203,26 @@ async function runStripeWebhookTests(): Promise<string[]> {
     await processEvent(client, coTopup("ev_cm", { ps: "paid", cur: "brl", amt: 799, pack: "pack_100" }));
     check("topup moeda divergente → 0", topupGrants(tables) === 0 && bal(tables) === 50);
   }
+  // BRL (Pix, Brasil): valor exato do pack em reais → concede
+  {
+    const { client, tables } = makeDb({ profiles: [profile()] });
+    await processEvent(client, coTopup("ev_brl", { sid: "cs_BRL", ps: "paid", cur: "brl", amt: 3990, pack: "pack_100" }));
+    check("topup BRL R$39,90 → +200", bal(tables) === 250 && topupGrants(tables) === 1);
+  }
+  // Pix: completed chega 'unpaid' e só o async_payment_succeeded concede
+  {
+    const { client, tables } = makeDb({ profiles: [profile()] });
+    await processEvent(client, coTopup("ev_pix1", { sid: "cs_PIX", ps: "unpaid", cur: "brl", amt: 8990, pack: "pack_250" }));
+    check("Pix pendente → 0", bal(tables) === 50 && topupGrants(tables) === 0);
+    await processEvent(client, coTopup("ev_pix2", { sid: "cs_PIX", ps: "paid", cur: "brl", amt: 8990, pack: "pack_250" }, "checkout.session.async_payment_succeeded"));
+    check("Pix pago → +500 uma vez", bal(tables) === 550 && topupGrants(tables) === 1);
+  }
+  // Moeda fora de USD/BRL (ex.: conversão automática) → recusa
+  {
+    const { client, tables } = makeDb({ profiles: [profile()] });
+    await processEvent(client, coTopup("ev_eur", { ps: "paid", cur: "eur", amt: 799, pack: "pack_100" }));
+    check("topup EUR → 0", topupGrants(tables) === 0 && bal(tables) === 50);
+  }
   // top-up sessão duplicada (completed + async_succeeded, MESMA sessão) → 1 grant
   {
     const { client, tables } = makeDb({ profiles: [profile()] });

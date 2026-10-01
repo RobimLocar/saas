@@ -119,6 +119,82 @@ try {
     check("fatura de assinatura entregue 10× em paralelo credita 1×", (await balance(u)) === 1200, `saldo=${await balance(u)}`);
   }
 
+  // ── Reembolso, contestação e bloqueio ─────────────────────────────────────
+  {
+    // Compra de 200 créditos; usuário gasta 150 antes de pedir reembolso.
+    const u = await newUser(0);
+    const sess = "cs_rev_" + randomUUID();
+    const grant = `stripe:checkout:${sess}`;
+    await q("select public.grant_topup_credits($1, 200, 3990, $2)", [u, sess]);
+    await q("select public.debit_credits($1, 150, $2)", [u, randomUUID()]);
+    // Reembolso total entregue 10× em paralelo → estorna 200 uma vez.
+    await Promise.all(Array.from({ length: 10 }, () =>
+      q("select public.reverse_purchase_credits($1, 'refund:ch_1:3990', 1, false, null)", [grant]).catch((e) => e.message)));
+    check("reembolso total paralelo estorna 1× (saldo fica negativo)", (await balance(u)) === -150, `saldo=${await balance(u)}`);
+    const blockedByDebt = String((await q("select public.debit_credits($1, 1, $2) r", [u, randomUUID()])).rows[0].r);
+    check("com saldo negativo não gera", blockedByDebt === "INSUFFICIENT", blockedByDebt);
+  }
+  {
+    // Reembolsos parciais acumulados: 25% e depois 50% → estorna 25% + 25%.
+    const u = await newUser(0);
+    const sess = "cs_par_" + randomUUID();
+    const grant = `stripe:checkout:${sess}`;
+    await q("select public.grant_topup_credits($1, 1000, 14990, $2)", [u, sess]);
+    await q("select public.reverse_purchase_credits($1, 'refund:ch_2:3748', 0.25, false, null)", [grant]);
+    const b1 = await balance(u);
+    await q("select public.reverse_purchase_credits($1, 'refund:ch_2:7495', 0.5, false, null)", [grant]);
+    const b2 = await balance(u);
+    check("reembolso parcial acumulado: 1000 → 750 → 500", b1 === 750 && b2 === 500, `${b1} → ${b2}`);
+    // Contestação depois do reembolso parcial: estorna só o que falta e bloqueia.
+    await q("select public.reverse_purchase_credits($1, 'dispute:dp_2', 1, true, 'dispute')", [grant]);
+    const hold = (await q("select billing_hold, billing_hold_reason from public.profiles where id = $1", [u])).rows[0];
+    check("contestação estorna o restante e bloqueia", (await balance(u)) === 0 && hold.billing_hold === true && hold.billing_hold_reason === "dispute", `saldo=${await balance(u)}`);
+    // Conta bloqueada não gera, mesmo com saldo (bônus de 100).
+    await q("update public.profiles set credits_balance = credits_balance + 100 where id = $1", [u]);
+    const blocked = String((await q("select public.debit_credits($1, 10, $2) r", [u, randomUUID()])).rows[0].r);
+    check("conta bloqueada não debita (BLOCKED)", blocked === "BLOCKED", blocked);
+    // Contestação ganha: devolve os 500 daquela contestação e libera.
+    await Promise.all([1, 2, 3].map(() =>
+      q("select public.reinstate_dispute_credits($1, 'dispute:dp_2', 'dispute_won:dp_2')", [grant]).catch((e) => e.message)));
+    const after = (await q("select credits_balance, billing_hold from public.profiles where id = $1", [u])).rows[0];
+    check("contestação ganha devolve 1× e libera a conta", after.credits_balance === 600 && after.billing_hold === false, `saldo=${after.credits_balance} hold=${after.billing_hold}`);
+    const ok = String((await q("select public.debit_credits($1, 10, $2) r", [u, randomUUID()])).rows[0].r);
+    check("conta liberada volta a gerar", ok.startsWith("APPLIED"), ok);
+  }
+  {
+    const u = await newUser(0);
+    const inv = "in_" + randomUUID();
+    await q("select public.grant_subscription_credits($1, 1000, 'starter', $2)", [u, `stripe:invoice:${inv}`]);
+    const r = String((await q("select public.reverse_purchase_credits($1, 'efw:issfr_1', 1, true, 'early_fraud_warning') r", [`stripe:invoice:${inv}`])).rows[0].r);
+    check("alerta de fraude em assinatura estorna 1000 e bloqueia", r === "APPLIED:1000:0", r);
+    const missing = String((await q("select public.reverse_purchase_credits('stripe:checkout:nao_existe', 'refund:x:1', 1, false, null) r")).rows[0].r);
+    check("compra inexistente não mexe em ninguém", missing === "GRANT_NOT_FOUND", missing);
+  }
+
+  // ── O app (service role) consegue chamar todos os RPCs de cobrança ────────
+  {
+    const rpcs = [
+      ["debit_credits", "select public.debit_credits(gen_random_uuid(), 0, gen_random_uuid())"],
+      ["refund_generation_credits", "select public.refund_generation_credits(gen_random_uuid(), gen_random_uuid(), null)"],
+      ["grant_topup_credits", "select public.grant_topup_credits(gen_random_uuid(), 0, 0, 'x')"],
+      ["grant_subscription_credits", "select public.grant_subscription_credits(gen_random_uuid(), 0, 'starter', 'x')"],
+      ["reverse_purchase_credits", "select public.reverse_purchase_credits('stripe:checkout:none', 'k', 1, false, null)"],
+      ["reinstate_dispute_credits", "select public.reinstate_dispute_credits('stripe:checkout:none', 'd', 'k')"],
+      ["claim_free_image_trial", "select public.claim_free_image_trial('none@x.dev', gen_random_uuid(), gen_random_uuid(), 60)"],
+    ];
+    for (const [name, sql] of rpcs) {
+      const c = await pool.connect();
+      let ok = true, err = "";
+      try {
+        await c.query("begin");
+        await c.query("set local role service_role");
+        await c.query(sql);
+      } catch (e) { ok = !/permission denied/i.test(e.message); err = e.message.split("\n")[0]; }
+      finally { await c.query("rollback").catch(() => {}); c.release(); }
+      check(`service role executa ${name}`, ok, ok ? "" : err);
+    }
+  }
+
   // ── RLS: o que um usuário consegue com a chave pública ────────────────────
   const attacker = await newUser(20);
   const victim = await newUser(500);
@@ -131,6 +207,10 @@ try {
     check("usuário não lê gerações de outro", peek.ok && Number(peek.r.rows[0].c) === 0);
     const call = await asUser(attacker, "select public.refund_generation_credits($1, $2, 999999)", [attacker, randomUUID()]);
     check("usuário não chama o RPC de estorno", !call.ok);
+    const rev = await asUser(attacker, "select public.reinstate_dispute_credits('a', 'b', 'c')");
+    check("usuário não chama o RPC de reinstalação de créditos", !rev.ok);
+    const unhold = await asUser(attacker, "update public.profiles set billing_hold = false where id = $1", [attacker]);
+    check("usuário não remove o próprio bloqueio", !unhold.ok || unhold.r.rowCount === 0);
   }
   {
     // A: linha forjada + estorno da rota de status (service role, fallback = credits_used)

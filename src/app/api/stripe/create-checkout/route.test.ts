@@ -24,6 +24,7 @@ interface G {
   __authClientUpdates?: UpdateCall[];
   __serviceClientUpdates?: UpdateCall[];
   __stripeCustomersCreated?: Array<{ email?: string; metadata?: Record<string, unknown> }>;
+  __sessionsCreated?: Array<Record<string, unknown>>;
   __profile?: { stripe_customer_id: string | null; plan: string };
 }
 const g = globalThis as unknown as G;
@@ -75,14 +76,19 @@ vi.mock("@/lib/stripe/client", () => ({
     },
     checkout: {
       sessions: {
-        create: async () => ({ url: "https://checkout.stripe.test/session" }),
+        create: async (args: Record<string, unknown>) => {
+          (g.__sessionsCreated ??= []).push(args);
+          return { url: "https://checkout.stripe.test/session" };
+        },
       },
     },
   },
   PLANS: {
     starter: { name: "Starter", price_monthly: 1900, credits: 1000, stripe_price_id: "price_starter" },
   },
-  TOPUP_PACKS: [{ id: "pack_100", credits: 200, price: 799, stripe_price_id: "price_pack_100" }],
+  TOPUP_PACKS: [{ id: "pack_100", credits: 200, price: 799, price_brl: 3990, stripe_price_id: "price_pack_100" }],
+  PIX_EXPIRES_AFTER_SECONDS: 1800,
+  currencyForCountry: (c: string | null | undefined) => ((c || "").toUpperCase() === "BR" ? "brl" : "usd"),
 }));
 
 import { POST } from "./route";
@@ -95,9 +101,11 @@ const reset = (): void => {
   g.__authClientUpdates = [];
   g.__serviceClientUpdates = [];
   g.__stripeCustomersCreated = [];
+  g.__sessionsCreated = [];
 };
-function makeReq(body: unknown): Parameters<typeof POST>[0] {
-  return { json: async () => body } as unknown as Parameters<typeof POST>[0];
+function makeReq(body: unknown, country = ""): Parameters<typeof POST>[0] {
+  const headers = new Headers(country ? { "x-vercel-ip-country": country } : {});
+  return { json: async () => body, headers } as unknown as Parameters<typeof POST>[0];
 }
 
 // ── NEW CUSTOMER: stripe_customer_id deve ser gravado via SERVICE ROLE ─────
@@ -131,6 +139,38 @@ const res2 = await POST(makeReq({ plan: "starter" }));
 chk("status 200 (customer existente)", res2.status === 200);
 chk("Stripe customer NÃO recriado", (g.__stripeCustomersCreated ?? []).length === 0);
 chk("nenhum update de profiles disparado", (g.__serviceClientUpdates ?? []).length === 0 && (g.__authClientUpdates ?? []).length === 0);
+
+// ── MOEDA E MEIO DE PAGAMENTO ───────────────────────────────────────────────
+type SessionArgs = {
+  currency?: string;
+  mode?: string;
+  payment_method_types?: string[];
+  payment_method_options?: { card?: { request_three_d_secure?: string }; pix?: { expires_after_seconds?: number } };
+  metadata?: Record<string, string>;
+};
+const lastSession = (): SessionArgs => (g.__sessionsCreated ?? []).slice(-1)[0] as SessionArgs;
+
+reset();
+g.__profile = { stripe_customer_id: "cus_existing", plan: "free" };
+await POST(makeReq({ topup_pack_id: "pack_100" }, "BR"));
+chk("recarga BR: moeda brl", lastSession()?.currency === "brl");
+chk("recarga BR: SÓ pix", JSON.stringify(lastSession()?.payment_method_types) === JSON.stringify(["pix"]));
+chk("recarga BR: Pix expira em 30 min", lastSession()?.payment_method_options?.pix?.expires_after_seconds === 1800);
+chk("recarga BR: metadata com país e moeda", lastSession()?.metadata?.ip_country === "BR" && lastSession()?.metadata?.currency === "brl");
+
+reset();
+g.__profile = { stripe_customer_id: "cus_existing", plan: "free" };
+await POST(makeReq({ topup_pack_id: "pack_100" }, "US"));
+chk("recarga fora do BR: moeda usd", lastSession()?.currency === "usd");
+chk("recarga fora do BR: só cartão", JSON.stringify(lastSession()?.payment_method_types) === JSON.stringify(["card"]));
+chk("recarga fora do BR: 3DS any", lastSession()?.payment_method_options?.card?.request_three_d_secure === "any");
+
+reset();
+g.__profile = { stripe_customer_id: "cus_existing", plan: "free" };
+await POST(makeReq({ plan: "starter" }, "BR"));
+chk("assinatura BR: moeda brl", lastSession()?.currency === "brl");
+chk("assinatura: cartão com 3DS any", lastSession()?.payment_method_options?.card?.request_three_d_secure === "any");
+chk("assinatura: só cartão", JSON.stringify(lastSession()?.payment_method_types) === JSON.stringify(["card"]));
 
 if (fails.length > 0) {
   throw new Error("create-checkout route.test falhou: " + fails.join(", "));
