@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
-import { stripe, PLANS, TOPUP_PACKS, PlanKey } from "@/lib/stripe/client";
+import {
+  stripe,
+  PLANS,
+  TOPUP_PACKS,
+  PlanKey,
+  PIX_EXPIRES_AFTER_SECONDS,
+  currencyForCountry,
+} from "@/lib/stripe/client";
 import { stripeReturnBaseUrl } from "@/lib/stripe/app-url";
 
 export async function POST(req: NextRequest) {
@@ -24,6 +31,10 @@ export async function POST(req: NextRequest) {
         { status: 503 }
       );
     }
+
+    // País pela borda da Vercel → moeda (BRL só com STRIPE_BRL_ENABLED=true).
+    const country = (req.headers.get("x-vercel-ip-country") || "").toUpperCase();
+    const currency = currencyForCountry(country);
 
     // Buscar perfil
     const { data: profile } = await supabase
@@ -82,10 +93,16 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      // Assinatura: só cartão, com 3D Secure SEMPRE que o banco suportar
+      // (validação no app do banco + responsabilidade da fraude com o emissor).
+      // O Radar da conta é o padrão (sem regras de 3DS), por isso pedimos aqui.
       const session = await stripe.checkout.sessions.create({
         customer: customerId,
         mode: "subscription",
+        currency,
         line_items: [{ price: planData.stripe_price_id, quantity: 1 }],
+        payment_method_types: ["card"],
+        payment_method_options: { card: { request_three_d_secure: "any" } },
         success_url: `${appUrl}/studio?upgraded=true`,
         cancel_url: `${appUrl}/pricing`,
         metadata: {
@@ -93,7 +110,10 @@ export async function POST(req: NextRequest) {
           type: "subscription",
           plan: plan,
           credits: String(planData.credits),
+          currency,
+          ip_country: country,
         },
+        subscription_data: { metadata: { userId: user.id, plan } },
       });
 
       return NextResponse.json({ url: session.url });
@@ -113,10 +133,26 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      // Recarga no Brasil: SÓ Pix (sem chargeback de cartão; créditos só entram
+      // quando o Pix é pago — evento async_payment_succeeded). Fora do Brasil:
+      // cartão em USD com 3D Secure sempre que o banco suportar.
+      const methods =
+        currency === "brl"
+          ? {
+              payment_method_types: ["pix"] as ["pix"],
+              payment_method_options: { pix: { expires_after_seconds: PIX_EXPIRES_AFTER_SECONDS } },
+            }
+          : {
+              payment_method_types: ["card"] as ["card"],
+              payment_method_options: { card: { request_three_d_secure: "any" as const } },
+            };
+
       const session = await stripe.checkout.sessions.create({
         customer: customerId,
         mode: "payment",
+        currency,
         line_items: [{ price: pack.stripe_price_id, quantity: 1 }],
+        ...methods,
         success_url: `${appUrl}/studio?topup=true`,
         cancel_url: `${appUrl}/pricing`,
         metadata: {
@@ -124,6 +160,8 @@ export async function POST(req: NextRequest) {
           type: "topup",
           credits: String(pack.credits),
           pack_id: pack.id,
+          currency,
+          ip_country: country,
         },
       });
 

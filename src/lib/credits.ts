@@ -21,6 +21,9 @@ import { applyPlanMultiplier } from "@/lib/billing/plan-cost";
  *   reason do débito = "generation"; reason do estorno = "refund".
  */
 
+export const BILLING_HOLD_MESSAGE =
+  "Sua conta está temporariamente bloqueada para novas gerações por uma contestação ou alerta de pagamento. Fale com o suporte para regularizar.";
+
 export type DebitResult =
   | { ok: true; balance: number }
   | { ok: false; insufficient: true }
@@ -61,6 +64,12 @@ export async function debitCredits(
   }
   if (res === "NOOP") {
     return { ok: false, error: "valor de débito inválido" };
+  }
+  // Conta com contestação de pagamento ou alerta de fraude aberto
+  // (profiles.billing_hold). As rotas devolvem esta mensagem ao usuário.
+  if (res === "BLOCKED") {
+    auditLog("credits.debit", "bloqueado_billing_hold", requestId || "-", { user_id: userId, job_id: jobId });
+    return { ok: false, error: BILLING_HOLD_MESSAGE };
   }
   if (res.startsWith("APPLIED:")) {
     const balance = Number(res.slice("APPLIED:".length));

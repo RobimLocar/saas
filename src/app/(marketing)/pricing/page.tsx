@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Zap, Check, ArrowRight, Loader2 } from "lucide-react";
 
 const PLANS = [
@@ -9,6 +9,7 @@ const PLANS = [
     // GROWTH-02 — NÃO é plano grátis recorrente: é um TESTE GRÁTIS de 1 imagem.
     name: "Teste grátis",
     price: { monthly: 0, yearly: 0 },
+    price_brl: 0,
     credits: 0,
     cta: "Testar grátis",
     ctaHref: "/signup",
@@ -22,6 +23,7 @@ const PLANS = [
   {
     name: "Starter",
     price: { monthly: 19, yearly: 15.2 },
+    price_brl: 97,
     credits: 1000,
     cta: "Assinar Starter",
     ctaHref: "/signup",
@@ -36,6 +38,7 @@ const PLANS = [
   {
     name: "Pro",
     price: { monthly: 49, yearly: 39.2 },
+    price_brl: 247,
     credits: 3000,
     cta: "Assinar Pro",
     ctaHref: "/signup",
@@ -50,6 +53,7 @@ const PLANS = [
   {
     name: "Agency",
     price: { monthly: 149, yearly: 119.2 },
+    price_brl: 747,
     credits: 10000,
     cta: "Assinar Agency",
     ctaHref: "/signup",
@@ -66,14 +70,41 @@ const PLANS = [
 // GROWTH-03 — packs REAIS (ids = TOPUP_PACKS do servidor); benefício compreensível
 // em vez de "custo por crédito". Um único pack recomendado para a 1ª recarga.
 const TOPUPS = [
-  { id: "pack_100", credits: 200, price: 7.99, benefit: "Para experimentar mais", recommended: false },
-  { id: "pack_250", credits: 500, price: 17.99, benefit: "Para continuar criando", recommended: true },
-  { id: "pack_500", credits: 1000, price: 29.99, benefit: "Ótimo para vídeos", recommended: false },
-  { id: "pack_1000", credits: 2000, price: 49.99, benefit: "Para volume", recommended: false },
-  { id: "pack_2000", credits: 4000, price: 89.99, benefit: "Melhor custo por crédito", recommended: false },
+  { id: "pack_100", credits: 200, price: 7.99, price_brl: 39.9, benefit: "Para experimentar mais", recommended: false },
+  { id: "pack_250", credits: 500, price: 17.99, price_brl: 89.9, benefit: "Para continuar criando", recommended: true },
+  { id: "pack_500", credits: 1000, price: 29.99, price_brl: 149.9, benefit: "Ótimo para vídeos", recommended: false },
+  { id: "pack_1000", credits: 2000, price: 49.99, price_brl: 249.9, benefit: "Para volume", recommended: false },
+  { id: "pack_2000", credits: 4000, price: 89.99, price_brl: 449.9, benefit: "Melhor custo por crédito", recommended: false },
 ];
 
+// Moeda do visitante (BRL no Brasil, USD fora) — a mesma que o checkout usa.
+type Currency = "usd" | "brl";
+function formatMoney(value: number, currency: Currency, cents: boolean): string {
+  return new Intl.NumberFormat(currency === "brl" ? "pt-BR" : "en-US", {
+    style: "currency",
+    currency: currency.toUpperCase(),
+    minimumFractionDigits: cents ? 2 : 0,
+    maximumFractionDigits: cents ? 2 : 0,
+  }).format(value);
+}
+
 export default function PricingPage() {
+  const [currency, setCurrency] = useState<Currency>("usd");
+  const [topupError, setTopupError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/billing/currency")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (alive && (d?.currency === "brl" || d?.currency === "usd")) setCurrency(d.currency);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   // GROWTH-03 — dispara o checkout de recarga (endpoint já existente). Usuário
   // logado → Stripe; sem sessão → login e volta para a recarga.
   const [loadingPack, setLoadingPack] = useState<string | null>(null);
@@ -81,6 +112,7 @@ export default function PricingPage() {
   async function handleTopup(packId: string) {
     if (loadingPack) return;
     setLoadingPack(packId);
+    setTopupError(null);
     try {
       const res = await fetch("/api/stripe/create-checkout", {
         method: "POST",
@@ -96,8 +128,12 @@ export default function PricingPage() {
         window.location.assign(data.url as string);
         return;
       }
+      setTopupError(
+        typeof data?.error === "string" ? data.error : "Não foi possível abrir o pagamento. Tente novamente."
+      );
       setLoadingPack(null);
     } catch {
+      setTopupError("Não foi possível abrir o pagamento. Verifique sua conexão e tente novamente.");
       setLoadingPack(null);
     }
   }
@@ -139,7 +175,9 @@ export default function PricingPage() {
             </h3>
             <div className="mt-4 mb-1 flex items-end gap-1">
               <span className="text-4xl font-extrabold">
-                ${plan.price.monthly}
+                {currency === "brl"
+                  ? formatMoney(plan.price_brl, "brl", false)
+                  : formatMoney(plan.price.monthly, "usd", false)}
               </span>
               <span className="text-muted-foreground text-sm mb-1">/mês</span>
             </div>
@@ -179,7 +217,13 @@ export default function PricingPage() {
         </h2>
         <p className="text-muted-foreground text-center text-sm mb-10">
           Compre créditos avulsos e continue criando — eles nunca expiram. Sem assinatura.
+          {currency === "brl" && " Pagamento via Pix: os créditos entram assim que o Pix é confirmado."}
         </p>
+        {topupError && (
+          <p role="alert" className="mb-6 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-center text-sm text-destructive">
+            {topupError}
+          </p>
+        )}
 
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           {TOPUPS.map((t) => (
@@ -208,7 +252,7 @@ export default function PricingPage() {
                 {loadingPack === t.id ? (
                   <Loader2 className="mx-auto h-5 w-5 animate-spin" />
                 ) : (
-                  `$${t.price.toFixed(2)}`
+                  currency === "brl" ? formatMoney(t.price_brl, "brl", true) : formatMoney(t.price, "usd", true)
                 )}
               </p>
               <p className="text-xs text-muted-foreground mt-1">{t.benefit}</p>
