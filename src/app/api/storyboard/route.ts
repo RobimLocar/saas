@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 // Storyboard: LLM multimodal da PiAPI analisa a imagem conectada e gera N prompts de cena.
 const PIAPI_OPENAI_BASE = "https://api.piapi.ai/v1";
@@ -20,6 +21,8 @@ export async function POST(req: NextRequest) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    const rateLimited = await enforceRateLimit(user.id, "llm");
+    if (rateLimited) return rateLimited;
 
     const body = await req.json();
     const imageUrl = body?.image_url;

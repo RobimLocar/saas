@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { debitCredits, effectiveCost, refundCredits } from "@/lib/credits";
 import { generateImageGptSync } from "@/lib/piapi/client";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import {
   CONTENT_PRESETS,
   buildContentPrompt,
@@ -183,6 +184,8 @@ export async function POST(
     if (!user) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
+    const rateLimited = await enforceRateLimit(user.id, "generation");
+    if (rateLimited) return rateLimited;
 
     const body = await req.json();
     const selectedCategories = Array.isArray(body?.categories)

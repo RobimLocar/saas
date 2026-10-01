@@ -37,6 +37,7 @@ import { isAtlasRuntime, submitAtlasGeneration } from "@/lib/atlas/dispatch";
 import { getAtlasContract } from "@/lib/atlas/profiles";
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 // Heurística: o prompt pede TEXTO renderizado na imagem?
 // (aspas, ou palavras típicas de tipografia/rótulos)
@@ -199,6 +200,8 @@ export async function POST(req: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
+    const rateLimited = await enforceRateLimit(user.id, "generation");
+    if (rateLimited) return rateLimited;
 
     const body = await req.json();
     const { prompt, model_uuid, negative_prompt, aspect_ratio, width, height, reference_image_url, reference_images, resolution, quality, seed, steps, flow_shift, guidance_scale } = body;

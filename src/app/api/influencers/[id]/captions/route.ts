@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 const SYSTEM_PROMPT =
   "You are a social media expert. Generate 3 engaging captions for Instagram/TikTok. Each caption should include relevant emojis and 3-5 hashtags. Keep them authentic, engaging and on-brand. Return as JSON array of 3 strings.";
@@ -47,6 +48,8 @@ export async function POST(
     if (!user) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
+    const rateLimited = await enforceRateLimit(user.id, "llm");
+    if (rateLimited) return rateLimited;
 
     const body = await req.json();
     const contentId = typeof body?.content_id === "string" ? body.content_id.trim() : "";

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 const SYSTEM_PROMPT = `Você é um roteirista especialista em vídeos UGC (User Generated Content) para short-form (TikTok/Reels/Shorts).
 Crie um roteiro CURTO e IMPACTANTE para um vídeo de 30-60 segundos no formato JSON.
@@ -126,6 +127,8 @@ export async function POST(
     if (!user) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
+    const rateLimited = await enforceRateLimit(user.id, "llm");
+    if (rateLimited) return rateLimited;
 
     const body = await req.json();
     const description =

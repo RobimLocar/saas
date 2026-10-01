@@ -5,6 +5,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { debitCredits, effectiveCost, refundCredits } from "@/lib/credits";
 import { getProvider } from "@/lib/providers/registry";
 import type { GenTask } from "@/lib/providers/types";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import "@/lib/providers/piapi/adapter"; // side-effect: registerProvider(piapiProvider)
 
 export async function POST(req: NextRequest) {
@@ -13,6 +14,8 @@ export async function POST(req: NextRequest) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    const rateLimited = await enforceRateLimit(user.id, "generation");
+    if (rateLimited) return rateLimited;
 
     const body = await req.json();
     const imageUrl = typeof body?.image_url === "string" ? body.image_url : "";
