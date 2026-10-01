@@ -171,6 +171,30 @@ try {
     check("compra inexistente não mexe em ninguém", missing === "GRANT_NOT_FOUND", missing);
   }
 
+  // ── O app (service role) consegue chamar todos os RPCs de cobrança ────────
+  {
+    const rpcs = [
+      ["debit_credits", "select public.debit_credits(gen_random_uuid(), 0, gen_random_uuid())"],
+      ["refund_generation_credits", "select public.refund_generation_credits(gen_random_uuid(), gen_random_uuid(), null)"],
+      ["grant_topup_credits", "select public.grant_topup_credits(gen_random_uuid(), 0, 0, 'x')"],
+      ["grant_subscription_credits", "select public.grant_subscription_credits(gen_random_uuid(), 0, 'starter', 'x')"],
+      ["reverse_purchase_credits", "select public.reverse_purchase_credits('stripe:checkout:none', 'k', 1, false, null)"],
+      ["reinstate_dispute_credits", "select public.reinstate_dispute_credits('stripe:checkout:none', 'd', 'k')"],
+      ["claim_free_image_trial", "select public.claim_free_image_trial('none@x.dev', gen_random_uuid(), gen_random_uuid(), 60)"],
+    ];
+    for (const [name, sql] of rpcs) {
+      const c = await pool.connect();
+      let ok = true, err = "";
+      try {
+        await c.query("begin");
+        await c.query("set local role service_role");
+        await c.query(sql);
+      } catch (e) { ok = !/permission denied/i.test(e.message); err = e.message.split("\n")[0]; }
+      finally { await c.query("rollback").catch(() => {}); c.release(); }
+      check(`service role executa ${name}`, ok, ok ? "" : err);
+    }
+  }
+
   // ── RLS: o que um usuário consegue com a chave pública ────────────────────
   const attacker = await newUser(20);
   const victim = await newUser(500);
