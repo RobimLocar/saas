@@ -11,6 +11,27 @@ import {
 } from "@/lib/stripe/client";
 import { stripeReturnBaseUrl } from "@/lib/stripe/app-url";
 
+// Recarga em BRL: o Stripe não aceitou currency_options BRL nos prices avulsos
+// existentes (só nos recorrentes). Então a linha em BRL é montada aqui, no
+// MESMO produto do price em USD, com o valor da tabela do servidor
+// (TOPUP_PACKS.price_brl). O webhook confere moeda + valor exato do pack.
+// USD continua usando o price id configurado na Vercel.
+const productIdByPrice = new Map<string, string>();
+
+async function topupLineItem(pack: (typeof TOPUP_PACKS)[number], currency: "usd" | "brl") {
+  if (currency !== "brl") return { price: pack.stripe_price_id, quantity: 1 };
+  let product = productIdByPrice.get(pack.stripe_price_id);
+  if (!product) {
+    const price = await stripe.prices.retrieve(pack.stripe_price_id);
+    product = typeof price.product === "string" ? price.product : price.product.id;
+    productIdByPrice.set(pack.stripe_price_id, product);
+  }
+  return {
+    price_data: { currency: "brl", unit_amount: pack.price_brl, product },
+    quantity: 1,
+  };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient();
@@ -151,7 +172,7 @@ export async function POST(req: NextRequest) {
         customer: customerId,
         mode: "payment",
         currency,
-        line_items: [{ price: pack.stripe_price_id, quantity: 1 }],
+        line_items: [await topupLineItem(pack, currency)],
         ...methods,
         success_url: `${appUrl}/studio?topup=true`,
         cancel_url: `${appUrl}/pricing`,

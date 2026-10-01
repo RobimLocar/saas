@@ -74,6 +74,9 @@ vi.mock("@/lib/stripe/client", () => ({
         return { id: "cus_test_new" };
       },
     },
+    prices: {
+      retrieve: async (id: string) => ({ id, product: "prod_pack_100" }),
+    },
     checkout: {
       sessions: {
         create: async (args: Record<string, unknown>) => {
@@ -143,6 +146,7 @@ chk("nenhum update de profiles disparado", (g.__serviceClientUpdates ?? []).leng
 // ── MOEDA E MEIO DE PAGAMENTO ───────────────────────────────────────────────
 type SessionArgs = {
   currency?: string;
+  line_items?: Array<{ price?: string; price_data?: { currency?: string; unit_amount?: number; product?: string } }>;
   mode?: string;
   payment_method_types?: string[];
   payment_method_options?: { card?: { request_three_d_secure?: string }; pix?: { expires_after_seconds?: number } };
@@ -156,12 +160,15 @@ await POST(makeReq({ topup_pack_id: "pack_100" }, "BR"));
 chk("recarga BR: moeda brl", lastSession()?.currency === "brl");
 chk("recarga BR: SÓ pix", JSON.stringify(lastSession()?.payment_method_types) === JSON.stringify(["pix"]));
 chk("recarga BR: Pix expira em 30 min", lastSession()?.payment_method_options?.pix?.expires_after_seconds === 1800);
+chk("recarga BR: linha em BRL com valor da tabela (R$ 39,90)", lastSession()?.line_items?.[0]?.price_data?.currency === "brl" && lastSession()?.line_items?.[0]?.price_data?.unit_amount === 3990);
+chk("recarga BR: mesmo produto do price USD", lastSession()?.line_items?.[0]?.price_data?.product === "prod_pack_100");
 chk("recarga BR: metadata com país e moeda", lastSession()?.metadata?.ip_country === "BR" && lastSession()?.metadata?.currency === "brl");
 
 reset();
 g.__profile = { stripe_customer_id: "cus_existing", plan: "free" };
 await POST(makeReq({ topup_pack_id: "pack_100" }, "US"));
 chk("recarga fora do BR: moeda usd", lastSession()?.currency === "usd");
+chk("recarga fora do BR: usa o price id da Vercel", lastSession()?.line_items?.[0]?.price === "price_pack_100");
 chk("recarga fora do BR: só cartão", JSON.stringify(lastSession()?.payment_method_types) === JSON.stringify(["card"]));
 chk("recarga fora do BR: 3DS any", lastSession()?.payment_method_options?.card?.request_three_d_secure === "any");
 
