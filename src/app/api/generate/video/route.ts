@@ -14,7 +14,7 @@ import { getAtlasContract, THINKING_LEVELS } from "@/lib/atlas/profiles";
 import { isValidCombo, type VideoModelMeta } from "@/lib/models/video-selector";
 import { resolveVideoCapabilities, durationsForResolution, type VideoModelForCaps } from "@/lib/models/video-capabilities";
 import { validateReferenceRefs, validateVoiceIds, buildKlingAdvanced } from "@/lib/models/reference-schema";
-import { auditLog, newRequestId, truncate } from "@/lib/audit-log";
+import { auditLog, newRequestId, redactSecrets, truncate } from "@/lib/audit-log";
 import { translateToEnglish } from "@/lib/translate";
 import { videoRequestFingerprint, classifyIntentDuplicate } from "@/lib/idempotency";
 import {
@@ -1120,7 +1120,7 @@ export async function POST(req: NextRequest) {
         requestId,
       });
 
-      console.log("[video/generate] PAYLOAD", JSON.stringify(payload));
+      console.log("[video/generate] PAYLOAD", JSON.stringify(redactSecrets(payload)));
 
       const task = await submitVideoTask(payload, requestId);
 
