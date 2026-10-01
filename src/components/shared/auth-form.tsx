@@ -57,13 +57,21 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="password">Senha</Label>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="password">Senha</Label>
+          {isLogin && (
+            <Link href="/forgot-password" className="text-xs font-medium text-accent hover:underline">
+              Esqueci minha senha
+            </Link>
+          )}
+        </div>
         <Input
           id="password"
           name="password"
           type="password"
           placeholder="••••••••"
           autoComplete={isLogin ? "current-password" : "new-password"}
+          minLength={isLogin ? undefined : 8}
           required
         />
       </div>
@@ -74,7 +82,13 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
         </p>
       )}
 
-      <SubmitButton label={isLogin ? "Entrar" : "Criar conta grátis"} />
+      {state?.message && (
+        <p role="status" className="rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-sm">
+          {state.message}
+        </p>
+      )}
+
+      {!state?.message && <SubmitButton label={isLogin ? "Entrar" : "Criar conta grátis"} />}
 
       <p className="text-center text-sm text-muted-foreground">
         {isLogin ? (
