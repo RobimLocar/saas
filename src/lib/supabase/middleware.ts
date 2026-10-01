@@ -8,6 +8,9 @@ const PROTECTED_PREFIXES = [
   "/assets",
   "/seeds",
   "/my-prompts",
+  "/settings",
+  "/ugc",
+  "/influencer",
 ];
 
 export async function updateSession(request: NextRequest) {

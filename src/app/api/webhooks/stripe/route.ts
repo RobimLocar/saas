@@ -22,7 +22,12 @@ export async function POST(req: NextRequest) {
       process.env.STRIPE_WEBHOOK_SECRET!
     );
   } catch (err) {
-    console.error("[stripe-webhook] Signature error:", err);
+    // Só a mensagem: o objeto de erro do Stripe carrega o payload inteiro
+    // (e-mail e nome do cliente) e ia parar nos logs da Vercel.
+    console.error(
+      "[stripe-webhook] Signature error:",
+      JSON.stringify({ message: err instanceof Error ? err.message.split("\n")[0] : "unknown", hasSignature: Boolean(sig) })
+    );
     return NextResponse.json({ error: "Assinatura inválida" }, { status: 400 });
   }
 

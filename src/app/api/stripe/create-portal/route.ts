@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { stripe } from "@/lib/stripe/client";
+import { stripeReturnBaseUrl } from "@/lib/stripe/app-url";
 
 // P7c — Customer Portal (Stripe). Gerenciamento self-service de assinatura:
 // método de pagamento, faturas, cancelamento e (se habilitado no Dashboard) troca
@@ -33,7 +34,14 @@ export async function POST() {
       );
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const appUrl = stripeReturnBaseUrl();
+    if (!appUrl) {
+      console.error("[stripe/create-portal] NEXT_PUBLIC_APP_URL ausente em produção");
+      return NextResponse.json(
+        { error: "Portal de cobrança indisponível no momento. Tente novamente em alguns minutos." },
+        { status: 503 }
+      );
+    }
     const session = await stripe.billingPortal.sessions.create({
       customer: profile.stripe_customer_id,
       return_url: `${appUrl}/studio`,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { stripe, PLANS, TOPUP_PACKS, PlanKey } from "@/lib/stripe/client";
+import { stripeReturnBaseUrl } from "@/lib/stripe/app-url";
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,7 +16,14 @@ export async function POST(req: NextRequest) {
     }
 
     const { plan, topup_pack_id } = await req.json();
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const appUrl = stripeReturnBaseUrl();
+    if (!appUrl) {
+      console.error("[stripe/create-checkout] NEXT_PUBLIC_APP_URL ausente em produção");
+      return NextResponse.json(
+        { error: "Pagamento indisponível no momento. Tente novamente em alguns minutos." },
+        { status: 503 }
+      );
+    }
 
     // Buscar perfil
     const { data: profile } = await supabase
@@ -64,6 +72,15 @@ export async function POST(req: NextRequest) {
     // ─── Assinatura ─────────────────────────────────
     if (plan && plan in PLANS) {
       const planData = PLANS[plan as PlanKey];
+      // Preço vazio = variável STRIPE_*_PRICE_ID ausente no deploy (ex.: criada
+      // depois do último deploy). Falha clara em vez de erro opaco do Stripe.
+      if (!planData.stripe_price_id) {
+        console.error("[stripe/create-checkout] price id do plano ausente", JSON.stringify({ plan }));
+        return NextResponse.json(
+          { error: "Este plano está indisponível no momento. Tente novamente em alguns minutos." },
+          { status: 503 }
+        );
+      }
 
       const session = await stripe.checkout.sessions.create({
         customer: customerId,
@@ -87,6 +104,13 @@ export async function POST(req: NextRequest) {
       const pack = TOPUP_PACKS.find((p) => p.id === topup_pack_id);
       if (!pack) {
         return NextResponse.json({ error: "Pack não encontrado" }, { status: 404 });
+      }
+      if (!pack.stripe_price_id) {
+        console.error("[stripe/create-checkout] price id do pack ausente", JSON.stringify({ pack: pack.id }));
+        return NextResponse.json(
+          { error: "Este pacote está indisponível no momento. Tente novamente em alguns minutos." },
+          { status: 503 }
+        );
       }
 
       const session = await stripe.checkout.sessions.create({

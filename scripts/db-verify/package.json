@@ -1,0 +1,13 @@
+{
+  "name": "fluxyra-db-verify",
+  "private": true,
+  "type": "module",
+  "description": "Monta um Postgres 17 descartável com todas as migrations de supabase/migrations e prova as invariantes de crédito, RLS e Stripe. Sem rede, sem produção.",
+  "scripts": {
+    "verify": "node verify.mjs"
+  },
+  "dependencies": {
+    "embedded-postgres": "17.10.0-beta.17",
+    "pg": "^8.13.1"
+  }
+}
