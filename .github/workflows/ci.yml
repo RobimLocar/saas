@@ -1,0 +1,66 @@
+# CI do Fluxyra — roda em todo PR e em todo push no main.
+# Nada aqui fala com produção: sem segredos, sem Stripe/Supabase/PiAPI reais.
+#  • app: tipos, lint (só erros), testes e build de produção com env falsa.
+#  • db:  monta um Postgres 17 descartável SÓ com supabase/migrations e roda
+#         scripts/db-verify (concorrência de créditos, Stripe, estornos,
+#         bloqueio de conta, limite de uso, RLS e permissões da service role).
+#         É o que um Preview/staging montaria — pega migration fora do Git,
+#         grant faltando e falha de RLS antes de chegar em produção.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    name: App (tipos, lint, testes, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Tipos
+        run: npx tsc --noEmit
+      - name: Lint (falha só em erro)
+        run: npx eslint src
+      - name: Testes
+        run: npm test
+      - name: Build de produção
+        run: npx next build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-dummy
+          SUPABASE_SERVICE_ROLE_KEY: ci-dummy
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+
+  db:
+    name: Banco (migrations do zero + invariantes)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: scripts/db-verify
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: scripts/db-verify/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Verificar banco
+        run: npm run verify
