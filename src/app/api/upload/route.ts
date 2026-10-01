@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 // Upload de mídia de referência (imagem/vídeo/áudio) para o Supabase Storage.
 // Recebe multipart FormData { file } e retorna { url } pública — necessária
@@ -35,6 +36,8 @@ export async function POST(req: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
+    const rateLimited = await enforceRateLimit(user.id, "upload");
+    if (rateLimited) return rateLimited;
 
     const form = await req.formData();
     const file = form.get("file");

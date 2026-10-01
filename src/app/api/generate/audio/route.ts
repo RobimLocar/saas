@@ -13,6 +13,7 @@ import { auditLog, newRequestId } from "@/lib/audit-log";
 import { validateGenerationInput } from "@/lib/validate-generation";
 import { translateToEnglish } from "@/lib/translate";
 import { resolveAudioUISpec } from "@/lib/models/audio-ui-spec";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import {
   countTtsCharacters,
   calculateTtsBaseCredits,
@@ -69,6 +70,8 @@ export async function POST(req: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
+    const rateLimited = await enforceRateLimit(user.id, "generation");
+    if (rateLimited) return rateLimited;
 
     const body = await req.json();
     const {

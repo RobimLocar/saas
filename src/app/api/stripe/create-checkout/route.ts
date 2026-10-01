@@ -10,6 +10,7 @@ import {
   currencyForCountry,
 } from "@/lib/stripe/client";
 import { stripeReturnBaseUrl } from "@/lib/stripe/app-url";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 // Recarga em BRL: o Stripe não aceitou currency_options BRL nos prices avulsos
 // existentes (só nos recorrentes). Então a linha em BRL é montada aqui, no
@@ -42,6 +43,8 @@ export async function POST(req: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
+    const rateLimited = await enforceRateLimit(user.id, "checkout");
+    if (rateLimited) return rateLimited;
 
     const { plan, topup_pack_id } = await req.json();
     const appUrl = stripeReturnBaseUrl();

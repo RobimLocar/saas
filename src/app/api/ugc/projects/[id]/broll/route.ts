@@ -9,6 +9,7 @@ import { isSafeMediaUrl } from "@/lib/validate-generation";
 import { auditLog, newRequestId } from "@/lib/audit-log";
 import { fingerprint } from "@/lib/idempotency";
 import { normalizeIntentId, newCallbackToken } from "@/lib/webhooks/reliability-runtime";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 type BrollClip = {
   preset: string;
@@ -71,6 +72,8 @@ export async function POST(
     if (!user) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
+    const rateLimited = await enforceRateLimit(user.id, "generation");
+    if (rateLimited) return rateLimited;
 
     const body = await req.json();
     const productImageUrl =

@@ -171,6 +171,22 @@ try {
     check("compra inexistente não mexe em ninguém", missing === "GRANT_NOT_FOUND", missing);
   }
 
+  // ── Limite de uso: 50 chamadas simultâneas com limite 20 → exatamente 20 ──
+  {
+    const key = "generation:" + randomUUID();
+    const rs = await Promise.all(Array.from({ length: 50 }, () =>
+      q("select allowed from public.rate_limit_hit($1, 60, 20)", [key]).then((x) => x.rows[0].allowed)));
+    const allowed = rs.filter(Boolean).length;
+    check("limite de uso sob concorrência: 20 de 50 passam", allowed === 20, `passaram=${allowed}`);
+    const other = (await q("select allowed from public.rate_limit_hit($1, 60, 20)", ["generation:" + randomUUID()])).rows[0].allowed;
+    check("limite é por usuário (outro usuário não é afetado)", other === true);
+    const u = await newUser(0);
+    const direct = await asUser(u, "select * from public.rate_limit_hit('x', 60, 1)");
+    check("usuário não chama o contador de limite direto", !direct.ok);
+    const peek = await asUser(u, "select count(*) from public.rate_limit_counters");
+    check("usuário não lê os contadores de limite", !peek.ok || Number(peek.r.rows[0].count) === 0);
+  }
+
   // ── O app (service role) consegue chamar todos os RPCs de cobrança ────────
   {
     const rpcs = [
@@ -181,6 +197,7 @@ try {
       ["reverse_purchase_credits", "select public.reverse_purchase_credits('stripe:checkout:none', 'k', 1, false, null)"],
       ["reinstate_dispute_credits", "select public.reinstate_dispute_credits('stripe:checkout:none', 'd', 'k')"],
       ["claim_free_image_trial", "select public.claim_free_image_trial('none@x.dev', gen_random_uuid(), gen_random_uuid(), 60)"],
+      ["rate_limit_hit", "select * from public.rate_limit_hit('svc', 60, 5)"],
     ];
     for (const [name, sql] of rpcs) {
       const c = await pool.connect();

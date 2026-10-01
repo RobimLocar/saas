@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 const SYSTEM_PROMPT = `Você é um especialista em prompts para modelos de IA generativa (imagem, vídeo e áudio).
 Reescreva o prompt do usuário para obter o melhor resultado possível no modelo indicado:
@@ -17,6 +18,8 @@ export async function POST(req: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
+    const rateLimited = await enforceRateLimit(user.id, "llm");
+    if (rateLimited) return rateLimited;
 
     const body = await req.json();
     const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";

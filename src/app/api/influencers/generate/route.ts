@@ -6,6 +6,7 @@ import { debitCredits, effectiveCost, refundCredits } from "@/lib/credits";
 import { generateImageGptSync } from "@/lib/piapi/client";
 import { isSafeMediaUrl } from "@/lib/validate-generation";
 import { auditLog, newRequestId } from "@/lib/audit-log";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 type ImageModelRow = {
   id: string;
@@ -106,6 +107,8 @@ export async function POST(req: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
+    const rateLimited = await enforceRateLimit(user.id, "generation");
+    if (rateLimited) return rateLimited;
 
     const body = await req.json();
 

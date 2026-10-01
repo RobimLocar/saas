@@ -17,6 +17,7 @@ import { validateReferenceRefs, validateVoiceIds, buildKlingAdvanced } from "@/l
 import { auditLog, newRequestId, redactSecrets, truncate } from "@/lib/audit-log";
 import { translateToEnglish } from "@/lib/translate";
 import { videoRequestFingerprint, classifyIntentDuplicate } from "@/lib/idempotency";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import {
   normalizeIntentId,
   newCallbackToken,
@@ -39,6 +40,8 @@ export async function POST(req: NextRequest) {
       auditLog("api.generate.video", "auth_falhou_401", requestId, {}, Date.now() - t0);
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
+    const rateLimited = await enforceRateLimit(user.id, "generation");
+    if (rateLimited) return rateLimited;
 
     const body = await req.json();
 

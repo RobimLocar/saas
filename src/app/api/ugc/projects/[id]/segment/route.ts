@@ -19,6 +19,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { fingerprint } from "@/lib/idempotency";
 import { normalizeIntentId, newCallbackToken } from "@/lib/webhooks/reliability-runtime";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 /**
  * P10a — Mede a duração REAL do áudio de dublagem no SERVIDOR (music-metadata),
@@ -109,6 +110,8 @@ export async function POST(
     if (!user) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
+    const rateLimited = await enforceRateLimit(user.id, "generation");
+    if (rateLimited) return rateLimited;
 
     const body = await req.json();
     const {
